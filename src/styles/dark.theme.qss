@@ -1,0 +1,50 @@
+QWidget {
+    background-color: #1a1b1e;
+    color: #cdd6f4;
+}
+
+QLineEdit {
+    background-color: #313244;
+    color: #cdd6f4;
+    border-color: #45475a;
+    selection-background-color: #585b70;
+    selection-color: #cdd6f4;
+}
+
+QLineEdit:focus {
+    border-color: #89b4fa;
+}
+
+QLineEdit::placeholder {
+    color: #6c7086;
+}
+
+QListWidget {
+    background-color: transparent;
+}
+
+QListWidget::item {
+    color: #cdd6f4;
+    background-color: transparent;
+}
+
+QListWidget::item:hover {
+    background-color: #313244;
+}
+
+QListWidget::item:selected {
+    background-color: #45475a;
+    color: #cdd6f4;
+}
+
+QScrollBar:vertical {
+    background-color: transparent;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #45475a;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #585b70;
+}

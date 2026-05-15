@@ -1,0 +1,69 @@
+QWidget {
+    font-family: "Fira Sans", "Noto Sans", "DejaVu Sans", sans-serif;
+    font-size: 13px;
+}
+
+QLineEdit {
+    border-width: 1px;
+    border-style: solid;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+QLineEdit:focus {
+    border-width: 1px;
+    border-style: solid;
+}
+
+QLineEdit::placeholder {
+}
+
+QListWidget {
+    border: none;
+    outline: none;
+    padding: 0px;
+}
+
+QListWidget::item {
+    padding: 8px 12px;
+    border-radius: 4px;
+}
+
+QListWidget::item:hover {
+}
+
+QListWidget::item:selected {
+}
+
+QScrollArea {
+    border: none;
+}
+
+QScrollBar:vertical {
+    width: 6px;
+    margin: 0;
+    border-radius: 3px;
+}
+
+QScrollBar::handle:vertical {
+    min-height: 30px;
+    border-radius: 3px;
+}
+
+QScrollBar::handle:vertical:hover {
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+QLabel {
+    border: none;
+}
