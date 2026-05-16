@@ -2,15 +2,17 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+
+    const module = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+        .strip = true,
+    });
 
     const exe = b.addExecutable(.{
         .name = "zlauncher",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = module,
     });
 
     const qt6zig = b.dependency("libqt6zig", .{
@@ -23,32 +25,29 @@ pub fn build(b: *std.Build) void {
     const libs = [_][]const u8{
         "qobject",
         "qcoreapplication",
-        "qstring",
-        "qwindow",
+        "qguiapplication",
+        "qapplication",
         "qwidget",
         "qlabel",
-        "qapplication",
-        "qguiapplication",
-        "qcheckbox",
-        "qpushbutton",
-        "qradiobutton",
-        "qtoolbutton",
-        "qbuttongroup",
         "qlineedit",
-        "qtextedit",
-        "qmainwindow",
-        "qscreen",
-        "qrect",
-        "qsize",
-        "qpoint",
-        "qimage",
         "qlayout",
         "qboxlayout",
-        "qscrollarea",
         "qlistwidget",
         "qshortcut",
         "qkeysequence",
+        "qscreen",
+        "qpalette",
+        "qcolor",
+        "qstylehints",
+        "qnamespace",
+        "qabstractitemview",
+        "qimage",
         "qpixmap",
+        "qicon",
+        "qrect",
+        "qsize",
+        "qpoint",
+        "qwindow",
     };
 
     for (libs) |lib| {

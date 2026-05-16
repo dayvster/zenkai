@@ -3,23 +3,19 @@ const appreader = @import("core/appreader.zig");
 const qt = @import("libqt6zig");
 const ui = @import("ui/ui.zig");
 
+const main_qss = @embedFile("styles/main.qss");
+const dark_qss = @embedFile("styles/dark.theme.qss");
+
 const QApp = qt.QApplication;
 const QLabel = qt.QLabel;
 const QWidget = qt.QWidget;
 const QVBoxLayout = qt.QVBoxLayout;
 const QLineEdit = qt.QLineEdit;
 const QCloseEvent = qt.QCloseEvent;
-const QShortcut = qt.QShortcut;
-const QKeySequence = qt.QKeySequence;
-const main_qss = @embedFile("styles/main.qss");
-const dark_qss = @embedFile("styles/dark.theme.qss");
+const QPalette = qt.QPalette;
+const QColor = qt.QColor;
+const qpalette = qt.qpalette_enums;
 
-const stylesheet = blk: {
-    var buf: [main_qss.len + dark_qss.len:0]u8 = undefined;
-    @memcpy(buf[0..main_qss.len], main_qss);
-    @memcpy(buf[main_qss.len..], dark_qss);
-    break :blk buf;
-};
 var search_list: *ui.List = undefined;
 
 fn onSearchTextChanged(_: QLineEdit, text_cstr: [*:0]const u8) callconv(.c) void {
@@ -31,8 +27,39 @@ fn onWindowClose(_: QWidget, _: QCloseEvent) callconv(.c) void {
     QApp.Quit();
 }
 
-fn onEscapePressed(_: QShortcut) callconv(.c) void {
-    QApp.Quit();
+fn setupDarkPalette() void {
+    const bg = QColor.New5(0x1a, 0x1b, 0x1e);
+    const bg_light = QColor.New5(0x31, 0x32, 0x44);
+    const border = QColor.New5(0x45, 0x47, 0x5a);
+    const fg = QColor.New5(0xcd, 0xd6, 0xf4);
+    const placeholder = QColor.New5(0x6c, 0x70, 0x86);
+    const highlight = QColor.New5(0x58, 0x5b, 0x70);
+    const accent = QColor.New5(0x89, 0xb4, 0xfa);
+
+    var palette = QPalette.New();
+    defer palette.Delete();
+
+    palette.SetColor2(qpalette.ColorRole.Window, bg);
+    palette.SetColor2(qpalette.ColorRole.WindowText, fg);
+    palette.SetColor2(qpalette.ColorRole.Base, bg_light);
+    palette.SetColor2(qpalette.ColorRole.Text, fg);
+    palette.SetColor2(qpalette.ColorRole.Button, border);
+    palette.SetColor2(qpalette.ColorRole.ButtonText, fg);
+    palette.SetColor2(qpalette.ColorRole.Highlight, highlight);
+    palette.SetColor2(qpalette.ColorRole.HighlightedText, fg);
+    palette.SetColor2(qpalette.ColorRole.PlaceholderText, placeholder);
+    palette.SetColor2(qpalette.ColorRole.Light, bg_light);
+    palette.SetColor2(qpalette.ColorRole.Accent, accent);
+
+    bg.Delete();
+    bg_light.Delete();
+    border.Delete();
+    fg.Delete();
+    placeholder.Delete();
+    highlight.Delete();
+    accent.Delete();
+
+    QApp.SetPalette(palette);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -41,8 +68,23 @@ pub fn main(init: std.process.Init) !void {
 
     var argc: i32 = @intCast(argv.len);
     const app = QApp.New(std.heap.page_allocator, &argc, argv);
-    app.SetStyleSheet(&stylesheet);
     defer app.Delete();
+
+    QApp.SetEffectEnabled2(0, false);
+    QApp.SetEffectEnabled2(1, false);
+    QApp.SetEffectEnabled2(2, false);
+    QApp.SetEffectEnabled2(3, false);
+    QApp.SetEffectEnabled2(4, false);
+    QApp.SetEffectEnabled2(5, false);
+    QApp.SetEffectEnabled2(6, false);
+
+    setupDarkPalette();
+
+    {
+        const qss = try std.mem.concat(init.gpa, u8, &.{ main_qss, dark_qss });
+        defer init.gpa.free(qss);
+        app.SetStyleSheet(qss);
+    }
 
     var reader = appreader.AppReader.init(init.gpa);
     errdefer reader.deinit();
@@ -80,14 +122,15 @@ pub fn main(init: std.process.Init) !void {
             wt.NoDropShadowWindowHint |
             wt.MSWindowsFixedSizeDialogHint,
     );
+    window.SetWindowOpacity(0.15);
 
     const main_layout = QVBoxLayout.New(window);
 
     var search_bar = QLineEdit.New2();
     search_bar.SetPlaceholderText("Search apps...");
-    search_bar.SetClearButtonEnabled(true);
-    main_layout.AddWidget(search_bar);
+    search_bar.SetClearButtonEnabled(false);
 
+    main_layout.AddWidget(search_bar);
     main_layout.AddWidget(list.widget);
 
     window.SetMinimumSize2(win_w, win_h);
@@ -104,12 +147,9 @@ pub fn main(init: std.process.Init) !void {
 
     window.OnCloseEvent(onWindowClose);
 
-    const escape_seq = QKeySequence.New2("Escape");
-    const escape_shortcut = QShortcut.New2(escape_seq, window);
-    escape_shortcut.OnActivated(onEscapePressed);
-
     search_list = &list;
     search_bar.OnTextChanged(onSearchTextChanged);
+    ui.Keyboard.setup(window, &list);
 
     window.Show();
 

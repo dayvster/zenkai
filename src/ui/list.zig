@@ -5,20 +5,52 @@ const utils = @import("../utils/utils.zig");
 
 const QListWidget = qt.QListWidget;
 const QListWidgetItem = qt.QListWidgetItem;
+const QIcon = qt.QIcon;
+const QSize = qt.QSize;
+const QImage = qt.QImage;
+const QPixmap = qt.QPixmap;
+
+const icon_size: i32 = 16;
+
+fn loadIcon(icon_name: []const u8) QIcon {
+    if (icon_name.len > 0 and icon_name[0] == '/') {
+        var image = QImage.New9(icon_name);
+        defer image.Delete();
+        var scaled = image.Scaled(icon_size, icon_size);
+        defer scaled.Delete();
+        var pixmap = QPixmap.FromImage(scaled);
+        defer pixmap.Delete();
+        return QIcon.New2(pixmap);
+    }
+    return QIcon.FromTheme(icon_name);
+}
 
 pub const List = struct {
     allocator: std.mem.Allocator,
     widget: QListWidget,
     lower_names: std.ArrayList([]const u8),
+    exec_cmds: std.ArrayList([]const u8),
 
     pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp) List {
         const widget = QListWidget.New2();
         widget.SetSortingEnabled(false);
+        widget.SetIconSize(QSize.New4(icon_size, icon_size));
 
         var lower_names = std.ArrayList([]const u8).empty;
+        var exec_cmds = std.ArrayList([]const u8).empty;
 
-        for (apps) |app| {
+        for (apps, 0..) |app, idx| {
             widget.AddItem(app.name);
+
+            if (app.icon) |icon_name| {
+                const icon = loadIcon(icon_name);
+
+                var item = widget.Item(@intCast(idx));
+                item.SetIcon(icon);
+                icon.Delete();
+            }
+
+            exec_cmds.append(allocator, allocator.dupe(u8, app.exec) catch "") catch {};
 
             var buf: [256]u8 = undefined;
             if (app.name.len <= buf.len) {
@@ -33,6 +65,7 @@ pub const List = struct {
             .allocator = allocator,
             .widget = widget,
             .lower_names = lower_names,
+            .exec_cmds = exec_cmds,
         };
     }
 
@@ -63,10 +96,26 @@ pub const List = struct {
 
             self.widget.Item(row).SetHidden(true);
         }
+
+        self.selectFirstVisible();
+    }
+
+    fn selectFirstVisible(self: *List) void {
+        const count = self.widget.Count();
+        var row: i32 = 0;
+        while (row < count) : (row += 1) {
+            if (!self.widget.Item(row).IsHidden()) {
+                self.widget.SetCurrentRow(row);
+                return;
+            }
+        }
+        self.widget.SetCurrentRow(-1);
     }
 
     pub fn deinit(self: *List) void {
         for (self.lower_names.items) |n| self.allocator.free(n);
         self.lower_names.deinit(self.allocator);
+        for (self.exec_cmds.items) |c| self.allocator.free(c);
+        self.exec_cmds.deinit(self.allocator);
     }
 };

@@ -180,3 +180,30 @@ pub fn levenshteinDistance(
     const distance = prev[s2_len];
     return @min(distance, max_distance);
 }
+
+pub fn execute(cmd: []const u8) !void {
+    var buf: [1024:0]u8 = undefined;
+
+    if (cmd.len >= buf.len) {
+        return error.CommandTooLong;
+    }
+
+    @memcpy(buf[0..cmd.len], cmd);
+    buf[cmd.len] = 0;
+
+    const argv = [_:null]?[*:0]const u8{
+        "sh",
+        "-c",
+        @as([*:0]const u8, @ptrCast(&buf)),
+        null,
+    };
+
+    const pid = std.os.linux.fork();
+
+    if (pid == 0) {
+        _ = std.os.linux.execve("/bin/sh", &argv, environ);
+        std.os.linux.exit(1);
+    }
+}
+
+extern "c" var environ: [*:null]?[*:0]u8;
