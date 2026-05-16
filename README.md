@@ -23,6 +23,12 @@ zig build run
 
 Binary at `zig-out/bin/zlauncher`.
 
+## Run 
+For optimal results especially if you are using a Nvidia graphics card I've included `zlauncher.sh` with some sane defaults that brings the RAM usage of the launcher down to 20-50MB 
+
+*Your results may vary
+
+
 ## Status
 
 v0.1. Core loop works — scan, search, filter. What's missing: no app launching, no icons in the list, theme switching isn't wired. Getting there.
