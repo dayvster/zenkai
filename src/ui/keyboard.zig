@@ -7,59 +7,59 @@ const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;
 const QWidget = qt.QWidget;
 const QApp = qt.QApplication;
+const QModelIndex = qt.QModelIndex;
 
 var L: *List = undefined;
 
-fn firstVisible() i32 {
-    const count = L.widget.Count();
-    var row: i32 = 0;
-    while (row < count) : (row += 1) {
-        if (!L.widget.Item(row).IsHidden()) return row;
-    }
-    return -1;
-}
-
-fn nextVisible(from: i32) i32 {
-    const count = L.widget.Count();
-    var row = from + 1;
-    while (row < count) : (row += 1) {
-        if (!L.widget.Item(row).IsHidden()) return row;
-    }
-    return -1;
-}
-
-fn prevVisible(from: i32) i32 {
-    var row = from - 1;
-    while (row >= 0) : (row -= 1) {
-        if (!L.widget.Item(row).IsHidden()) return row;
-    }
-    return -1;
-}
-
 fn onEnter(_: QShortcut) callconv(.c) void {
-    const row = L.widget.CurrentRow();
-    if (row < 0) {
-        const first = firstVisible();
-        if (first >= 0) L.widget.SetCurrentRow(first);
+    var idx = L.view.CurrentIndex();
+    defer idx.Delete();
+
+    if (!idx.IsValid()) {
+        if (L.indices.items.len > 0) {
+            var invalid = QModelIndex.New3();
+            defer invalid.Delete();
+            var first = L.model.Index(0, 0, invalid);
+            defer first.Delete();
+            L.view.SetCurrentIndex(first);
+        }
         return;
     }
-    const idx = @as(usize, @intCast(row));
-    if (idx >= L.exec_cmds.items.len) return;
-    if (L.widget.Item(row).IsHidden()) return;
-    utils.execute(L.exec_cmds.items[idx]) catch {};
+    const row = @as(usize, @intCast(idx.Row()));
+    if (row >= L.indices.items.len) return;
+    utils.execute(L.getExecForRow(row)) catch {};
     QApp.Quit();
 }
 
 fn onUp(_: QShortcut) callconv(.c) void {
-    const row = L.widget.CurrentRow();
-    const prev = if (row > 0) prevVisible(row) else -1;
-    if (prev >= 0) L.widget.SetCurrentRow(prev);
+    var idx = L.view.CurrentIndex();
+    defer idx.Delete();
+
+    if (!idx.IsValid()) return;
+    const row = idx.Row();
+    if (row > 0) {
+        var invalid = QModelIndex.New3();
+        defer invalid.Delete();
+        var target = L.model.Index(row - 1, 0, invalid);
+        defer target.Delete();
+        L.view.SetCurrentIndex(target);
+    }
 }
 
 fn onDown(_: QShortcut) callconv(.c) void {
-    const row = L.widget.CurrentRow();
-    const next = if (row >= 0) nextVisible(row) else firstVisible();
-    if (next >= 0) L.widget.SetCurrentRow(next);
+    var idx = L.view.CurrentIndex();
+    defer idx.Delete();
+
+    if (!idx.IsValid()) return;
+    const row = idx.Row();
+    const count = @as(i32, @intCast(L.indices.items.len));
+    if (row < count - 1) {
+        var invalid = QModelIndex.New3();
+        defer invalid.Delete();
+        var target = L.model.Index(row + 1, 0, invalid);
+        defer target.Delete();
+        L.view.SetCurrentIndex(target);
+    }
 }
 
 fn bind(window: QWidget, key: []const u8, handler: *const fn (QShortcut) callconv(.c) void) void {

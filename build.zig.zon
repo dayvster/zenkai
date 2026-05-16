@@ -1,7 +1,7 @@
 .{
-    .name = .zlauncher,
+    .name = .zenkai,
     .version = "0.0.0",
-    .fingerprint = 0x9d3ab7991b115259,
+    .fingerprint = 0x9d5a50d25624ae70,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .libqt6zig = .{

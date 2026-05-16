@@ -3,119 +3,209 @@ const qt = @import("libqt6zig");
 const de = @import("desktopapp");
 const utils = @import("../utils/utils.zig");
 
-const QListWidget = qt.QListWidget;
-const QListWidgetItem = qt.QListWidgetItem;
+const QListView = qt.QListView;
+const QAbstractListModel = qt.QAbstractListModel;
+const QModelIndex = qt.QModelIndex;
+const QVariant = qt.QVariant;
 const QIcon = qt.QIcon;
 const QSize = qt.QSize;
-const QImage = qt.QImage;
 const QPixmap = qt.QPixmap;
+const QPainter = qt.QPainter;
+const QColor = qt.QColor;
+const QRect = qt.QRect;
+const QFont = qt.QFont;
 
-const icon_size: i32 = 16;
+var g_icon_size: i32 = 32;
 
 fn loadIcon(icon_name: []const u8) QIcon {
     if (icon_name.len > 0 and icon_name[0] == '/') {
-        var image = QImage.New9(icon_name);
-        defer image.Delete();
-        var scaled = image.Scaled(icon_size, icon_size);
-        defer scaled.Delete();
-        var pixmap = QPixmap.FromImage(scaled);
-        defer pixmap.Delete();
-        return QIcon.New2(pixmap);
+        return QIcon.New4(icon_name);
     }
     return QIcon.FromTheme(icon_name);
 }
 
+fn makeFallbackIcon(name: []const u8) QIcon {
+    const palette = [_][3]u8{
+        .{ 0xe5, 0x6b, 0x6b },
+        .{ 0xe8, 0x8d, 0x67 },
+        .{ 0xe9, 0xc4, 0x6a },
+        .{ 0xa3, 0xbe, 0x8c },
+        .{ 0x7e, 0xb3, 0xd1 },
+        .{ 0x9b, 0x8e, 0xd3 },
+        .{ 0xd4, 0x8b, 0xbd },
+        .{ 0x8c, 0xbe, 0xb5 },
+    };
+
+    const first = if (name.len > 0) std.ascii.toUpper(name[0]) else '?';
+    const idx = @as(usize, @intCast(first)) % palette.len;
+    const c = palette[idx];
+
+    const bg = QColor.New5(c[0], c[1], c[2]);
+    defer bg.Delete();
+
+    const luminance = @as(f32, @floatFromInt(c[0])) * 0.299 +
+        @as(f32, @floatFromInt(c[1])) * 0.587 +
+        @as(f32, @floatFromInt(c[2])) * 0.114;
+    const text_color = if (luminance > 128.0)
+        QColor.New5(0, 0, 0)
+    else
+        QColor.New5(255, 255, 255);
+    defer text_color.Delete();
+
+    var pixmap = QPixmap.New2(g_icon_size, g_icon_size);
+    defer pixmap.Delete();
+    pixmap.Fill1(bg);
+
+    var painter = QPainter.New();
+    defer painter.Delete();
+    _ = painter.Begin(pixmap);
+    defer _ = painter.End();
+
+    painter.SetRenderHint(1);
+    painter.SetPen(text_color);
+
+    var font = QFont.New2("sans-serif");
+    defer font.Delete();
+    font.SetPixelSize(g_icon_size - 4);
+    font.SetBold(true);
+    painter.SetFont(font);
+
+    var rect = QRect.New6(0, 0, g_icon_size, g_icon_size);
+    defer rect.Delete();
+
+    var letter: [2]u8 = .{ first, 0 };
+    painter.DrawText6(rect, 132, letter[0..1]);
+
+    return QIcon.New2(pixmap);
+}
+
+var g_apps: []const de.DesktopApp = undefined;
+var g_indices: []const usize = &[_]usize{};
+
+fn onRowCount(_: QAbstractListModel, _: QModelIndex) callconv(.c) i32 {
+    return @intCast(g_indices.len);
+}
+
+fn onData(_: QAbstractListModel, index: QModelIndex, role: i32) callconv(.c) QVariant {
+    const row = index.Row();
+    if (row < 0 or @as(usize, @intCast(row)) >= g_indices.len)
+        return QVariant.New();
+
+    const app = g_apps[g_indices[@as(usize, @intCast(row))]];
+
+    if (role == 0) {
+        return QVariant.New24(app.name);
+    }
+    if (role == 1) {
+        var icon: QIcon = undefined;
+        if (app.icon) |icon_name| {
+            if (icon_name.len > 0) {
+                icon = loadIcon(icon_name);
+                if (icon.IsNull()) {
+                    icon.Delete();
+                    icon = makeFallbackIcon(app.name);
+                }
+            } else {
+                icon = makeFallbackIcon(app.name);
+            }
+        } else {
+            icon = makeFallbackIcon(app.name);
+        }
+        defer icon.Delete();
+        return icon.ToQVariant();
+    }
+
+    return QVariant.New();
+}
+
 pub const List = struct {
     allocator: std.mem.Allocator,
-    widget: QListWidget,
-    lower_names: std.ArrayList([]const u8),
-    exec_cmds: std.ArrayList([]const u8),
+    view: QListView,
+    model: QAbstractListModel,
+    apps: []const de.DesktopApp,
+    indices: std.ArrayList(usize),
 
-    pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp) List {
-        const widget = QListWidget.New2();
-        widget.SetSortingEnabled(false);
-        widget.SetIconSize(QSize.New4(icon_size, icon_size));
+    pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp, icon_size: i32) List {
+        g_icon_size = icon_size;
 
-        var lower_names = std.ArrayList([]const u8).empty;
-        var exec_cmds = std.ArrayList([]const u8).empty;
+        var model = QAbstractListModel.New();
+        model.OnRowCount(onRowCount);
+        model.OnData(onData);
 
-        for (apps, 0..) |app, idx| {
-            widget.AddItem(app.name);
+        g_apps = apps;
 
-            if (app.icon) |icon_name| {
-                const icon = loadIcon(icon_name);
-
-                var item = widget.Item(@intCast(idx));
-                item.SetIcon(icon);
-                icon.Delete();
-            }
-
-            exec_cmds.append(allocator, allocator.dupe(u8, app.exec) catch "") catch {};
-
-            var buf: [256]u8 = undefined;
-            if (app.name.len <= buf.len) {
-                for (app.name, 0..) |c, i| buf[i] = std.ascii.toLower(c);
-                lower_names.append(allocator, allocator.dupe(u8, buf[0..app.name.len]) catch "") catch {};
-            } else {
-                lower_names.append(allocator, "") catch {};
-            }
-        }
+        var view = QListView.New2();
+        view.SetIconSize(QSize.New4(icon_size, icon_size));
+        view.SetModel(model);
 
         return .{
             .allocator = allocator,
-            .widget = widget,
-            .lower_names = lower_names,
-            .exec_cmds = exec_cmds,
+            .view = view,
+            .model = model,
+            .apps = apps,
+            .indices = std.ArrayList(usize).empty,
         };
     }
 
     pub fn setFilter(self: *List, text: []const u8) void {
-        var lower_text_buf: [256]u8 = undefined;
-        const lower_text = if (text.len <= lower_text_buf.len) blk: {
-            for (text, 0..) |c, i| lower_text_buf[i] = std.ascii.toLower(c);
-            break :blk lower_text_buf[0..text.len];
-        } else text;
+        self.indices.clearRetainingCapacity();
 
-        const max_distance: usize = if (text.len < 3) 0 else 3;
+        if (text.len == 0) {
+            for (0..self.apps.len) |i|
+                self.indices.append(self.allocator, i) catch {};
+        } else {
+            var lower_text_buf: [256]u8 = undefined;
+            const lower_text = if (text.len <= lower_text_buf.len) blk: {
+                for (text, 0..) |c, i| lower_text_buf[i] = std.ascii.toLower(c);
+                break :blk lower_text_buf[0..text.len];
+            } else text;
 
-        for (self.lower_names.items, 0..) |n, i| {
-            const row: i32 = @intCast(i);
+            const max_distance: usize = if (text.len < 3) 0 else 3;
 
-            if (std.mem.indexOf(u8, n, lower_text) != null) {
-                self.widget.Item(row).SetHidden(false);
-                continue;
-            }
+            for (self.apps, 0..) |app, i| {
+                var lower_name_buf: [256]u8 = undefined;
+                var matches = false;
 
-            if (max_distance > 0) {
-                const dist = utils.demerauLevenshteinDistance(self.allocator, lower_text, n, max_distance) catch max_distance;
-                if (dist < max_distance) {
-                    self.widget.Item(row).SetHidden(false);
-                    continue;
+                if (app.name.len <= lower_name_buf.len) {
+                    for (app.name, 0..) |c, j| lower_name_buf[j] = std.ascii.toLower(c);
+                    const lower_name = lower_name_buf[0..app.name.len];
+
+                    if (std.mem.indexOf(u8, lower_name, lower_text) != null) {
+                        matches = true;
+                    }
+
+                    if (!matches and max_distance > 0) {
+                        const dist = utils.demerauLevenshteinDistance(self.allocator, lower_text, lower_name, max_distance) catch max_distance;
+                        if (dist < max_distance) {
+                            matches = true;
+                        }
+                    }
+                }
+
+                if (matches) {
+                    self.indices.append(self.allocator, i) catch {};
                 }
             }
-
-            self.widget.Item(row).SetHidden(true);
         }
 
-        self.selectFirstVisible();
+        self.model.BeginResetModel();
+        g_indices = self.indices.items;
+        self.model.EndResetModel();
+
+        if (self.indices.items.len > 0) {
+            var invalid = QModelIndex.New3();
+            var idx = self.model.Index(0, 0, invalid);
+            self.view.SetCurrentIndex(idx);
+            invalid.Delete();
+            idx.Delete();
+        }
     }
 
-    fn selectFirstVisible(self: *List) void {
-        const count = self.widget.Count();
-        var row: i32 = 0;
-        while (row < count) : (row += 1) {
-            if (!self.widget.Item(row).IsHidden()) {
-                self.widget.SetCurrentRow(row);
-                return;
-            }
-        }
-        self.widget.SetCurrentRow(-1);
+    pub fn getExecForRow(self: *List, row: usize) []const u8 {
+        return self.apps[self.indices.items[row]].exec;
     }
 
     pub fn deinit(self: *List) void {
-        for (self.lower_names.items) |n| self.allocator.free(n);
-        self.lower_names.deinit(self.allocator);
-        for (self.exec_cmds.items) |c| self.allocator.free(c);
-        self.exec_cmds.deinit(self.allocator);
+        self.indices.deinit(self.allocator);
     }
 };

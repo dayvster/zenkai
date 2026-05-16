@@ -71,7 +71,10 @@ pub const AppReader = struct {
                 const mtime = try getFileMTime(file_path);
                 if (mtime > max_mtime) max_mtime = mtime;
 
-                const app = try parseDesktopFile(self.arena.allocator(), content);
+                const app = parseDesktopFile(self.arena.allocator(), content) catch |err| switch (err) {
+                    error.NoDisplay => continue,
+                    else => |e| return e,
+                };
 
                 try self.apps.append(self.allocator, app);
                 try self.desktop_files.append(self.allocator, try self.arena.allocator().dupe(u8, file_path));
@@ -196,6 +199,7 @@ pub const AppReader = struct {
         var name: []const u8 = "";
         var exec: []const u8 = "";
         var icon: ?[]const u8 = null;
+        var no_display = false;
 
         var in_desktop_entry = false;
         var lines = std.mem.splitScalar(u8, content, '\n');
@@ -222,10 +226,16 @@ pub const AppReader = struct {
                 continue;
             }
 
+            if (std.mem.eql(u8, key, "NoDisplay") and std.mem.eql(u8, value, "true")) {
+                no_display = true;
+            }
+
             if (std.mem.eql(u8, key, "Name")) name = try allocator.dupe(u8, value);
             if (std.mem.eql(u8, key, "Exec")) exec = try allocator.dupe(u8, value);
-            if (std.mem.eql(u8, key, "Icon")) icon = try allocator.dupe(u8, value);
+            if (std.mem.eql(u8, key, "Icon")) icon = if (value.len > 0) try allocator.dupe(u8, value) else null;
         }
+
+        if (no_display) return error.NoDisplay;
 
         return de.DesktopApp{
             .name = if (name.len > 0) name else try allocator.dupe(u8, "(unnamed)"),

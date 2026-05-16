@@ -2,6 +2,7 @@ const std = @import("std");
 const appreader = @import("core/appreader.zig");
 const qt = @import("libqt6zig");
 const ui = @import("ui/ui.zig");
+const log = @import("utils/log.zig");
 
 const main_qss = @embedFile("styles/main.qss");
 const dark_qss = @embedFile("styles/dark.theme.qss");
@@ -66,6 +67,16 @@ pub fn main(init: std.process.Init) !void {
     const argv = try qt.init(init.gpa, init.minimal.args);
     defer qt.deinit(init.gpa, argv);
 
+    var icon_size: i32 = 32;
+    for (init.minimal.args.vector) |arg_ptr| {
+        const arg = std.mem.span(arg_ptr);
+        if (std.mem.startsWith(u8, arg, "--size=")) {
+            icon_size = std.fmt.parseInt(i32, arg["--size=".len..], 10) catch 32;
+        } else if (std.mem.eql(u8, arg, "--verbose") or std.mem.eql(u8, arg, "-v")) {
+            log.verbose = true;
+        }
+    }
+
     var argc: i32 = @intCast(argv.len);
     const app = QApp.New(std.heap.page_allocator, &argc, argv);
     defer app.Delete();
@@ -105,14 +116,14 @@ pub fn main(init: std.process.Init) !void {
     };
     defer reader.deinit();
 
-    var list = ui.List.init(init.gpa, reader.apps.items);
+    var list = ui.List.init(init.gpa, reader.apps.items, icon_size);
     defer list.deinit();
 
     const win_w: i32 = 600;
     const win_h: i32 = 500;
 
     var window = QWidget.New2();
-    window.SetWindowTitle("zlauncher");
+    window.SetWindowTitle("zenkai");
 
     const wt = qt.qnamespace_enums.WindowType;
     window.SetWindowFlags(
@@ -131,7 +142,7 @@ pub fn main(init: std.process.Init) !void {
     search_bar.SetClearButtonEnabled(false);
 
     main_layout.AddWidget(search_bar);
-    main_layout.AddWidget(list.widget);
+    main_layout.AddWidget(list.view);
 
     window.SetMinimumSize2(win_w, win_h);
     window.SetMaximumSize2(win_w, win_h);
@@ -148,6 +159,7 @@ pub fn main(init: std.process.Init) !void {
     window.OnCloseEvent(onWindowClose);
 
     search_list = &list;
+    list.setFilter("");
     search_bar.OnTextChanged(onSearchTextChanged);
     ui.Keyboard.setup(window, &list);
 

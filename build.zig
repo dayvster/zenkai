@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const exe = b.addExecutable(.{
-        .name = "zlauncher",
+        .name = "zenkai",
         .root_module = module,
     });
 
@@ -21,6 +21,12 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.root_module.addImport("libqt6zig", qt6zig.module("libqt6zig"));
+
+    const patch_cmd =
+        \\s/(\s+)(\w+)\s*\*\s*callback_ret\s*=\s*(.+?);\s*\n\s*return\s+\*callback_ret;/$1$2* callback_ret = $3;\n$1$2 ret = *callback_ret;\n$1delete callback_ret;\n$1return ret;/g
+    ;
+    const patch_step = b.addSystemCommand(&.{ "perl", "-0777", "-pi", "-e", patch_cmd });
+    patch_step.addFileArg(qt6zig.path("src/libqabstractitemmodel.hxx"));
 
     const libs = [_][]const u8{
         "qobject",
@@ -48,17 +54,28 @@ pub fn build(b: *std.Build) void {
         "qsize",
         "qpoint",
         "qwindow",
+        "qpainter",
+        "qfont",
+        "qvariant",
+        "qabstractitemmodel",
+        "qlistview",
     };
 
     for (libs) |lib| {
-        exe.root_module.linkLibrary(qt6zig.artifact(lib));
+        const artifact = qt6zig.artifact(lib);
+        exe.root_module.linkLibrary(artifact);
+        if (std.mem.eql(u8, lib, "qabstractitemmodel")) {
+            artifact.step.dependOn(&patch_step.step);
+        }
     }
 
     exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
     exe.root_module.linkSystemLibrary("Qt6Core", .{});
     exe.root_module.linkSystemLibrary("Qt6Gui", .{});
     exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
-    exe.root_module.linkSystemLibrary("stdc++", .{});
+    exe.root_module.link_libcpp = false;
+    exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/libstdc++.so" });
+    exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/libgcc_eh.a" });
 
     exe.root_module.addImport("fsutils", b.createModule(.{
         .root_source_file = b.path("src/utils/fsutils.zig"),
