@@ -65,9 +65,14 @@ fn makeFallbackIcon(name: []const u8) QIcon {
     painter.SetRenderHint(1);
     painter.SetPen(text_color);
 
+    const border = @divTrunc(g_icon_size, 10);
+    const radius = @as(f64, @floatFromInt(g_icon_size)) / 3.0;
+    const iw = g_icon_size - 2 * border;
+    painter.DrawRoundedRect2(border, border, iw, iw, radius, radius);
+
     var font = QFont.New2("sans-serif");
     defer font.Delete();
-    font.SetPixelSize(g_icon_size - 4);
+    font.SetPixelSize(g_icon_size - @divTrunc(g_icon_size, 4));
     font.SetBold(true);
     painter.SetFont(font);
 
@@ -78,6 +83,20 @@ fn makeFallbackIcon(name: []const u8) QIcon {
     painter.DrawText6(rect, 132, letter[0..1]);
 
     return QIcon.New2(pixmap);
+}
+
+fn tryLoadIcon(app: de.DesktopApp) QIcon {
+    if (app.icon) |icon_name| {
+        if (icon_name.len > 0) {
+            const icon = loadIcon(icon_name);
+            if (!icon.IsNull()) return icon;
+            icon.Delete();
+        }
+        const fallback = QIcon.FromTheme("application-x-executable");
+        if (!fallback.IsNull()) return fallback;
+        fallback.Delete();
+    }
+    return makeFallbackIcon(app.name);
 }
 
 var g_list: *List = undefined;
@@ -98,20 +117,7 @@ fn onData(_: QAbstractListModel, index: QModelIndex, role: i32) callconv(.c) QVa
         return QVariant.New24(app.name);
     }
     if (role == 1) {
-        var icon: QIcon = undefined;
-        if (app.icon) |icon_name| {
-            if (icon_name.len > 0) {
-                icon = loadIcon(icon_name);
-                if (icon.IsNull()) {
-                    icon.Delete();
-                    icon = makeFallbackIcon(app.name);
-                }
-            } else {
-                icon = makeFallbackIcon(app.name);
-            }
-        } else {
-            icon = makeFallbackIcon(app.name);
-        }
+        const icon = tryLoadIcon(app);
         defer icon.Delete();
         return icon.ToQVariant();
     }

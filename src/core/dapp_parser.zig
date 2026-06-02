@@ -25,6 +25,10 @@ pub const DappParser = struct {
                         no_display = true;
                     }
 
+                    if (utils.strcomp(kv.key, "Hidden") and utils.strcomp(kv.value, "true")) {
+                        no_display = true;
+                    }
+
                     try parseKeyValue(allocator, &app, kv.key, kv.value);
                 }
             }
@@ -169,29 +173,24 @@ pub const DesktopEntryIterator = struct {
     pub fn next(self: *DesktopEntryIterator) ?[]const u8 {
         var start: ?usize = null;
 
-        var line_iter = lineIterator(self.source[self.index..]);
+        while (true) {
+            const line_start = self.index;
+            var line_iter = lineIterator(self.source[self.index..]);
+            const raw_line = line_iter.next() orelse break;
+            self.index += line_iter.index;
 
-        while (line_iter.next()) |raw_line| {
             const trimmed = std.mem.trim(u8, raw_line, " \t");
 
             if (std.mem.startsWith(u8, trimmed, "[Desktop Entry]")) {
                 if (start != null) {
-                    const end = self.index + (raw_line.ptr - self.source[self.index..].ptr);
-                    const section = self.source[start.?..end];
-                    self.index += (raw_line.ptr - self.source[self.index..].ptr);
+                    const section = self.source[start.?..line_start];
                     return section;
                 }
-                start = self.index + (raw_line.ptr - self.source[self.index..].ptr);
+                start = line_start;
             } else if (start != null and trimmed.len > 0 and trimmed[0] == '[') {
-                const end = self.index + (raw_line.ptr - self.source[self.index..].ptr);
-                const section = self.source[start.?..end];
-                self.index += (raw_line.ptr - self.source[self.index..].ptr);
+                const section = self.source[start.?..line_start];
                 return section;
             }
-
-            const nl_pos = self.index + raw_line.len;
-            const has_lf = nl_pos < self.source.len and self.source[nl_pos] == LINE_FEED;
-            self.index += raw_line.len + @as(usize, @intFromBool(has_lf));
         }
 
         if (start) |s| {

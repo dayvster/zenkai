@@ -13,6 +13,7 @@ const QLabel = qt.QLabel;
 const QWidget = qt.QWidget;
 const QVBoxLayout = qt.QVBoxLayout;
 const QLineEdit = qt.QLineEdit;
+const QIcon = qt.QIcon;
 const QCloseEvent = qt.QCloseEvent;
 const QPalette = qt.QPalette;
 const QColor = qt.QColor;
@@ -104,6 +105,14 @@ pub fn main(init: std.process.Init) !void {
         defer init.gpa.free(config_path);
     }
 
+    if (config.detectIconTheme(init.gpa)) |theme| {
+        log.info("icon theme: {s}", .{theme});
+        QIcon.SetThemeName(theme);
+        init.gpa.free(theme);
+    } else {
+        log.info("icon theme: default (Qt resolved)", .{});
+    }
+
     var reader = appreader.AppReader.init(init.gpa);
     errdefer reader.deinit();
 
@@ -137,6 +146,20 @@ pub fn main(init: std.process.Init) !void {
         error_label.Move(x, y);
         error_label.Show();
         _ = QApp.Exec();
+        return;
+    };
+    reader.scan() catch {
+        var error_label = QLabel.New3("Error parsing desktop files");
+        error_label.SetAlignment(@as(i32, 0x8004));
+        error_label.SetWindowFlag(2048);
+        error_label.SetWindowFlag(262144);
+        error_label.SetFixedSize2(300, 80);
+        const screen = error_label.Screen();
+        const screen_rect = screen.Geometry();
+        const x = @divTrunc(screen_rect.Width() - 300, 2);
+        const y = @divTrunc(screen_rect.Height() - 80, 2);
+        error_label.Move(x, y);
+        error_label.Show();
         return;
     };
     defer reader.deinit();
