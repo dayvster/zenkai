@@ -1,5 +1,6 @@
 const std = @import("std");
 const fsutils = @import("fsutils");
+const log = @import("utils").log;
 
 const default_config = @embedFile("config.toml");
 
@@ -10,6 +11,83 @@ fn configDir(allocator: std.mem.Allocator) ![]u8 {
     }
     const home = std.c.getenv("HOME") orelse "/home";
     return try std.fs.path.join(allocator, &.{ std.mem.sliceTo(home, 0), ".config", "zenkai" });
+}
+
+pub fn detectIconTheme(allocator: std.mem.Allocator) ?[]const u8 {
+    if (readFromKdeglobals(allocator)) |theme| return theme;
+    if (readFromGtkSettings(allocator, "gtk-3.0")) |theme| return theme;
+    if (readFromGtkSettings(allocator, "gtk-4.0")) |theme| return theme;
+    return null;
+}
+
+fn kdeglobalsPath(allocator: std.mem.Allocator) ![]u8 {
+    const home = std.c.getenv("HOME") orelse return error.MissingHome;
+    return try std.fs.path.join(allocator, &.{ std.mem.sliceTo(home, 0), ".config", "kdeglobals" });
+}
+
+fn readFileAlloc(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]const u8 {
+    const cwd = std.Io.Dir.cwd();
+    const file = try std.Io.Dir.openFile(cwd, io, path, .{});
+    defer file.close(io);
+
+    const stat = try std.Io.Dir.statFile(cwd, io, path, .{});
+    const size = @as(usize, @intCast(stat.size));
+    if (size > 128 * 1024) return error.FileTooBig;
+
+    const buf = try allocator.alloc(u8, size);
+    const n = try file.readStreaming(io, &.{buf});
+    return buf[0..n];
+}
+
+fn readFromKdeglobals(allocator: std.mem.Allocator) ?[]const u8 {
+    const path = kdeglobalsPath(allocator) catch return null;
+    defer allocator.free(path);
+
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const content = readFileAlloc(allocator, io, path) catch return null;
+    defer allocator.free(content);
+
+    var in_icons_section = false;
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (trimmed.len == 0) continue;
+        if (trimmed[0] == '[') {
+            in_icons_section = std.mem.eql(u8, trimmed, "[Icons]");
+            continue;
+        }
+        if (in_icons_section) {
+            if (std.mem.startsWith(u8, trimmed, "Theme=")) {
+                const value = std.mem.trim(u8, trimmed["Theme=".len..], " \t");
+                if (value.len > 0) return allocator.dupe(u8, value) catch null;
+            }
+        }
+    }
+    return null;
+}
+
+fn gtkSettingsPath(allocator: std.mem.Allocator, ver: []const u8) ![]u8 {
+    const home = std.c.getenv("HOME") orelse return error.MissingHome;
+    return try std.fs.path.join(allocator, &.{ std.mem.sliceTo(home, 0), ".config", ver, "settings.ini" });
+}
+
+fn readFromGtkSettings(allocator: std.mem.Allocator, ver: []const u8) ?[]const u8 {
+    const path = gtkSettingsPath(allocator, ver) catch return null;
+    defer allocator.free(path);
+
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const content = readFileAlloc(allocator, io, path) catch return null;
+    defer allocator.free(content);
+
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (std.mem.startsWith(u8, trimmed, "gtk-icon-theme-name=")) {
+            const value = std.mem.trim(u8, trimmed["gtk-icon-theme-name=".len..], " \t\"");
+            if (value.len > 0) return allocator.dupe(u8, value) catch null;
+        }
+    }
+    return null;
 }
 
 pub fn deploy(io: std.Io, allocator: std.mem.Allocator) ![]const u8 {

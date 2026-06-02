@@ -30,6 +30,7 @@ zls.json
 Thumbs.db
 Desktop.ini
 
+notes/
 *.notes.md
 benchmark.sh
 *.txt
