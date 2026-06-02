@@ -13,6 +13,7 @@ const QLabel = qt.QLabel;
 const QWidget = qt.QWidget;
 const QVBoxLayout = qt.QVBoxLayout;
 const QLineEdit = qt.QLineEdit;
+const QIcon = qt.QIcon;
 const QCloseEvent = qt.QCloseEvent;
 const QPalette = qt.QPalette;
 const QColor = qt.QColor;
@@ -102,6 +103,14 @@ pub fn main(init: std.process.Init) !void {
         const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
         const config_path = try config.deploy(io, init.gpa);
         defer init.gpa.free(config_path);
+    }
+
+    if (config.detectIconTheme(init.gpa)) |theme| {
+        log.info("icon theme: {s}", .{theme});
+        QIcon.SetThemeName(theme);
+        init.gpa.free(theme);
+    } else {
+        log.info("icon theme: default (Qt resolved)", .{});
     }
 
     var reader = appreader.AppReader.init(init.gpa);
