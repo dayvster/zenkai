@@ -17,6 +17,7 @@ const QRect = qt.QRect;
 const QFont = qt.QFont;
 
 var g_icon_size: i32 = 32;
+var g_no_icons: bool = false;
 
 fn loadIcon(icon_name: []const u8) QIcon {
     if (icon_name.len > 0 and icon_name[0] == '/') {
@@ -117,6 +118,7 @@ fn onData(_: QAbstractListModel, index: QModelIndex, role: i32) callconv(.c) QVa
         return QVariant.New24(app.name);
     }
     if (role == 1) {
+        if (g_no_icons) return QVariant.New();
         const icon = tryLoadIcon(app);
         defer icon.Delete();
         return icon.ToQVariant();
@@ -208,6 +210,10 @@ pub const List = struct {
 
     pub fn getExecForRow(self: *List, row: usize) []const u8 {
         return self.apps[self.indices.items[row]].exec orelse "";
+    }
+
+    pub fn setNoIcons(v: bool) void {
+        g_no_icons = v;
     }
 
     pub fn deinit(self: *List) void {

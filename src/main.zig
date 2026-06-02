@@ -19,6 +19,44 @@ const QPalette = qt.QPalette;
 const QColor = qt.QColor;
 const qpalette = qt.qpalette_enums;
 
+const CLOCK_MONOTONIC: i32 = 1;
+const timespec = extern struct { tv_sec: i64, tv_nsec: i64 };
+extern "c" fn clock_gettime(clk_id: i32, ts: *timespec) callconv(.c) i32;
+
+fn monotonicNs() u64 {
+    var ts: timespec = undefined;
+    _ = clock_gettime(CLOCK_MONOTONIC, &ts);
+    return @as(u64, @intCast(ts.tv_sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.tv_nsec));
+}
+
+const bench_enabled = @import("builtin").mode == .Debug;
+
+const Bench = struct { label: []const u8, ns: u64 };
+var bench_entries: [32]Bench = undefined;
+var bench_count: usize = 0;
+
+fn benchMark(label: []const u8) void {
+    if (comptime !bench_enabled) return;
+    if (bench_count < bench_entries.len) {
+        bench_entries[bench_count] = .{ .label = label, .ns = monotonicNs() };
+        bench_count += 1;
+    }
+}
+
+fn printBenchmarks() void {
+    if (comptime !bench_enabled) return;
+    if (bench_count < 2) return;
+    log.info("benchmark:", .{});
+    var total: u64 = 0;
+    for (1..bench_count) |i| {
+        const delta = bench_entries[i].ns - bench_entries[i - 1].ns;
+        total += delta;
+        const ms = @as(f64, @floatFromInt(delta)) / std.time.ns_per_ms;
+        log.info("  {s}  {d:.2}ms", .{ bench_entries[i - 1].label, ms });
+    }
+    log.info("  total  {d:.2}ms", .{@as(f64, @floatFromInt(total)) / std.time.ns_per_ms});
+}
+
 var search_list: *ui.List = undefined;
 
 fn onSearchTextChanged(_: QLineEdit, text_cstr: [*:0]const u8) callconv(.c) void {
@@ -70,18 +108,37 @@ pub fn main(init: std.process.Init) !void {
     defer qt.deinit(init.gpa, argv);
 
     var icon_size: i32 = 32;
+    var debug: bool = false;
+    var benchmark_all: bool = false;
     for (init.minimal.args.vector) |arg_ptr| {
         const arg = std.mem.span(arg_ptr);
         if (std.mem.startsWith(u8, arg, "--size=")) {
             icon_size = std.fmt.parseInt(i32, arg["--size=".len..], 10) catch 32;
         } else if (std.mem.eql(u8, arg, "--verbose") or std.mem.eql(u8, arg, "-v")) {
             log.verbose = true;
+        } else if (std.mem.eql(u8, arg, "--debug")) {
+            debug = true;
+            log.verbose = true;
+        } else if (comptime bench_enabled) {
+            if (std.mem.eql(u8, arg, "--benchmark-all")) {
+                benchmark_all = true;
+                log.verbose = true;
+            }
+        } else if (std.mem.eql(u8, arg, "--no-icons")) {
+            ui.List.setNoIcons(true);
         }
     }
+
+    if (comptime bench_enabled) {
+        if (benchmark_all) benchMark("qt init");
+    }
+    const start_ns = if (debug) monotonicNs() else 0;
 
     var argc: i32 = @intCast(argv.len);
     const app = QApp.New(std.heap.page_allocator, &argc, argv);
     defer app.Delete();
+
+    if (benchmark_all) benchMark("effects + palette");
 
     QApp.SetEffectEnabled2(0, false);
     QApp.SetEffectEnabled2(1, false);
@@ -93,17 +150,23 @@ pub fn main(init: std.process.Init) !void {
 
     setupDarkPalette();
 
+    if (benchmark_all) benchMark("stylesheet");
+
     {
         const qss = try std.mem.concat(init.gpa, u8, &.{ main_qss, dark_qss });
         defer init.gpa.free(qss);
         app.SetStyleSheet(qss);
     }
 
+    if (benchmark_all) benchMark("config deploy");
+
     {
         const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
         const config_path = try config.deploy(io, init.gpa);
         defer init.gpa.free(config_path);
     }
+
+    if (benchmark_all) benchMark("icon theme");
 
     if (config.detectIconTheme(init.gpa)) |theme| {
         log.info("icon theme: {s}", .{theme});
@@ -112,6 +175,8 @@ pub fn main(init: std.process.Init) !void {
     } else {
         log.info("icon theme: default (Qt resolved)", .{});
     }
+
+    if (benchmark_all) benchMark("reader load");
 
     var reader = appreader.AppReader.init(init.gpa);
     errdefer reader.deinit();
@@ -129,9 +194,13 @@ pub fn main(init: std.process.Init) !void {
         const y = @divTrunc(screen_rect.Height() - 80, 2);
         error_label.Move(x, y);
         error_label.Show();
+        if (benchmark_all) printBenchmarks();
         _ = QApp.Exec();
         return;
     };
+
+    if (benchmark_all) benchMark("reader scan #1");
+
     reader.scan() catch {
         var error_label = QLabel.New3("Error parsing desktop files");
         defer error_label.Delete();
@@ -145,9 +214,13 @@ pub fn main(init: std.process.Init) !void {
         const y = @divTrunc(screen_rect.Height() - 80, 2);
         error_label.Move(x, y);
         error_label.Show();
+        if (benchmark_all) printBenchmarks();
         _ = QApp.Exec();
         return;
     };
+
+    if (benchmark_all) benchMark("reader scan #2");
+
     reader.scan() catch {
         var error_label = QLabel.New3("Error parsing desktop files");
         error_label.SetAlignment(@as(i32, 0x8004));
@@ -160,12 +233,17 @@ pub fn main(init: std.process.Init) !void {
         const y = @divTrunc(screen_rect.Height() - 80, 2);
         error_label.Move(x, y);
         error_label.Show();
+        if (benchmark_all) printBenchmarks();
         return;
     };
     defer reader.deinit();
 
+    if (benchmark_all) benchMark("list init");
+
     var list = ui.List.init(init.gpa, reader.apps.items, icon_size);
     defer list.deinit();
+
+    if (benchmark_all) benchMark("window setup");
 
     const win_w: i32 = 600;
     const win_h: i32 = 500;
@@ -210,7 +288,16 @@ pub fn main(init: std.process.Init) !void {
     search_bar.OnTextChanged(onSearchTextChanged);
     ui.Keyboard.setup(window, &list);
 
+    if (benchmark_all) benchMark("show window");
+
     window.Show();
+
+    if (debug) {
+        const elapsed = @as(f64, @floatFromInt(monotonicNs() - start_ns)) / std.time.ns_per_ms;
+        log.info("appeared on screen in {d:.2}ms", .{elapsed});
+    }
+
+    if (benchmark_all) printBenchmarks();
 
     _ = QApp.Exec();
 }
