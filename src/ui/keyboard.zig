@@ -27,7 +27,7 @@ fn onEnter(_: QShortcut) callconv(.c) void {
     }
     const row = @as(usize, @intCast(idx.Row()));
     if (row >= L.indices.items.len) return;
-    utils.execute(L.getExecForRow(row)) catch {};
+    utils.execute(L.getExecForRow(row), L.allocator) catch {};
     QApp.Quit();
 }
 

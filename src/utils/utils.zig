@@ -181,7 +181,7 @@ pub fn levenshteinDistance(
     return @min(distance, max_distance);
 }
 
-pub fn execute(cmd: []const u8) !void {
+pub fn execute(cmd: []const u8, allocator: std.mem.Allocator) !void {
     var buf: [1024:0]u8 = undefined;
 
     if (cmd.len >= buf.len) {
@@ -199,11 +199,34 @@ pub fn execute(cmd: []const u8) !void {
     };
 
     const pid = std.os.linux.fork();
+    if (std.os.linux.errno(pid) != .SUCCESS) {
+        return error.ForkFailed;
+    }
 
     if (pid == 0) {
         _ = std.os.linux.execve("/bin/sh", &argv, environ);
         std.os.linux.exit(1);
     }
+
+    const thread_data = try allocator.create(ThreadData);
+    thread_data.* = .{
+        .pid = @as(i32, @intCast(pid)),
+        .allocator = allocator,
+    };
+
+    const thread = try std.Thread.spawn(.{}, reapChild, .{thread_data});
+    thread.detach();
+}
+
+const ThreadData = struct {
+    pid: i32,
+    allocator: std.mem.Allocator,
+};
+
+fn reapChild(data: *ThreadData) void {
+    var status: u32 = 0;
+    _ = std.os.linux.waitpid(data.pid, &status, 0);
+    data.allocator.destroy(data);
 }
 
 extern "c" var environ: [*:null]?[*:0]u8;
