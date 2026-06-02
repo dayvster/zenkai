@@ -84,10 +84,11 @@ pub const AppReader = struct {
 
         for (self.desktop_files.items) |file_path| {
             const content = try readFile(self.arena.allocator(), file_path);
-            const app = dapp_parser.DappParser.parseDesktopFile(self.arena.allocator(), content) catch |err| switch (err) {
+            var app = dapp_parser.DappParser.parseDesktopFile(self.arena.allocator(), content) catch |err| switch (err) {
                 error.NoDisplay => continue,
                 else => |e| return e,
             };
+            app.file_path = try self.arena.allocator().dupe(u8, file_path);
             try self.apps.append(self.allocator, app);
         }
     }

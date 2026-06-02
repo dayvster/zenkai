@@ -13,6 +13,7 @@ pub const DesktopEntry = struct {
     try_exec: ?[]const u8 = null,
     exec: ?[]const u8 = null,
     path: ?[]const u8 = null,
+    file_path: ?[]const u8 = null,
     startup_wm_class: ?[]const u8 = null,
     url: ?[]const u8 = null,
 
@@ -50,6 +51,7 @@ pub const DesktopEntry = struct {
         if (self.try_exec) |s| allocator.free(s);
         if (self.exec) |s| allocator.free(s);
         if (self.path) |s| allocator.free(s);
+        if (self.file_path) |s| allocator.free(s);
         if (self.startup_wm_class) |s| allocator.free(s);
         if (self.url) |s| allocator.free(s);
 
@@ -67,6 +69,55 @@ pub const DesktopEntry = struct {
             allocator.free(entry.value_ptr.*);
         }
         self.extra.deinit();
+    }
+
+    pub fn expandExec(self: *const DesktopEntry, allocator: std.mem.Allocator) ![]const u8 {
+        const exec = self.exec orelse return error.NoExec;
+
+        var buf: std.ArrayList(u8) = .empty;
+        errdefer buf.deinit(allocator);
+
+        var i: usize = 0;
+        while (i < exec.len) {
+            if (exec[i] == '%' and i + 1 < exec.len) {
+                switch (exec[i + 1]) {
+                    '%' => try buf.append(allocator, '%'),
+                    'f', 'F', 'u', 'U' => {},
+                    'i' => {
+                        if (self.icon) |icon| {
+                            try buf.appendSlice(allocator, "--icon ");
+                            try shellQuote(allocator, &buf, icon);
+                        }
+                    },
+                    'c' => try shellQuote(allocator, &buf, self.name),
+                    'k' => {
+                        if (self.file_path) |fp| try shellQuote(allocator, &buf, fp);
+                    },
+                    else => {
+                        try buf.append(allocator, '%');
+                        try buf.append(allocator, exec[i + 1]);
+                    },
+                }
+                i += 2;
+            } else {
+                try buf.append(allocator, exec[i]);
+                i += 1;
+            }
+        }
+
+        return try buf.toOwnedSlice(allocator);
+    }
+
+    fn shellQuote(allocator: std.mem.Allocator, buf: *std.ArrayList(u8), value: []const u8) !void {
+        try buf.append(allocator, '\'');
+        for (value) |c| {
+            if (c == '\'') {
+                try buf.appendSlice(allocator, "'\\''");
+            } else {
+                try buf.append(allocator, c);
+            }
+        }
+        try buf.append(allocator, '\'');
     }
 
     fn freeStringSlice(allocator: std.mem.Allocator, slice: [][]const u8) void {

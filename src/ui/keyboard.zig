@@ -1,6 +1,7 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const List = @import("list.zig").List;
+const DesktopApp = @import("desktopapp").DesktopApp;
 const utils = @import("utils");
 
 const QShortcut = qt.QShortcut;
@@ -27,7 +28,10 @@ fn onEnter(_: QShortcut) callconv(.c) void {
     }
     const row = @as(usize, @intCast(idx.Row()));
     if (row >= L.indices.items.len) return;
-    utils.execute(L.getExecForRow(row), L.allocator) catch {};
+    const app = &L.apps[L.indices.items[row]];
+    const expanded = app.expandExec(L.allocator) catch return;
+    defer L.allocator.free(expanded);
+    utils.execute(expanded, L.allocator) catch {};
     QApp.Quit();
 }
 
