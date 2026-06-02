@@ -41,36 +41,6 @@ pub const DesktopEntry = struct {
         Directory,
     };
 
-    pub fn deinit(self: *DesktopEntry, allocator: std.mem.Allocator) void {
-        allocator.free(self.name);
-
-        if (self.version) |s| allocator.free(s);
-        if (self.generic_name) |s| allocator.free(s);
-        if (self.comment) |s| allocator.free(s);
-        if (self.icon) |s| allocator.free(s);
-        if (self.try_exec) |s| allocator.free(s);
-        if (self.exec) |s| allocator.free(s);
-        if (self.path) |s| allocator.free(s);
-        if (self.file_path) |s| allocator.free(s);
-        if (self.startup_wm_class) |s| allocator.free(s);
-        if (self.url) |s| allocator.free(s);
-
-        freeStringSlice(allocator, self.only_show_in);
-        freeStringSlice(allocator, self.not_show_in);
-        freeStringSlice(allocator, self.actions);
-        freeStringSlice(allocator, self.mime_type);
-        freeStringSlice(allocator, self.categories);
-        freeStringSlice(allocator, self.implements);
-        freeStringSlice(allocator, self.keywords);
-
-        var extra_iter = self.extra.iterator();
-        while (extra_iter.next()) |entry| {
-            allocator.free(entry.key_ptr.*);
-            allocator.free(entry.value_ptr.*);
-        }
-        self.extra.deinit();
-    }
-
     pub fn expandExec(self: *const DesktopEntry, allocator: std.mem.Allocator) ![]const u8 {
         const exec = self.exec orelse return error.NoExec;
 
@@ -118,12 +88,5 @@ pub const DesktopEntry = struct {
             }
         }
         try buf.append(allocator, '\'');
-    }
-
-    fn freeStringSlice(allocator: std.mem.Allocator, slice: [][]const u8) void {
-        for (slice) |s| {
-            allocator.free(s);
-        }
-        allocator.free(slice);
     }
 };

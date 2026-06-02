@@ -112,6 +112,7 @@ pub fn main(init: std.process.Init) !void {
         const y = @divTrunc(screen_rect.Height() - 80, 2);
         error_label.Move(x, y);
         error_label.Show();
+        _ = QApp.Exec();
         return;
     };
     reader.scan() catch {
@@ -126,6 +127,7 @@ pub fn main(init: std.process.Init) !void {
         const y = @divTrunc(screen_rect.Height() - 80, 2);
         error_label.Move(x, y);
         error_label.Show();
+        _ = QApp.Exec();
         return;
     };
     defer reader.deinit();
@@ -153,6 +155,9 @@ pub fn main(init: std.process.Init) !void {
     search_bar.SetPlaceholderText("Search apps...");
     search_bar.SetClearButtonEnabled(false);
 
+    list.setFilter("");
+    search_list = &list;
+
     main_layout.AddWidget(search_bar);
     main_layout.AddWidget(list.view);
 
@@ -170,8 +175,6 @@ pub fn main(init: std.process.Init) !void {
 
     window.OnCloseEvent(onWindowClose);
 
-    search_list = &list;
-    list.setFilter("");
     search_bar.OnTextChanged(onSearchTextChanged);
     ui.Keyboard.setup(window, &list);
 

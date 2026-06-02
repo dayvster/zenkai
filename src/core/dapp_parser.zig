@@ -25,7 +25,7 @@ pub const DappParser = struct {
                         no_display = true;
                     }
 
-                    parseKeyValue(&app, kv.key, kv.value);
+                    try parseKeyValue(allocator, &app, kv.key, kv.value);
                 }
             }
         }
@@ -55,7 +55,7 @@ pub const DappParser = struct {
         return null;
     }
 
-    fn parseKeyValue(app: *de.DesktopApp, key: []const u8, value: []const u8) void {
+    fn parseKeyValue(allocator: std.mem.Allocator, app: *de.DesktopApp, key: []const u8, value: []const u8) !void {
         if (utils.strcomp(key, "Name")) {
             app.name = value;
         } else if (utils.strcomp(key, "Exec")) {
@@ -89,30 +89,30 @@ pub const DappParser = struct {
         } else if (utils.strcomp(key, "StartupNotify")) {
             app.startup_notify = utils.strcomp(value, "true");
         } else if (utils.strcomp(key, "Categories")) {
-            app.categories = splitString(value, ';');
+            app.categories = try splitString(allocator, value, ';');
         } else if (utils.strcomp(key, "MimeType")) {
-            app.mime_type = splitString(value, ';');
+            app.mime_type = try splitString(allocator, value, ';');
         } else if (utils.strcomp(key, "Keywords")) {
-            app.keywords = splitString(value, ';');
+            app.keywords = try splitString(allocator, value, ';');
         } else if (utils.strcomp(key, "OnlyShowIn")) {
-            app.only_show_in = splitString(value, ';');
+            app.only_show_in = try splitString(allocator, value, ';');
         } else if (utils.strcomp(key, "NotShowIn")) {
-            app.not_show_in = splitString(value, ';');
+            app.not_show_in = try splitString(allocator, value, ';');
         } else if (utils.strcomp(key, "Actions")) {
-            app.actions = splitString(value, ';');
+            app.actions = try splitString(allocator, value, ';');
         } else if (utils.strcomp(key, "Implements")) {
-            app.implements = splitString(value, ';');
+            app.implements = try splitString(allocator, value, ';');
         }
     }
 
-    fn splitString(value: []const u8, delim: u8) [][]const u8 {
+    fn splitString(allocator: std.mem.Allocator, value: []const u8, delim: u8) ![][]const u8 {
         var count: usize = 0;
         var it = std.mem.splitScalar(u8, value, delim);
         while (it.next()) |part| {
             if (part.len > 0) count += 1;
         }
 
-        const result = std.heap.page_allocator.alloc([]const u8, count) catch unreachable;
+        const result = try allocator.alloc([]const u8, count);
         var i: usize = 0;
         it.reset();
         while (it.next()) |part| {

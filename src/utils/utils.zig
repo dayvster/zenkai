@@ -214,7 +214,12 @@ pub fn execute(cmd: []const u8, allocator: std.mem.Allocator) !void {
         .allocator = allocator,
     };
 
-    const thread = try std.Thread.spawn(.{}, reapChild, .{thread_data});
+    const thread = std.Thread.spawn(.{}, reapChild, .{thread_data}) catch |err| {
+        allocator.destroy(thread_data);
+        var status: u32 = 0;
+        _ = std.os.linux.waitpid(@as(i32, @intCast(pid)), &status, 0);
+        return err;
+    };
     thread.detach();
 }
 
