@@ -1,5 +1,6 @@
 const std = @import("std");
 const de = @import("desktopapp");
+const dapp_parser = @import("dapp_parser");
 const fsutils = @import("fsutils");
 
 pub const desktopapp = de;
@@ -8,7 +9,6 @@ pub const AppReader = struct {
     apps: std.ArrayList(de.DesktopApp),
     desktop_files: std.ArrayList([]const u8),
     desktop_files_checksum: u64,
-    last_scan_mtime: i128,
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
 
@@ -29,7 +29,6 @@ pub const AppReader = struct {
             .apps = .empty,
             .desktop_files = .empty,
             .desktop_files_checksum = 0,
-            .last_scan_mtime = 0,
             .allocator = allocator,
             .arena = std.heap.ArenaAllocator.init(allocator),
         };
@@ -37,20 +36,23 @@ pub const AppReader = struct {
 
     pub fn deinit(self: *AppReader) void {
         self.apps.deinit(self.allocator);
+        for (self.desktop_files.items) |p| self.allocator.free(p);
         self.desktop_files.deinit(self.allocator);
         self.arena.deinit();
     }
 
     pub fn load(self: *AppReader) !void {
-        self.clear();
+        var new_files: std.ArrayList([]const u8) = .empty;
+        errdefer {
+            for (new_files.items) |p| self.allocator.free(p);
+            new_files.deinit(self.allocator);
+        }
 
         const options = fsutils.ReadDirOptions{
             .extensions = &[_][]const u8{".desktop"},
             .recursive = true,
             .max_depth = 10,
         };
-
-        var max_mtime: i128 = 0;
 
         for (default_locations) |loc| {
             var found = fsutils.readDir(self.allocator, loc, options) catch |err| {
@@ -65,35 +67,37 @@ pub const AppReader = struct {
             }
 
             for (found.items) |file_path| {
-                const content = try readFile(self.allocator, file_path);
-                defer self.allocator.free(content);
-
-                const mtime = try getFileMTime(file_path);
-                if (mtime > max_mtime) max_mtime = mtime;
-
-                const app = parseDesktopFile(self.arena.allocator(), content) catch |err| switch (err) {
-                    error.NoDisplay => continue,
-                    else => |e| return e,
-                };
-
-                try self.apps.append(self.allocator, app);
-                try self.desktop_files.append(self.allocator, try self.arena.allocator().dupe(u8, file_path));
+                try new_files.append(self.allocator, try self.allocator.dupe(u8, file_path));
             }
         }
 
-        self.last_scan_mtime = max_mtime;
+        for (self.desktop_files.items) |p| self.allocator.free(p);
+        self.desktop_files.deinit(self.allocator);
+        self.desktop_files = new_files;
         self.computeChecksum();
     }
 
-    pub fn reload(self: *AppReader) !void {
-        if (try self.hasChanged()) {
-            try self.load();
+    pub fn scan(self: *AppReader) !void {
+        self.arena.deinit();
+        self.arena = std.heap.ArenaAllocator.init(self.allocator);
+        self.apps.clearRetainingCapacity();
+
+        for (self.desktop_files.items) |file_path| {
+            const content = try readFile(self.arena.allocator(), file_path);
+            const app = dapp_parser.DappParser.parseDesktopFile(self.arena.allocator(), content) catch |err| switch (err) {
+                error.NoDisplay => continue,
+                else => |e| return e,
+            };
+            try self.apps.append(self.allocator, app);
         }
     }
 
-    fn hasChanged(self: *AppReader) !bool {
-        _ = self;
-        return false;
+    pub fn reload(self: *AppReader) !void {
+        const old_checksum = self.desktop_files_checksum;
+        try self.load();
+        if (self.desktop_files_checksum != old_checksum) {
+            try self.scan();
+        }
     }
 
     pub fn getAll(self: *const AppReader) []const de.DesktopApp {
@@ -104,43 +108,6 @@ pub const AppReader = struct {
         for (self.apps.items) |app| {
             std.debug.print("• {s} | {s}\n", .{ app.name, app.exec });
         }
-    }
-
-    fn clear(self: *AppReader) void {
-        self.apps.clearRetainingCapacity();
-        self.desktop_files.clearRetainingCapacity();
-        self.desktop_files_checksum = 0;
-        self.last_scan_mtime = 0;
-        self.arena.deinit();
-        self.arena = std.heap.ArenaAllocator.init(self.allocator);
-    }
-
-    // TODO: this should be the main function that scans all dirs and parses the desktop files
-    // because I wanna add multiple modes to the launcher
-    fn scan(self: *AppReader) void {
-        self.load();
-    }
-
-    fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-        const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
-        const cwd = std.Io.Dir.cwd();
-        const file = try std.Io.Dir.openFile(cwd, io, path, .{});
-        defer std.Io.File.close(file, io);
-
-        const stat = try std.Io.Dir.statFile(cwd, io, path, .{});
-        const size = @as(usize, @intCast(stat.size));
-        if (size > 2 * 1024 * 1024) return error.FileTooBig;
-
-        var buf: [4096]u8 = undefined;
-        var reader = std.Io.File.Reader.init(file, io, &buf);
-        return try reader.interface.readAlloc(allocator, size);
-    }
-
-    fn getFileMTime(path: []const u8) !i128 {
-        const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
-        const cwd = std.Io.Dir.cwd();
-        const stat = try std.Io.Dir.statFile(cwd, io, path, .{});
-        return @as(i128, stat.mtime.nanoseconds);
     }
 
     fn computeChecksum(self: *AppReader) void {
@@ -159,54 +126,18 @@ pub const AppReader = struct {
         self.desktop_files_checksum = hasher.final();
     }
 
-    fn parseDesktopFile(allocator: std.mem.Allocator, content: []const u8) !de.DesktopApp {
-        var name: []const u8 = "";
-        var exec: []const u8 = "";
-        var icon: ?[]const u8 = null;
-        var no_display = false;
+    fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+        const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+        const cwd = std.Io.Dir.cwd();
+        const file = try std.Io.Dir.openFile(cwd, io, path, .{});
+        defer std.Io.File.close(file, io);
 
-        var in_desktop_entry = false;
-        var lines = std.mem.splitScalar(u8, content, '\n');
+        const stat = try std.Io.Dir.statFile(cwd, io, path, .{});
+        const size = @as(usize, @intCast(stat.size));
+        if (size > 2 * 1024 * 1024) return error.FileTooBig;
 
-        while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, &std.ascii.whitespace);
-            if (trimmed.len == 0 or trimmed[0] == '#') continue;
-
-            if (trimmed[0] == '[') {
-                in_desktop_entry = std.mem.eql(u8, trimmed, "[Desktop Entry]");
-                continue;
-            }
-
-            if (!in_desktop_entry) continue;
-
-            const eq_pos = std.mem.indexOfScalar(u8, trimmed, '=') orelse continue;
-            const key = trimmed[0..eq_pos];
-            const value = trimmed[eq_pos + 1 ..];
-
-            if (std.mem.indexOfScalar(u8, key, '[') != null) continue;
-
-            if (std.mem.eql(u8, key, "Type") and !std.mem.eql(u8, value, "Application")) {
-                in_desktop_entry = false;
-                continue;
-            }
-
-            if (std.mem.eql(u8, key, "NoDisplay") and std.mem.eql(u8, value, "true")) {
-                no_display = true;
-            }
-
-            if (std.mem.eql(u8, key, "Name")) name = try allocator.dupe(u8, value);
-            if (std.mem.eql(u8, key, "Exec")) exec = try allocator.dupe(u8, value);
-            if (std.mem.eql(u8, key, "Icon")) icon = if (value.len > 0) try allocator.dupe(u8, value) else null;
-        }
-
-        if (no_display) return error.NoDisplay;
-
-        return de.DesktopApp{
-            .name = if (name.len > 0) name else try allocator.dupe(u8, "(unnamed)"),
-            .exec = if (exec.len > 0) exec else try allocator.dupe(u8, "(none)"),
-            .icon = icon,
-            .type = .Application,
-            .extra = std.StringHashMap([]const u8).init(allocator),
-        };
+        var buf: [4096]u8 = undefined;
+        var reader = std.Io.File.Reader.init(file, io, &buf);
+        return try reader.interface.readAlloc(allocator, size);
     }
 };

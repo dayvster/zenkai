@@ -1,7 +1,7 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const de = @import("desktopapp");
-const utils = @import("../utils/utils.zig");
+const utils = @import("utils");
 
 const QListView = qt.QListView;
 const QAbstractListModel = qt.QAbstractListModel;

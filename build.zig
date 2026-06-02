@@ -92,6 +92,13 @@ pub fn build(b: *std.Build) void {
     });
     exe.root_module.addImport("desktopapp", desktopapp_module);
 
+    const dapp_parser_module = b.addModule("dapp_parser", .{
+        .root_source_file = b.path("src/core/dapp_parser.zig"),
+    });
+    dapp_parser_module.addImport("desktopapp", desktopapp_module);
+    dapp_parser_module.addImport("utils", utils_module);
+    exe.root_module.addImport("dapp_parser", dapp_parser_module);
+
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");

@@ -1,7 +1,7 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const List = @import("list.zig").List;
-const utils = @import("../utils/utils.zig");
+const utils = @import("utils");
 
 const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;

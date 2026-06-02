@@ -2,13 +2,14 @@ const std = @import("std");
 const de = @import("desktopapp");
 const utils = @import("utils");
 
-const NEWLINE_CHARS = "\r\n";
 const CARRIAGE_RETURN = '\r';
 const LINE_FEED = '\n';
 
 pub const DappParser = struct {
     pub fn parseDesktopFile(allocator: std.mem.Allocator, content: []const u8) !de.DesktopApp {
-        var app = initDefaultDapp();
+        var app = initDefaultDapp(allocator);
+        var no_display = false;
+        var in_desktop_entry = false;
 
         var entry_iter = desktopEntryIterator(content);
 
@@ -19,17 +20,36 @@ pub const DappParser = struct {
                 if (trimmed.len == 0 or trimmed[0] == '#') continue;
 
                 if (splitToKV(trimmed)) |kv| {
+                    if (std.mem.indexOfScalar(u8, kv.key, '[') != null) continue;
+
+                    if (utils.strcomp(kv.key, "Type") and !utils.strcomp(kv.value, "Application")) {
+                        in_desktop_entry = false;
+                        continue;
+                    }
+
+                    if (utils.strcomp(kv.key, "NoDisplay") and utils.strcomp(kv.value, "true")) {
+                        no_display = true;
+                    }
+
                     parseKeyValue(&app, kv.key, kv.value);
                 }
             }
         }
 
+        if (no_display) return error.NoDisplay;
+
         return app;
     }
 
-    fn initDefaultDapp() de.DesktopApp {
-        const app = de.DesktopApp{ .name = null, .exec = null, .icon = null, .comment = null, .type = "Application" };
-        return app;
+    fn initDefaultDapp(allocator: std.mem.Allocator) de.DesktopApp {
+        return de.DesktopApp{
+            .name = "",
+            .exec = null,
+            .icon = null,
+            .comment = null,
+            .type = .Application,
+            .extra = std.StringHashMap([]const u8).init(allocator),
+        };
     }
 
     fn splitToKV(line: []const u8) ?struct { key: []const u8, value: []const u8 } {
@@ -41,8 +61,73 @@ pub const DappParser = struct {
         return null;
     }
 
-    fn parseKeyValue(app: *de.DesktopApp, key: []const u8, value: []const u8) !void {
-        if (utils.strcomp(key, "Name")) app.name = value;
+    fn parseKeyValue(app: *de.DesktopApp, key: []const u8, value: []const u8) void {
+        if (utils.strcomp(key, "Name")) {
+            app.name = value;
+        } else if (utils.strcomp(key, "Exec")) {
+            app.exec = if (value.len > 0) value else null;
+        } else if (utils.strcomp(key, "Icon")) {
+            app.icon = if (value.len > 0) value else null;
+        } else if (utils.strcomp(key, "Comment")) {
+            app.comment = if (value.len > 0) value else null;
+        } else if (utils.strcomp(key, "GenericName")) {
+            app.generic_name = if (value.len > 0) value else null;
+        } else if (utils.strcomp(key, "Version")) {
+            app.version = if (value.len > 0) value else null;
+        } else if (utils.strcomp(key, "TryExec")) {
+            app.try_exec = if (value.len > 0) value else null;
+        } else if (utils.strcomp(key, "Path")) {
+            app.path = if (value.len > 0) value else null;
+        } else if (utils.strcomp(key, "StartupWMClass")) {
+            app.startup_wm_class = if (value.len > 0) value else null;
+        } else if (utils.strcomp(key, "URL")) {
+            app.url = if (value.len > 0) value else null;
+        } else if (utils.strcomp(key, "Terminal")) {
+            app.terminal = utils.strcomp(value, "true");
+        } else if (utils.strcomp(key, "Hidden")) {
+            app.hidden = utils.strcomp(value, "true");
+        } else if (utils.strcomp(key, "DBusActivatable")) {
+            app.dbus_activatable = utils.strcomp(value, "true");
+        } else if (utils.strcomp(key, "PrefersNonDefaultGPU")) {
+            app.prefers_non_default_gpu = utils.strcomp(value, "true");
+        } else if (utils.strcomp(key, "SingleMainWindow")) {
+            app.single_main_window = utils.strcomp(value, "true");
+        } else if (utils.strcomp(key, "StartupNotify")) {
+            app.startup_notify = utils.strcomp(value, "true");
+        } else if (utils.strcomp(key, "Categories")) {
+            app.categories = splitString(value, ';');
+        } else if (utils.strcomp(key, "MimeType")) {
+            app.mime_type = splitString(value, ';');
+        } else if (utils.strcomp(key, "Keywords")) {
+            app.keywords = splitString(value, ';');
+        } else if (utils.strcomp(key, "OnlyShowIn")) {
+            app.only_show_in = splitString(value, ';');
+        } else if (utils.strcomp(key, "NotShowIn")) {
+            app.not_show_in = splitString(value, ';');
+        } else if (utils.strcomp(key, "Actions")) {
+            app.actions = splitString(value, ';');
+        } else if (utils.strcomp(key, "Implements")) {
+            app.implements = splitString(value, ';');
+        }
+    }
+
+    fn splitString(value: []const u8, delim: u8) [][]const u8 {
+        var count: usize = 0;
+        var it = std.mem.splitScalar(u8, value, delim);
+        while (it.next()) |part| {
+            if (part.len > 0) count += 1;
+        }
+
+        const result = std.heap.page_allocator.alloc([]const u8, count) catch unreachable;
+        var i: usize = 0;
+        it.reset();
+        while (it.next()) |part| {
+            if (part.len > 0) {
+                result[i] = part;
+                i += 1;
+            }
+        }
+        return result;
     }
 };
 
