@@ -92,49 +92,7 @@ pub const AppReader = struct {
     }
 
     fn hasChanged(self: *AppReader) !bool {
-        const options = fsutils.ReadDirOptions{
-            .extensions = &[_][]const u8{".desktop"},
-            .recursive = true,
-            .max_depth = 10,
-        };
-
-        var new_files: std.ArrayList([]const u8) = .empty;
-        defer {
-            for (new_files.items) |p| self.allocator.free(p);
-            new_files.deinit(self.allocator);
-        }
-
-        for (default_locations) |loc| {
-            var found = fsutils.readDir(self.allocator, loc, options) catch |err| {
-                switch (err) {
-                    error.FileNotFound, error.AccessDenied, error.NotDir => continue,
-                    else => continue,
-                }
-            };
-            defer {
-                for (found.items) |p| self.allocator.free(p);
-                found.deinit(self.allocator);
-            }
-            for (found.items) |p| {
-                try new_files.append(self.allocator, try self.allocator.dupe(u8, p));
-            }
-        }
-
-        var hasher = std.hash.Wyhash.init(0xDEADBEEF);
-        std.mem.sort([]const u8, new_files.items, {}, struct {
-            fn lessThan(_: void, a: []const u8, b: []const u8) bool {
-                return std.mem.lessThan(u8, a, b);
-            }
-        }.lessThan);
-        for (new_files.items) |p| hasher.update(p);
-
-        if (hasher.final() != self.desktop_files_checksum) return true;
-
-        for (self.desktop_files.items) |p| {
-            const mtime = getFileMTime(p) catch continue;
-            if (mtime > self.last_scan_mtime) return true;
-        }
-
+        _ = self;
         return false;
     }
 
@@ -155,6 +113,12 @@ pub const AppReader = struct {
         self.last_scan_mtime = 0;
         self.arena.deinit();
         self.arena = std.heap.ArenaAllocator.init(self.allocator);
+    }
+
+    // TODO: this should be the main function that scans all dirs and parses the desktop files
+    // because I wanna add multiple modes to the launcher
+    fn scan(self: *AppReader) void {
+        self.load();
     }
 
     fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
@@ -241,6 +205,8 @@ pub const AppReader = struct {
             .name = if (name.len > 0) name else try allocator.dupe(u8, "(unnamed)"),
             .exec = if (exec.len > 0) exec else try allocator.dupe(u8, "(none)"),
             .icon = icon,
+            .type = .Application,
+            .extra = std.StringHashMap([]const u8).init(allocator),
         };
     }
 };

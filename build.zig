@@ -77,13 +77,20 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/libstdc++.so" });
     exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/libgcc_eh.a" });
 
-    exe.root_module.addImport("fsutils", b.createModule(.{
+    const fsutils_module = b.addModule("fsutils", .{
         .root_source_file = b.path("src/utils/fsutils.zig"),
-    }));
+    });
+    exe.root_module.addImport("fsutils", fsutils_module);
 
-    exe.root_module.addImport("desktopapp", b.createModule(.{
+    const utils_module = b.addModule("utils", .{
+        .root_source_file = b.path("src/utils/utils.zig"),
+    });
+    exe.root_module.addImport("utils", utils_module);
+
+    const desktopapp_module = b.addModule("desktopapp", .{
         .root_source_file = b.path("src/core/desktopapp.zig"),
-    }));
+    });
+    exe.root_module.addImport("desktopapp", desktopapp_module);
 
     b.installArtifact(exe);
 
@@ -97,6 +104,9 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
+
+    const check_step = b.step("check", "Check code compiles");
+    check_step.dependOn(&exe.step);
 
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,

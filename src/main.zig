@@ -133,7 +133,6 @@ pub fn main(init: std.process.Init) !void {
             wt.NoDropShadowWindowHint |
             wt.MSWindowsFixedSizeDialogHint,
     );
-    window.SetWindowOpacity(0.15);
 
     const main_layout = QVBoxLayout.New(window);
 

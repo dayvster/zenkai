@@ -207,3 +207,7 @@ pub fn execute(cmd: []const u8) !void {
 }
 
 extern "c" var environ: [*:null]?[*:0]u8;
+
+pub fn strcomp(key: []const u8, literal: []const u8) bool {
+    return std.mem.eql(u8, key, literal);
+}

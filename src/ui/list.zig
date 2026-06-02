@@ -202,7 +202,7 @@ pub const List = struct {
     }
 
     pub fn getExecForRow(self: *List, row: usize) []const u8 {
-        return self.apps[self.indices.items[row]].exec;
+        return self.apps[self.indices.items[row]].exec orelse "";
     }
 
     pub fn deinit(self: *List) void {
