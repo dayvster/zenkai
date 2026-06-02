@@ -22,12 +22,6 @@ pub fn build(b: *std.Build) void {
 
     exe.root_module.addImport("libqt6zig", qt6zig.module("libqt6zig"));
 
-    const patch_cmd =
-        \\s/(\s+)(\w+)\s*\*\s*callback_ret\s*=\s*(.+?);\s*\n\s*return\s+\*callback_ret;/$1$2* callback_ret = $3;\n$1$2 ret = *callback_ret;\n$1delete callback_ret;\n$1return ret;/g
-    ;
-    const patch_step = b.addSystemCommand(&.{ "perl", "-0777", "-pi", "-e", patch_cmd });
-    patch_step.addFileArg(qt6zig.path("src/libqabstractitemmodel.hxx"));
-
     const libs = [_][]const u8{
         "qobject",
         "qcoreapplication",
@@ -64,9 +58,6 @@ pub fn build(b: *std.Build) void {
     for (libs) |lib| {
         const artifact = qt6zig.artifact(lib);
         exe.root_module.linkLibrary(artifact);
-        if (std.mem.eql(u8, lib, "qabstractitemmodel")) {
-            artifact.step.dependOn(&patch_step.step);
-        }
     }
 
     exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="zenkai logo" />
+</p>
+
 # zenkai
 
 A fast app launcher for Linux. Written in Zig with Qt6.
