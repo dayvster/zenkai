@@ -183,10 +183,15 @@ pub const DesktopEntryIterator = struct {
                 }
                 start = self.index + (raw_line.ptr - self.source[self.index..].ptr);
             } else if (start != null and trimmed.len > 0 and trimmed[0] == '[') {
-                break;
+                const end = self.index + (raw_line.ptr - self.source[self.index..].ptr);
+                const section = self.source[start.?..end];
+                self.index += (raw_line.ptr - self.source[self.index..].ptr);
+                return section;
             }
 
-            self.index += raw_line.len + @as(usize, @intFromBool(self.source[self.index + raw_line.len] == LINE_FEED));
+            const nl_pos = self.index + raw_line.len;
+            const has_lf = nl_pos < self.source.len and self.source[nl_pos] == LINE_FEED;
+            self.index += raw_line.len + @as(usize, @intFromBool(has_lf));
         }
 
         if (start) |s| {

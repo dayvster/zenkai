@@ -12,7 +12,10 @@ pub fn readDir(
     options: ReadDirOptions,
 ) !std.ArrayList([]const u8) {
     var files: std.ArrayList([]const u8) = .empty;
-    errdefer files.deinit(allocator);
+    errdefer {
+        for (files.items) |p| allocator.free(p);
+        files.deinit(allocator);
+    }
 
     const expanded = try expandTilde(allocator, dir_path);
     defer allocator.free(expanded);
