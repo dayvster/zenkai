@@ -68,6 +68,7 @@ fn onDown(_: QShortcut) callconv(.c) void {
 
 fn bind(window: QWidget, key: []const u8, handler: *const fn (QShortcut) callconv(.c) void) void {
     const seq = QKeySequence.New2(key);
+    defer seq.Delete();
     const s = QShortcut.New2(seq, window);
     s.OnActivated(handler);
 }

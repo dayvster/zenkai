@@ -1,8 +1,9 @@
 const std = @import("std");
 const appreader = @import("core/appreader.zig");
+const config = @import("config");
 const qt = @import("libqt6zig");
 const ui = @import("ui/ui.zig");
-const log = @import("utils/log.zig");
+const log = @import("utils").log;
 
 const main_qss = @embedFile("styles/main.qss");
 const dark_qss = @embedFile("styles/dark.theme.qss");
@@ -97,11 +98,18 @@ pub fn main(init: std.process.Init) !void {
         app.SetStyleSheet(qss);
     }
 
+    {
+        const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+        const config_path = try config.deploy(io, init.gpa);
+        defer init.gpa.free(config_path);
+    }
+
     var reader = appreader.AppReader.init(init.gpa);
     errdefer reader.deinit();
 
     reader.load() catch {
         var error_label = QLabel.New3("Error loading desktop files");
+        defer error_label.Delete();
         error_label.SetAlignment(@as(i32, 0x8004));
         error_label.SetWindowFlag(2048);
         error_label.SetWindowFlag(262144);
@@ -117,6 +125,7 @@ pub fn main(init: std.process.Init) !void {
     };
     reader.scan() catch {
         var error_label = QLabel.New3("Error parsing desktop files");
+        defer error_label.Delete();
         error_label.SetAlignment(@as(i32, 0x8004));
         error_label.SetWindowFlag(2048);
         error_label.SetWindowFlag(262144);

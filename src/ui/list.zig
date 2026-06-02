@@ -2,6 +2,7 @@ const std = @import("std");
 const qt = @import("libqt6zig");
 const de = @import("desktopapp");
 const utils = @import("utils");
+const log = @import("utils").log;
 
 const QListView = qt.QListView;
 const QAbstractListModel = qt.QAbstractListModel;
@@ -150,7 +151,7 @@ pub const List = struct {
 
         if (text.len == 0) {
             for (0..self.apps.len) |i|
-                self.indices.append(self.allocator, i) catch {};
+                self.indices.append(self.allocator, i) catch |err| log.info("OOM in setFilter: {}", .{err});
         } else {
             var lower_text_buf: [256]u8 = undefined;
             const lower_text = if (text.len <= lower_text_buf.len) blk: {
@@ -181,7 +182,7 @@ pub const List = struct {
                 }
 
                 if (matches) {
-                    self.indices.append(self.allocator, i) catch {};
+                    self.indices.append(self.allocator, i) catch |err| log.info("OOM in setFilter: {}", .{err});
                 }
             }
         }
@@ -204,6 +205,7 @@ pub const List = struct {
     }
 
     pub fn deinit(self: *List) void {
+        self.model.Delete();
         self.indices.deinit(self.allocator);
     }
 };

@@ -1,4 +1,5 @@
 const std = @import("std");
+pub const log = @import("log.zig");
 
 /// Calculates the **Damerau-Levenshtein distance** between two strings.
 ///

@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = @import("utils").log;
 
 pub const ReadDirOptions = struct {
     extensions: ?[]const []const u8 = null,
@@ -22,6 +23,20 @@ pub fn readDir(
 
     try readDirInternal(allocator, expanded, options, &files, 0);
     return files;
+}
+
+pub fn dirExists(io: std.Io, path: []const u8) bool {
+    std.Io.Dir.cwd().access(io, path, .{}) catch |err| {
+        if (err == error.FileNotFound or err == error.NotDir) {
+            return false;
+        }
+        return false;
+    };
+    return true;
+}
+
+pub fn makeDir(io: std.Io, path: []const u8) !void {
+    try std.Io.Dir.createDirAbsolute(io, path, .default_dir);
 }
 
 fn readDirInternal(
