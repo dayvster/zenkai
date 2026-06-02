@@ -1,8 +1,9 @@
 const std = @import("std");
 const appreader = @import("core/appreader.zig");
+const config = @import("config");
 const qt = @import("libqt6zig");
 const ui = @import("ui/ui.zig");
-const log = @import("utils/log.zig");
+const log = @import("utils").log;
 
 const main_qss = @embedFile("styles/main.qss");
 const dark_qss = @embedFile("styles/dark.theme.qss");
@@ -97,11 +98,18 @@ pub fn main(init: std.process.Init) !void {
         app.SetStyleSheet(qss);
     }
 
+    {
+        const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+        const config_path = try config.deploy(io, init.gpa);
+        defer init.gpa.free(config_path);
+    }
+
     var reader = appreader.AppReader.init(init.gpa);
     errdefer reader.deinit();
 
     reader.load() catch {
         var error_label = QLabel.New3("Error loading desktop files");
+        defer error_label.Delete();
         error_label.SetAlignment(@as(i32, 0x8004));
         error_label.SetWindowFlag(2048);
         error_label.SetWindowFlag(262144);
@@ -112,6 +120,23 @@ pub fn main(init: std.process.Init) !void {
         const y = @divTrunc(screen_rect.Height() - 80, 2);
         error_label.Move(x, y);
         error_label.Show();
+        _ = QApp.Exec();
+        return;
+    };
+    reader.scan() catch {
+        var error_label = QLabel.New3("Error parsing desktop files");
+        defer error_label.Delete();
+        error_label.SetAlignment(@as(i32, 0x8004));
+        error_label.SetWindowFlag(2048);
+        error_label.SetWindowFlag(262144);
+        error_label.SetFixedSize2(300, 80);
+        const screen = error_label.Screen();
+        const screen_rect = screen.Geometry();
+        const x = @divTrunc(screen_rect.Width() - 300, 2);
+        const y = @divTrunc(screen_rect.Height() - 80, 2);
+        error_label.Move(x, y);
+        error_label.Show();
+        _ = QApp.Exec();
         return;
     };
     defer reader.deinit();
@@ -130,16 +155,17 @@ pub fn main(init: std.process.Init) !void {
         wt.Tool |
             wt.FramelessWindowHint |
             wt.WindowStaysOnTopHint |
-            wt.NoDropShadowWindowHint |
-            wt.MSWindowsFixedSizeDialogHint,
+            wt.NoDropShadowWindowHint,
     );
-    window.SetWindowOpacity(0.15);
 
     const main_layout = QVBoxLayout.New(window);
 
     var search_bar = QLineEdit.New2();
     search_bar.SetPlaceholderText("Search apps...");
     search_bar.SetClearButtonEnabled(false);
+
+    list.setFilter("");
+    search_list = &list;
 
     main_layout.AddWidget(search_bar);
     main_layout.AddWidget(list.view);
@@ -158,8 +184,6 @@ pub fn main(init: std.process.Init) !void {
 
     window.OnCloseEvent(onWindowClose);
 
-    search_list = &list;
-    list.setFilter("");
     search_bar.OnTextChanged(onSearchTextChanged);
     ui.Keyboard.setup(window, &list);
 

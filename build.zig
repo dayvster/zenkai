@@ -77,14 +77,37 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/libstdc++.so" });
     exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/libgcc_eh.a" });
 
-    exe.root_module.addImport("fsutils", b.createModule(.{
+    const utils_module = b.addModule("utils", .{
+        .root_source_file = b.path("src/utils/utils.zig"),
+    });
+
+    const fsutils_module = b.addModule("fsutils", .{
         .root_source_file = b.path("src/utils/fsutils.zig"),
-    }));
+        .imports = &.{.{ .name = "utils", .module = utils_module }},
+    });
 
-    exe.root_module.addImport("desktopapp", b.createModule(.{
+    const desktopapp_module = b.addModule("desktopapp", .{
         .root_source_file = b.path("src/core/desktopapp.zig"),
-    }));
+    });
 
+    const dapp_parser_module = b.addModule("dapp_parser", .{
+        .root_source_file = b.path("src/core/dapp_parser.zig"),
+        .imports = &.{
+            .{ .name = "desktopapp", .module = desktopapp_module },
+            .{ .name = "utils", .module = utils_module },
+        },
+    });
+
+    const config_module = b.addModule("config", .{
+        .root_source_file = b.path("src/config/config.zig"),
+        .imports = &.{.{ .name = "fsutils", .module = fsutils_module }},
+    });
+
+    exe.root_module.addImport("fsutils", fsutils_module);
+    exe.root_module.addImport("utils", utils_module);
+    exe.root_module.addImport("desktopapp", desktopapp_module);
+    exe.root_module.addImport("dapp_parser", dapp_parser_module);
+    exe.root_module.addImport("config", config_module);
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
@@ -97,6 +120,9 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
+
+    const check_step = b.step("check", "Check code compiles");
+    check_step.dependOn(&exe.step);
 
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,

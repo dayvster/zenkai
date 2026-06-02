@@ -1,7 +1,8 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const de = @import("desktopapp");
-const utils = @import("../utils/utils.zig");
+const utils = @import("utils");
+const log = @import("utils").log;
 
 const QListView = qt.QListView;
 const QAbstractListModel = qt.QAbstractListModel;
@@ -79,19 +80,19 @@ fn makeFallbackIcon(name: []const u8) QIcon {
     return QIcon.New2(pixmap);
 }
 
-var g_apps: []const de.DesktopApp = undefined;
-var g_indices: []const usize = &[_]usize{};
+var g_list: *List = undefined;
 
 fn onRowCount(_: QAbstractListModel, _: QModelIndex) callconv(.c) i32 {
-    return @intCast(g_indices.len);
+    return @intCast(g_list.indices.items.len);
 }
 
 fn onData(_: QAbstractListModel, index: QModelIndex, role: i32) callconv(.c) QVariant {
     const row = index.Row();
-    if (row < 0 or @as(usize, @intCast(row)) >= g_indices.len)
+    const indices = g_list.indices.items;
+    if (row < 0 or @as(usize, @intCast(row)) >= indices.len)
         return QVariant.New();
 
-    const app = g_apps[g_indices[@as(usize, @intCast(row))]];
+    const app = g_list.apps[indices[@as(usize, @intCast(row))]];
 
     if (role == 0) {
         return QVariant.New24(app.name);
@@ -132,8 +133,6 @@ pub const List = struct {
         model.OnRowCount(onRowCount);
         model.OnData(onData);
 
-        g_apps = apps;
-
         var view = QListView.New2();
         view.SetIconSize(QSize.New4(icon_size, icon_size));
         view.SetModel(model);
@@ -152,7 +151,7 @@ pub const List = struct {
 
         if (text.len == 0) {
             for (0..self.apps.len) |i|
-                self.indices.append(self.allocator, i) catch {};
+                self.indices.append(self.allocator, i) catch |err| log.info("OOM in setFilter: {}", .{err});
         } else {
             var lower_text_buf: [256]u8 = undefined;
             const lower_text = if (text.len <= lower_text_buf.len) blk: {
@@ -183,13 +182,13 @@ pub const List = struct {
                 }
 
                 if (matches) {
-                    self.indices.append(self.allocator, i) catch {};
+                    self.indices.append(self.allocator, i) catch |err| log.info("OOM in setFilter: {}", .{err});
                 }
             }
         }
 
+        g_list = self;
         self.model.BeginResetModel();
-        g_indices = self.indices.items;
         self.model.EndResetModel();
 
         if (self.indices.items.len > 0) {
@@ -202,10 +201,11 @@ pub const List = struct {
     }
 
     pub fn getExecForRow(self: *List, row: usize) []const u8 {
-        return self.apps[self.indices.items[row]].exec;
+        return self.apps[self.indices.items[row]].exec orelse "";
     }
 
     pub fn deinit(self: *List) void {
+        self.model.Delete();
         self.indices.deinit(self.allocator);
     }
 };

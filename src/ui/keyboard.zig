@@ -1,7 +1,8 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const List = @import("list.zig").List;
-const utils = @import("../utils/utils.zig");
+const DesktopApp = @import("desktopapp").DesktopApp;
+const utils = @import("utils");
 
 const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;
@@ -27,7 +28,10 @@ fn onEnter(_: QShortcut) callconv(.c) void {
     }
     const row = @as(usize, @intCast(idx.Row()));
     if (row >= L.indices.items.len) return;
-    utils.execute(L.getExecForRow(row)) catch {};
+    const app = &L.apps[L.indices.items[row]];
+    const expanded = app.expandExec(L.allocator) catch return;
+    defer L.allocator.free(expanded);
+    utils.execute(expanded, L.allocator) catch {};
     QApp.Quit();
 }
 
@@ -64,6 +68,7 @@ fn onDown(_: QShortcut) callconv(.c) void {
 
 fn bind(window: QWidget, key: []const u8, handler: *const fn (QShortcut) callconv(.c) void) void {
     const seq = QKeySequence.New2(key);
+    defer seq.Delete();
     const s = QShortcut.New2(seq, window);
     s.OnActivated(handler);
 }
