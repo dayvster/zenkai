@@ -4,9 +4,9 @@ const config = @import("config");
 const qt = @import("libqt6zig");
 const ui = @import("ui/ui.zig");
 const log = @import("utils").log;
+const theme = @import("theme/theme.zig");
 
 const main_qss = @embedFile("styles/main.qss");
-const dark_qss = @embedFile("styles/dark.theme.qss");
 
 const QApp = qt.QApplication;
 const QLabel = qt.QLabel;
@@ -110,6 +110,7 @@ pub fn main(init: std.process.Init) !void {
     var icon_size: i32 = 32;
     var debug: bool = false;
     var benchmark_all: bool = false;
+    var theme_arg: ?[]const u8 = null;
     for (init.minimal.args.vector) |arg_ptr| {
         const arg = std.mem.span(arg_ptr);
         if (std.mem.startsWith(u8, arg, "--size=")) {
@@ -119,6 +120,8 @@ pub fn main(init: std.process.Init) !void {
         } else if (std.mem.eql(u8, arg, "--debug")) {
             debug = true;
             log.verbose = true;
+        } else if (std.mem.startsWith(u8, arg, "--theme=")) {
+            theme_arg = arg["--theme=".len..];
         } else if (comptime bench_enabled) {
             if (std.mem.eql(u8, arg, "--benchmark-all")) {
                 benchmark_all = true;
@@ -128,6 +131,9 @@ pub fn main(init: std.process.Init) !void {
             ui.List.setNoIcons(true);
         }
     }
+
+    const theme_resolved = theme.resolve(init.gpa, theme_arg);
+    defer if (theme_resolved.allocation) |m| init.gpa.free(m);
 
     if (comptime bench_enabled) {
         if (benchmark_all) benchMark("qt init");
@@ -153,7 +159,7 @@ pub fn main(init: std.process.Init) !void {
     if (benchmark_all) benchMark("stylesheet");
 
     {
-        const qss = try std.mem.concat(init.gpa, u8, &.{ main_qss, dark_qss });
+        const qss = try std.mem.concat(init.gpa, u8, &.{ main_qss, theme_resolved.qss });
         defer init.gpa.free(qss);
         app.SetStyleSheet(qss);
     }
@@ -168,10 +174,10 @@ pub fn main(init: std.process.Init) !void {
 
     if (benchmark_all) benchMark("icon theme");
 
-    if (config.detectIconTheme(init.gpa)) |theme| {
-        log.info("icon theme: {s}", .{theme});
-        QIcon.SetThemeName(theme);
-        init.gpa.free(theme);
+    if (config.detectIconTheme(init.gpa)) |icon_theme| {
+        log.info("icon theme: {s}", .{icon_theme});
+        QIcon.SetThemeName(icon_theme);
+        init.gpa.free(icon_theme);
     } else {
         log.info("icon theme: default (Qt resolved)", .{});
     }
