@@ -64,13 +64,13 @@ fn readDirInternal(
         const full_path = try std.fs.path.join(allocator, &.{ dir_path, entry.name });
         errdefer allocator.free(full_path);
 
-        if (entry.kind == .file) {
+        if (entry.kind == .file or entry.kind == .sym_link) {
             if (filterExtensions(entry.name, options.extensions)) {
                 try results.append(allocator, full_path);
             } else {
                 allocator.free(full_path);
             }
-        } else if (entry.kind == .directory and options.recursive) {
+        } else if ((entry.kind == .directory or entry.kind == .sym_link) and options.recursive) {
             try readDirInternal(allocator, full_path, options, results, depth + 1);
             allocator.free(full_path);
         } else {

@@ -106,7 +106,11 @@ fn onRowCount(_: QAbstractListModel, _: QModelIndex) callconv(.c) i32 {
     return @intCast(g_list.indices.items.len);
 }
 
-fn onData(_: QAbstractListModel, index: QModelIndex, role: i32) callconv(.c) QVariant {
+fn onData(
+    _: QAbstractListModel,
+    index: QModelIndex,
+    role: i32,
+) callconv(.c) QVariant {
     const row = index.Row();
     const indices = g_list.indices.items;
     if (row < 0 or @as(usize, @intCast(row)) >= indices.len)
