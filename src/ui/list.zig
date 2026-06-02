@@ -79,19 +79,19 @@ fn makeFallbackIcon(name: []const u8) QIcon {
     return QIcon.New2(pixmap);
 }
 
-var g_apps: []const de.DesktopApp = undefined;
-var g_indices: []const usize = &[_]usize{};
+var g_list: *List = undefined;
 
 fn onRowCount(_: QAbstractListModel, _: QModelIndex) callconv(.c) i32 {
-    return @intCast(g_indices.len);
+    return @intCast(g_list.indices.items.len);
 }
 
 fn onData(_: QAbstractListModel, index: QModelIndex, role: i32) callconv(.c) QVariant {
     const row = index.Row();
-    if (row < 0 or @as(usize, @intCast(row)) >= g_indices.len)
+    const indices = g_list.indices.items;
+    if (row < 0 or @as(usize, @intCast(row)) >= indices.len)
         return QVariant.New();
 
-    const app = g_apps[g_indices[@as(usize, @intCast(row))]];
+    const app = g_list.apps[indices[@as(usize, @intCast(row))]];
 
     if (role == 0) {
         return QVariant.New24(app.name);
@@ -131,8 +131,6 @@ pub const List = struct {
         var model = QAbstractListModel.New();
         model.OnRowCount(onRowCount);
         model.OnData(onData);
-
-        g_apps = apps;
 
         var view = QListView.New2();
         view.SetIconSize(QSize.New4(icon_size, icon_size));
@@ -188,8 +186,8 @@ pub const List = struct {
             }
         }
 
+        g_list = self;
         self.model.BeginResetModel();
-        g_indices = self.indices.items;
         self.model.EndResetModel();
 
         if (self.indices.items.len > 0) {
