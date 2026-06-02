@@ -9,7 +9,6 @@ pub const DappParser = struct {
     pub fn parseDesktopFile(allocator: std.mem.Allocator, content: []const u8) !de.DesktopApp {
         var app = initDefaultDapp(allocator);
         var no_display = false;
-        var in_desktop_entry = false;
 
         var entry_iter = desktopEntryIterator(content);
 
@@ -21,11 +20,6 @@ pub const DappParser = struct {
 
                 if (splitToKV(trimmed)) |kv| {
                     if (std.mem.indexOfScalar(u8, kv.key, '[') != null) continue;
-
-                    if (utils.strcomp(kv.key, "Type") and !utils.strcomp(kv.value, "Application")) {
-                        in_desktop_entry = false;
-                        continue;
-                    }
 
                     if (utils.strcomp(kv.key, "NoDisplay") and utils.strcomp(kv.value, "true")) {
                         no_display = true;

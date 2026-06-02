@@ -144,8 +144,7 @@ pub fn main(init: std.process.Init) !void {
         wt.Tool |
             wt.FramelessWindowHint |
             wt.WindowStaysOnTopHint |
-            wt.NoDropShadowWindowHint |
-            wt.MSWindowsFixedSizeDialogHint,
+            wt.NoDropShadowWindowHint,
     );
 
     const main_layout = QVBoxLayout.New(window);
