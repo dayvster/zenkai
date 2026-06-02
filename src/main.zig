@@ -139,6 +139,20 @@ pub fn main(init: std.process.Init) !void {
         _ = QApp.Exec();
         return;
     };
+    reader.scan() catch {
+        var error_label = QLabel.New3("Error parsing desktop files");
+        error_label.SetAlignment(@as(i32, 0x8004));
+        error_label.SetWindowFlag(2048);
+        error_label.SetWindowFlag(262144);
+        error_label.SetFixedSize2(300, 80);
+        const screen = error_label.Screen();
+        const screen_rect = screen.Geometry();
+        const x = @divTrunc(screen_rect.Width() - 300, 2);
+        const y = @divTrunc(screen_rect.Height() - 80, 2);
+        error_label.Move(x, y);
+        error_label.Show();
+        return;
+    };
     defer reader.deinit();
 
     var list = ui.List.init(init.gpa, reader.apps.items, icon_size);
