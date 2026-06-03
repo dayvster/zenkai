@@ -1,69 +1,32 @@
-const std = @import("std");
 const qt = @import("libqt6zig");
 const List = @import("list.zig").List;
-const DesktopApp = @import("desktopapp").DesktopApp;
-const utils = @import("utils");
 
 const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;
 const QWidget = qt.QWidget;
 const QApp = qt.QApplication;
-const QModelIndex = qt.QModelIndex;
 
 var L: *List = undefined;
 
-fn onEnter(_: QShortcut) callconv(.c) void {
+fn currentRow() ?i32 {
     var idx = L.view.CurrentIndex();
     defer idx.Delete();
+    if (!idx.IsValid()) return null;
+    return idx.Row();
+}
 
-    if (!idx.IsValid()) {
-        if (L.indices.items.len > 0) {
-            var invalid = QModelIndex.New3();
-            defer invalid.Delete();
-            var first = L.model.Index(0, 0, invalid);
-            defer first.Delete();
-            L.view.SetCurrentIndex(first);
-        }
-        return;
-    }
-    const row = @as(usize, @intCast(idx.Row()));
-    if (row >= L.indices.items.len) return;
-    const app = &L.apps[L.indices.items[row]];
-    const expanded = app.expandExec(L.allocator) catch return;
-    defer L.allocator.free(expanded);
-    utils.execute(expanded, L.allocator) catch {};
-    QApp.Quit();
+fn onEnter(_: QShortcut) callconv(.c) void {
+    L.launchSelected();
 }
 
 fn onUp(_: QShortcut) callconv(.c) void {
-    var idx = L.view.CurrentIndex();
-    defer idx.Delete();
-
-    if (!idx.IsValid()) return;
-    const row = idx.Row();
-    if (row > 0) {
-        var invalid = QModelIndex.New3();
-        defer invalid.Delete();
-        var target = L.model.Index(row - 1, 0, invalid);
-        defer target.Delete();
-        L.view.SetCurrentIndex(target);
-    }
+    const row = currentRow() orelse return;
+    if (row > 0) L.selectRow(row - 1);
 }
 
 fn onDown(_: QShortcut) callconv(.c) void {
-    var idx = L.view.CurrentIndex();
-    defer idx.Delete();
-
-    if (!idx.IsValid()) return;
-    const row = idx.Row();
-    const count = @as(i32, @intCast(L.indices.items.len));
-    if (row < count - 1) {
-        var invalid = QModelIndex.New3();
-        defer invalid.Delete();
-        var target = L.model.Index(row + 1, 0, invalid);
-        defer target.Delete();
-        L.view.SetCurrentIndex(target);
-    }
+    const row = currentRow() orelse return;
+    if (row < L.indices.items.len - 1) L.selectRow(row + 1);
 }
 
 fn bind(window: QWidget, key: []const u8, handler: *const fn (QShortcut) callconv(.c) void) void {

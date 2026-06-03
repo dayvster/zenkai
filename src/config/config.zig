@@ -1,5 +1,5 @@
 const std = @import("std");
-const fsutils = @import("fsutils");
+const fsutils = @import("utils").fsutils;
 const log = @import("utils").log;
 
 const default_config = @embedFile("config.toml");

@@ -68,14 +68,24 @@ fn onWindowClose(_: QWidget, _: QCloseEvent) callconv(.c) void {
     QApp.Quit();
 }
 
+fn hexToQColor(hex: []const u8) QColor {
+    const s = if (hex[0] == '#') hex[1..] else hex;
+    return QColor.New5(
+        std.fmt.parseInt(u8, s[0..2], 16) catch unreachable,
+        std.fmt.parseInt(u8, s[2..4], 16) catch unreachable,
+        std.fmt.parseInt(u8, s[4..6], 16) catch unreachable,
+    );
+}
+
 fn setupDarkPalette() void {
-    const bg = QColor.New5(0x1a, 0x1b, 0x1e);
-    const bg_light = QColor.New5(0x31, 0x32, 0x44);
-    const border = QColor.New5(0x45, 0x47, 0x5a);
-    const fg = QColor.New5(0xcd, 0xd6, 0xf4);
-    const placeholder = QColor.New5(0x6c, 0x70, 0x86);
+    const d = theme.dark_colors;
+    const bg = hexToQColor(d.bg);
+    const bg_light = hexToQColor(d.surface);
+    const border = hexToQColor(d.border);
+    const fg = hexToQColor(d.text);
+    const placeholder = hexToQColor(d.muted);
     const highlight = QColor.New5(0x58, 0x5b, 0x70);
-    const accent = QColor.New5(0x89, 0xb4, 0xfa);
+    const accent = hexToQColor(d.accent);
 
     var palette = QPalette.New();
     defer palette.Delete();
@@ -101,6 +111,23 @@ fn setupDarkPalette() void {
     accent.Delete();
 
     QApp.SetPalette(palette);
+}
+
+fn showErrorModal(msg: []const u8, bench: bool) void {
+    var label = QLabel.New3(msg);
+    defer label.Delete();
+    label.SetAlignment(@as(i32, 0x8004));
+    label.SetWindowFlag(2048);
+    label.SetWindowFlag(262144);
+    label.SetFixedSize2(300, 80);
+    const screen = label.Screen();
+    const screen_rect = screen.Geometry();
+    const x = @divTrunc(screen_rect.Width() - 300, 2);
+    const y = @divTrunc(screen_rect.Height() - 80, 2);
+    label.Move(x, y);
+    label.Show();
+    if (bench) printBenchmarks();
+    _ = QApp.Exec();
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -188,58 +215,14 @@ pub fn main(init: std.process.Init) !void {
     errdefer reader.deinit();
 
     reader.load() catch {
-        var error_label = QLabel.New3("Error loading desktop files");
-        defer error_label.Delete();
-        error_label.SetAlignment(@as(i32, 0x8004));
-        error_label.SetWindowFlag(2048);
-        error_label.SetWindowFlag(262144);
-        error_label.SetFixedSize2(300, 80);
-        const screen = error_label.Screen();
-        const screen_rect = screen.Geometry();
-        const x = @divTrunc(screen_rect.Width() - 300, 2);
-        const y = @divTrunc(screen_rect.Height() - 80, 2);
-        error_label.Move(x, y);
-        error_label.Show();
-        if (benchmark_all) printBenchmarks();
-        _ = QApp.Exec();
+        showErrorModal("Error loading desktop files", benchmark_all);
         return;
     };
 
-    if (benchmark_all) benchMark("reader scan #1");
+    if (benchmark_all) benchMark("reader scan");
 
     reader.scan() catch {
-        var error_label = QLabel.New3("Error parsing desktop files");
-        defer error_label.Delete();
-        error_label.SetAlignment(@as(i32, 0x8004));
-        error_label.SetWindowFlag(2048);
-        error_label.SetWindowFlag(262144);
-        error_label.SetFixedSize2(300, 80);
-        const screen = error_label.Screen();
-        const screen_rect = screen.Geometry();
-        const x = @divTrunc(screen_rect.Width() - 300, 2);
-        const y = @divTrunc(screen_rect.Height() - 80, 2);
-        error_label.Move(x, y);
-        error_label.Show();
-        if (benchmark_all) printBenchmarks();
-        _ = QApp.Exec();
-        return;
-    };
-
-    if (benchmark_all) benchMark("reader scan #2");
-
-    reader.scan() catch {
-        var error_label = QLabel.New3("Error parsing desktop files");
-        error_label.SetAlignment(@as(i32, 0x8004));
-        error_label.SetWindowFlag(2048);
-        error_label.SetWindowFlag(262144);
-        error_label.SetFixedSize2(300, 80);
-        const screen = error_label.Screen();
-        const screen_rect = screen.Geometry();
-        const x = @divTrunc(screen_rect.Width() - 300, 2);
-        const y = @divTrunc(screen_rect.Height() - 80, 2);
-        error_label.Move(x, y);
-        error_label.Show();
-        if (benchmark_all) printBenchmarks();
+        showErrorModal("Error parsing desktop files", benchmark_all);
         return;
     };
     defer reader.deinit();
@@ -276,6 +259,11 @@ pub fn main(init: std.process.Init) !void {
 
     main_layout.AddWidget(search_bar);
     main_layout.AddWidget(list.view);
+
+    var bar = ui.BottomBar.init(init.gpa, window);
+    bar.setup(&list);
+    main_layout.AddWidget(bar.container);
+    bar.setDefaultActions();
 
     window.SetMinimumSize2(win_w, win_h);
     window.SetMaximumSize2(win_w, win_h);

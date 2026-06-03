@@ -15,6 +15,7 @@ const QPainter = qt.QPainter;
 const QColor = qt.QColor;
 const QRect = qt.QRect;
 const QFont = qt.QFont;
+const QApp = qt.QApplication;
 
 var g_icon_size: i32 = 32;
 var g_no_icons: bool = false;
@@ -203,17 +204,41 @@ pub const List = struct {
         self.model.BeginResetModel();
         self.model.EndResetModel();
 
+        self.selectFirst();
+    }
+
+    pub fn invalidIndex() QModelIndex {
+        return QModelIndex.New3();
+    }
+
+    pub fn selectFirst(self: *List) void {
         if (self.indices.items.len > 0) {
-            var invalid = QModelIndex.New3();
-            var idx = self.model.Index(0, 0, invalid);
-            self.view.SetCurrentIndex(idx);
-            invalid.Delete();
-            idx.Delete();
+            self.selectRow(0);
         }
     }
 
-    pub fn getExecForRow(self: *List, row: usize) []const u8 {
-        return self.apps[self.indices.items[row]].exec orelse "";
+    pub fn selectRow(self: *List, row: i32) void {
+        var invalid = List.invalidIndex();
+        defer invalid.Delete();
+        var idx = self.model.Index(row, 0, invalid);
+        defer idx.Delete();
+        self.view.SetCurrentIndex(idx);
+    }
+
+    pub fn launchSelected(self: *List) void {
+        var idx = self.view.CurrentIndex();
+        defer idx.Delete();
+        if (!idx.IsValid()) {
+            self.selectFirst();
+            return;
+        }
+        const row = @as(usize, @intCast(idx.Row()));
+        if (row >= self.indices.items.len) return;
+        const app = &self.apps[self.indices.items[row]];
+        const expanded = app.expandExec(self.allocator) catch return;
+        defer self.allocator.free(expanded);
+        utils.execute(expanded, self.allocator) catch {};
+        QApp.Quit();
     }
 
     pub fn setNoIcons(v: bool) void {

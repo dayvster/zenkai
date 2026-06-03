@@ -61,3 +61,11 @@ QScrollBar::add-page:vertical,
 QScrollBar::sub-page:vertical {
     background: none;
 }
+
+QToolButton:hover {
+    background-color: #131721;
+}
+
+QLabel {
+    color: #565f73;
+}

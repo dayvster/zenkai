@@ -48,3 +48,11 @@ QScrollBar::handle:vertical {
 QScrollBar::handle:vertical:hover {
     background-color: #585b70;
 }
+
+QToolButton:hover {
+    background-color: #313244;
+}
+
+QLabel {
+    color: #6c7086;
+}

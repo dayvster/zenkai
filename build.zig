@@ -52,6 +52,9 @@ pub fn build(b: *std.Build) void {
         "qfont",
         "qvariant",
         "qabstractitemmodel",
+        "qaction",
+        "qmessagebox",
+        "qtoolbutton",
         "qlistview",
     };
 
@@ -72,11 +75,6 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/utils/utils.zig"),
     });
 
-    const fsutils_module = b.addModule("fsutils", .{
-        .root_source_file = b.path("src/utils/fsutils.zig"),
-        .imports = &.{.{ .name = "utils", .module = utils_module }},
-    });
-
     const desktopapp_module = b.addModule("desktopapp", .{
         .root_source_file = b.path("src/core/desktopapp.zig"),
     });
@@ -91,10 +89,9 @@ pub fn build(b: *std.Build) void {
 
     const config_module = b.addModule("config", .{
         .root_source_file = b.path("src/config/config.zig"),
-        .imports = &.{.{ .name = "fsutils", .module = fsutils_module }},
+        .imports = &.{.{ .name = "utils", .module = utils_module }},
     });
 
-    exe.root_module.addImport("fsutils", fsutils_module);
     exe.root_module.addImport("utils", utils_module);
     exe.root_module.addImport("desktopapp", desktopapp_module);
     exe.root_module.addImport("dapp_parser", dapp_parser_module);
