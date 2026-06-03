@@ -66,4 +66,16 @@ QScrollBar::sub-page:vertical {
 
 QLabel {
     border: none;
+    font-size: 11px;
+    padding-right: 8px;
 }
+
+QToolButton {
+    border: none;
+    padding: 4px 6px;
+    font-size: 12px;
+    border-radius: 4px;
+    background: transparent;
+}
+
+

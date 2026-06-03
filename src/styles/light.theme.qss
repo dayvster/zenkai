@@ -35,7 +35,10 @@ QScrollBar::handle:vertical:hover {
     background-color: #acb0be;
 }
 
+QToolButton:hover {
+    background-color: #e6e9ef;
+}
+
 QLabel {
-    background-color: transparent;
-    color: #4c4f69;
+    color: #9ca0b0;
 }

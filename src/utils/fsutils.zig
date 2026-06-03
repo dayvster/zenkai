@@ -1,5 +1,4 @@
 const std = @import("std");
-const log = @import("utils").log;
 
 pub const ReadDirOptions = struct {
     extensions: ?[]const []const u8 = null,

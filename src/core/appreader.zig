@@ -1,9 +1,7 @@
 const std = @import("std");
 const de = @import("desktopapp");
 const dapp_parser = @import("dapp_parser");
-const fsutils = @import("fsutils");
-
-pub const desktopapp = de;
+const fsutils = @import("utils").fsutils;
 
 pub const AppReader = struct {
     apps: std.ArrayList(de.DesktopApp),
@@ -90,24 +88,6 @@ pub const AppReader = struct {
             };
             app.file_path = try self.arena.allocator().dupe(u8, file_path);
             try self.apps.append(self.allocator, app);
-        }
-    }
-
-    pub fn reload(self: *AppReader) !void {
-        const old_checksum = self.desktop_files_checksum;
-        try self.load();
-        if (self.desktop_files_checksum != old_checksum) {
-            try self.scan();
-        }
-    }
-
-    pub fn getAll(self: *const AppReader) []const de.DesktopApp {
-        return self.apps.items;
-    }
-
-    pub fn debugPrint(self: *const AppReader) void {
-        for (self.apps.items) |app| {
-            std.debug.print("• {s} | {s}\n", .{ app.name, app.exec });
         }
     }
 
