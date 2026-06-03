@@ -137,6 +137,7 @@ pub fn main(init: std.process.Init) !void {
     var icon_size: i32 = 32;
     var debug: bool = false;
     var benchmark_all: bool = false;
+    var no_bottom_bar: bool = false;
     var theme_arg: ?[]const u8 = null;
     for (init.minimal.args.vector) |arg_ptr| {
         const arg = std.mem.span(arg_ptr);
@@ -156,6 +157,8 @@ pub fn main(init: std.process.Init) !void {
             }
         } else if (std.mem.eql(u8, arg, "--no-icons")) {
             ui.List.setNoIcons(true);
+        } else if (std.mem.eql(u8, arg, "--no-bottom-bar")) {
+            no_bottom_bar = true;
         }
     }
 
@@ -260,10 +263,12 @@ pub fn main(init: std.process.Init) !void {
     main_layout.AddWidget(search_bar);
     main_layout.AddWidget(list.view);
 
-    var bar = ui.BottomBar.init(init.gpa, window);
-    bar.setup(&list);
-    main_layout.AddWidget(bar.container);
-    bar.setDefaultActions();
+    if (!no_bottom_bar) {
+        var bar = ui.BottomBar.init(init.gpa, window);
+        bar.setup(&list);
+        main_layout.AddWidget(bar.container);
+        bar.setDefaultActions();
+    }
 
     window.SetMinimumSize2(win_w, win_h);
     window.SetMaximumSize2(win_w, win_h);
