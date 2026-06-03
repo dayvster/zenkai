@@ -215,7 +215,7 @@ pub fn main(init: std.process.Init) !void {
     if (benchmark_all) benchMark("reader load");
 
     var reader = appreader.AppReader.init(init.gpa);
-    errdefer reader.deinit();
+    defer reader.deinit();
 
     reader.load() catch {
         showErrorModal("Error loading desktop files", benchmark_all);
@@ -228,7 +228,6 @@ pub fn main(init: std.process.Init) !void {
         showErrorModal("Error parsing desktop files", benchmark_all);
         return;
     };
-    defer reader.deinit();
 
     if (benchmark_all) benchMark("list init");
 
