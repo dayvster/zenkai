@@ -11,12 +11,22 @@ pub const Manifest = struct {
     disabled: bool,
 };
 
+pub const Hook = enum {
+    on_query,
+    on_open,
+    on_close,
+    on_startup,
+    on_shutdown,
+    on_keypress,
+    on_idle,
+    on_results,
+};
+
 pub const Plugin = struct {
     manifest: Manifest,
     dir_path: []const u8,
     state: *lua.lua_State,
-    has_on_search: bool,
-    has_on_select: bool,
+    hooks: std.EnumSet(Hook),
 };
 
 pub const PluginResult = struct {
