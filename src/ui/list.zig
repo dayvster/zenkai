@@ -147,7 +147,9 @@ pub const List = struct {
         model.OnData(onData);
 
         var view = QListView.New2();
-        view.SetIconSize(QSize.New4(icon_size, icon_size));
+        var icon_sz = QSize.New4(icon_size, icon_size);
+        defer icon_sz.Delete();
+        view.SetIconSize(icon_sz);
         view.SetModel(model);
 
         return .{

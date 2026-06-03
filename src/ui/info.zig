@@ -113,9 +113,8 @@ const Html = struct {
 pub fn onInfo(_: QAction) callconv(.c) void {
     const app = currentApp() orelse return;
 
-    var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(g_list.allocator);
-    var html = Html{ .buf = buf, .gpa = g_list.allocator };
+    var html = Html{ .buf = .empty, .gpa = g_list.allocator };
+    defer html.buf.deinit(html.gpa);
 
     {
         const name_esc = utils.esc(html.gpa, app.name) catch return;
