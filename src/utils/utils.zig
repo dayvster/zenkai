@@ -15,21 +15,6 @@ pub fn esc(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
     return try buf2.toOwnedSlice(allocator);
 }
 
-/// Calculates the **Damerau-Levenshtein distance** between two strings.
-///
-/// This is the minimum number of single-character edits (insertions, deletions,
-/// substitutions, or **adjacent transpositions**) required to change `s1` into `s2`.
-///
-/// Features:
-/// - Supports adjacent transpositions (e.g. "ab" → "ba" costs 1)
-/// - Early exit when distance exceeds `max_distance`
-/// - Optimized space usage (only 3 rows)
-/// - Uses a small inline buffer (256 usize) to avoid allocations for short strings
-///
-/// **Time Complexity**: O(m * n)
-/// **Space Complexity**: O(min(m, n)) + small constant
-///
-/// Returns `max_distance` if the real distance is greater than or equal to it.
 pub fn demerauLevenshteinDistance(
     allocator: std.mem.Allocator,
     s1: []const u8,
@@ -39,11 +24,9 @@ pub fn demerauLevenshteinDistance(
     const s1_len = s1.len;
     const s2_len = s2.len;
 
-    // Early returns for trivial cases and impossible distances
     if (s1_len == 0) return @min(s2_len, max_distance);
     if (s2_len == 0) return @min(s1_len, max_distance);
 
-    // Length difference already exceeds max_distance
     const len_diff = if (s1_len > s2_len) s1_len - s2_len else s2_len - s1_len;
     if (len_diff > max_distance) {
         return max_distance;
@@ -76,14 +59,12 @@ pub fn demerauLevenshteinDistance(
         for (1..row_len) |j| {
             const cost: usize = if (s1[i - 1] == s2[j - 1]) 0 else 1;
 
-            // Levenshtein standard operations
             var min_val = @min(
-                prev[j] + 1, // deletion
-                curr[j - 1] + 1, // insertion
-                prev[j - 1] + cost, // substitution
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + cost,
             );
 
-            // Damerau transposition check
             if (i > 1 and j > 1 and
                 s1[i - 2] == s2[j - 1] and
                 s1[i - 1] == s2[j - 2])

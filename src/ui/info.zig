@@ -25,7 +25,14 @@ fn currentApp() ?*const de.DesktopApp {
     const row = @as(usize, @intCast(idx.Row()));
     if (row >= g_list.indices.items.len) return null;
     return switch (g_list.source) {
-        .desktop_apps => |apps| &apps[g_list.indices.items[row]],
+        .desktop_apps => |apps| {
+            const entry = g_list.indices.items[row];
+            const app_idx = switch (entry) {
+                .item => |i| i,
+                .plugin => return null,
+            };
+            return &apps[app_idx];
+        },
         .items => null,
     };
 }

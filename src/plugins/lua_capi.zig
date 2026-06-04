@@ -4,7 +4,7 @@ pub const lua_State = opaque {};
 
 pub const lua_CFunction = *const fn (L: *lua_State) callconv(.c) c_int;
 pub const lua_KContext = isize;
-pub const lua_KFunction = *const fn (L: *lua_State, status: c_int, ctx: lua_KContext) callconv(.c) c_int;
+pub const lua_KFunction = ?*const fn (L: *lua_State, status: c_int, ctx: lua_KContext) callconv(.c) c_int;
 pub const lua_Hook = ?*const fn (L: *lua_State, ar: *lua_Debug) callconv(.c) void;
 
 pub const lua_Debug = extern struct {
@@ -41,41 +41,51 @@ pub const LUA_TFUNCTION = 6;
 
 pub const LUA_MULTRET = -1;
 
-pub const LUA_HOOKCOUNT = 1;
+pub const LUA_HOOKCALL = 0;
+pub const LUA_HOOKRET = 1;
 pub const LUA_HOOKLINE = 2;
+pub const LUA_HOOKCOUNT = 3;
+pub const LUA_MASKCALL = 1 << 0;
+pub const LUA_MASKRET = 1 << 1;
+pub const LUA_MASKLINE = 1 << 2;
+pub const LUA_MASKCOUNT = 1 << 3;
 
-extern "c" fn luaL_newstate() ?*lua_State;
-extern "c" fn lua_close(L: *lua_State) void;
-extern "c" fn luaL_openselectedlibs(L: *lua_State, libs: c_uint, nlibs: c_int) void;
-extern "c" fn luaL_loadstring(L: *lua_State, s: [*:0]const u8) c_int;
-extern "c" fn lua_pcallk(L: *lua_State, nargs: c_int, nresults: c_int, errfunc: c_int, ctx: lua_KContext, k: lua_KFunction) c_int;
-extern "c" fn lua_getglobal(L: *lua_State, name: [*:0]const u8) c_int;
-extern "c" fn lua_setglobal(L: *lua_State, name: [*:0]const u8) void;
-extern "c" fn lua_pushcclosure(L: *lua_State, func: lua_CFunction, n: c_int) void;
-extern "c" fn lua_pushstring(L: *lua_State, s: [*:0]const u8) ?[*:0]const u8;
-extern "c" fn lua_pushnumber(L: *lua_State, n: f64) void;
-extern "c" fn lua_pushboolean(L: *lua_State, b: c_int) void;
-extern "c" fn lua_pushinteger(L: *lua_State, n: i64) void;
-extern "c" fn lua_pushnil(L: *lua_State) void;
-extern "c" fn lua_tolstring(L: *lua_State, idx: c_int, len: ?*usize) ?[*:0]const u8;
-extern "c" fn lua_tonumberx(L: *lua_State, idx: c_int, isnum: ?*c_int) f64;
-extern "c" fn lua_tointegerx(L: *lua_State, idx: c_int, isnum: ?*c_int) i64;
-extern "c" fn lua_toboolean(L: *lua_State, idx: c_int) c_int;
-extern "c" fn lua_type(L: *lua_State, idx: c_int) c_int;
-extern "c" fn lua_typename(L: *lua_State, tp: c_int) [*:0]const u8;
-extern "c" fn lua_settop(L: *lua_State, idx: c_int) void;
-extern "c" fn lua_getfield(L: *lua_State, idx: c_int, k: [*:0]const u8) c_int;
-extern "c" fn lua_setfield(L: *lua_State, idx: c_int, k: [*:0]const u8) void;
-extern "c" fn lua_createtable(L: *lua_State, narr: c_int, nrec: c_int) void;
-extern "c" fn lua_rawseti(L: *lua_State, idx: c_int, n: i64) void;
-extern "c" fn lua_rawgeti(L: *lua_State, idx: c_int, n: i64) c_int;
-extern "c" fn lua_next(L: *lua_State, idx: c_int) c_int;
-extern "c" fn lua_pushvalue(L: *lua_State, idx: c_int) void;
-extern "c" fn lua_copy(L: *lua_State, fromidx: c_int, toidx: c_int) void;
-extern "c" fn lua_len(L: *lua_State, idx: c_int) void;
-extern "c" fn lua_sethook(L: *lua_State, func: lua_Hook, mask: c_int, count: c_int) void;
-extern "c" fn lua_gettop(L: *lua_State) c_int;
-extern "c" fn luaL_error(L: *lua_State, fmt: [*:0]const u8, ...) c_int;
+pub extern "c" fn luaL_newstate() ?*lua_State;
+pub extern "c" fn lua_close(L: *lua_State) void;
+pub extern "c" fn luaL_openselectedlibs(L: *lua_State, libs: c_uint, nlibs: c_int) void;
+pub extern "c" fn luaL_loadstring(L: *lua_State, s: [*:0]const u8) c_int;
+pub extern "c" fn luaL_loadbufferx(L: *lua_State, buff: [*]const u8, sz: usize, name: [*:0]const u8, mode: ?[*:0]const u8) c_int;
+pub extern "c" fn lua_pcallk(L: *lua_State, nargs: c_int, nresults: c_int, errfunc: c_int, ctx: lua_KContext, k: lua_KFunction) c_int;
+pub extern "c" fn lua_getglobal(L: *lua_State, name: [*:0]const u8) c_int;
+pub extern "c" fn lua_setglobal(L: *lua_State, name: [*:0]const u8) void;
+pub extern "c" fn lua_pushcclosure(L: *lua_State, func: lua_CFunction, n: c_int) void;
+pub extern "c" fn lua_pushstring(L: *lua_State, s: [*:0]const u8) ?[*:0]const u8;
+pub extern "c" fn lua_pushlstring(L: *lua_State, s: [*]const u8, len: usize) ?[*:0]const u8;
+pub extern "c" fn lua_pushnumber(L: *lua_State, n: f64) void;
+pub extern "c" fn lua_pushboolean(L: *lua_State, b: c_int) void;
+pub extern "c" fn lua_pushinteger(L: *lua_State, n: i64) void;
+pub extern "c" fn lua_pushnil(L: *lua_State) void;
+pub extern "c" fn lua_tolstring(L: *lua_State, idx: c_int, len: ?*usize) ?[*:0]const u8;
+pub extern "c" fn lua_tonumberx(L: *lua_State, idx: c_int, isnum: ?*c_int) f64;
+pub extern "c" fn lua_tointegerx(L: *lua_State, idx: c_int, isnum: ?*c_int) i64;
+pub extern "c" fn lua_toboolean(L: *lua_State, idx: c_int) c_int;
+pub extern "c" fn lua_type(L: *lua_State, idx: c_int) c_int;
+pub extern "c" fn lua_typename(L: *lua_State, tp: c_int) [*:0]const u8;
+pub extern "c" fn lua_settop(L: *lua_State, idx: c_int) void;
+pub extern "c" fn lua_getfield(L: *lua_State, idx: c_int, k: [*:0]const u8) c_int;
+pub extern "c" fn lua_setfield(L: *lua_State, idx: c_int, k: [*:0]const u8) void;
+pub extern "c" fn lua_createtable(L: *lua_State, narr: c_int, nrec: c_int) void;
+pub extern "c" fn lua_rawseti(L: *lua_State, idx: c_int, n: i64) void;
+pub extern "c" fn lua_rawgeti(L: *lua_State, idx: c_int, n: i64) c_int;
+pub extern "c" fn lua_next(L: *lua_State, idx: c_int) c_int;
+pub extern "c" fn lua_pushvalue(L: *lua_State, idx: c_int) void;
+pub extern "c" fn lua_copy(L: *lua_State, fromidx: c_int, toidx: c_int) void;
+pub extern "c" fn lua_len(L: *lua_State, idx: c_int) void;
+pub extern "c" fn lua_sethook(L: *lua_State, func: lua_Hook, mask: c_int, count: c_int) void;
+pub extern "c" fn lua_gettop(L: *lua_State) c_int;
+pub extern "c" fn lua_rotate(L: *lua_State, idx: c_int, n: c_int) void;
+pub extern "c" fn luaL_error(L: *lua_State, fmt: [*:0]const u8, ...) c_int;
+pub extern "c" fn lua_error(L: *lua_State) c_int;
 
 pub fn luaL_newstateOrPanic() *lua_State {
     return luaL_newstate() orelse @panic("luaL_newstate returned null");
@@ -115,4 +125,13 @@ pub fn lua_pushcfunction(L: *lua_State, func: lua_CFunction) void {
 
 pub fn lua_isfunction(L: *lua_State, idx: c_int) bool {
     return lua_type(L, idx) == LUA_TFUNCTION;
+}
+
+pub fn lua_insert(L: *lua_State, idx: c_int) void {
+    lua_rotate(L, idx, 1);
+}
+
+pub fn lua_remove(L: *lua_State, idx: c_int) void {
+    lua_rotate(L, idx, -1);
+    lua_settop(L, -2);
 }

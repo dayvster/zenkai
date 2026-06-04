@@ -4,10 +4,37 @@ const log = @import("utils").log;
 const debug = @import("debug/debug.zig");
 const bootstrap = @import("core/bootstrap.zig");
 const desktop_loader = @import("core/desktop_loader.zig");
+const plugins = @import("plugins");
 
 pub fn main(init: std.process.Init) !void {
     var ctx = try bootstrap.init(init.gpa, init.minimal.args);
     defer ctx.deinit();
+
+    var pm = plugins.PluginManager.init(init.gpa);
+    defer pm.deinit();
+    pm.discoverAndLoad();
+    if (log.verbose) {
+        log.info("loaded {d} plugin(s)", .{pm.plugins.items.len});
+        for (pm.plugins.items) |plugin| {
+            var hooks_buffer: [128]u8 = undefined;
+            var cursor: usize = 0;
+            inline for (std.meta.tags(plugins.Hook)) |hook_tag| {
+                if (plugin.hooks.contains(hook_tag)) {
+                    const tag_name = @tagName(hook_tag);
+                    if (cursor > 0 and cursor + 2 <= hooks_buffer.len) {
+                        hooks_buffer[cursor] = ',';
+                        hooks_buffer[cursor + 1] = ' ';
+                        cursor += 2;
+                    }
+                    if (cursor + tag_name.len <= hooks_buffer.len) {
+                        @memcpy(hooks_buffer[cursor..][0..tag_name.len], tag_name);
+                        cursor += tag_name.len;
+                    }
+                }
+            }
+            log.info("  plugin '{s}' hooks: {s}", .{ plugin.manifest.name, hooks_buffer[0..cursor] });
+        }
+    }
 
     const items = try desktop_loader.load(init.gpa, ctx.cfg.benchmark_all);
     defer {
@@ -22,6 +49,7 @@ pub fn main(init: std.process.Init) !void {
     if (ctx.cfg.benchmark_all) debug.mark("window setup");
     var window: ui.Window = undefined;
     ui.renderList(&window, init.gpa, items, ctx.cfg.icon_size, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons);
+    window.list.plugin_manager = &pm;
     defer window.deinit();
 
     if (ctx.cfg.benchmark_all) debug.mark("show window");
