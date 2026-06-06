@@ -24,7 +24,10 @@ fn currentApp() ?*const de.DesktopApp {
     if (!idx.IsValid()) return null;
     const row = @as(usize, @intCast(idx.Row()));
     if (row >= g_list.indices.items.len) return null;
-    return &g_list.apps[g_list.indices.items[row]];
+    return switch (g_list.source) {
+        .desktop_apps => |apps| &apps[g_list.indices.items[row]],
+        .items => null,
+    };
 }
 
 fn loadAppIcon(icon_name: ?[]const u8) QIcon {
