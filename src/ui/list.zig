@@ -21,10 +21,23 @@ var g_icon_size: i32 = 32;
 var g_no_icons: bool = false;
 
 fn loadIcon(icon_name: []const u8) QIcon {
-    if (icon_name.len > 0 and icon_name[0] == '/') {
+    if (icon_name.len == 0) return QIcon.New();
+    if (icon_name[0] == '/') {
         return QIcon.New4(icon_name);
     }
     return QIcon.FromTheme(icon_name);
+}
+
+fn loadItemIcon(item: ListItem) QIcon {
+    if (item.icon.len > 0) {
+        const icon = loadIcon(item.icon);
+        if (!icon.IsNull()) return icon;
+        icon.Delete();
+    }
+    const fallback = QIcon.FromTheme("application-x-executable");
+    if (!fallback.IsNull()) return fallback;
+    fallback.Delete();
+    return makeFallbackIcon(item.name);
 }
 
 fn makeFallbackIcon(name: []const u8) QIcon {
@@ -101,6 +114,17 @@ fn tryLoadIcon(app: de.DesktopApp) QIcon {
     return makeFallbackIcon(app.name);
 }
 
+pub const ListItem = struct {
+    icon: []const u8,
+    cmd: []const u8,
+    name: []const u8,
+};
+
+const DataSource = union(enum) {
+    desktop_apps: []const de.DesktopApp,
+    items: []const ListItem,
+};
+
 var g_list: *List = undefined;
 
 fn onRowCount(_: QAbstractListModel, _: QModelIndex) callconv(.c) i32 {
@@ -117,14 +141,21 @@ fn onData(
     if (row < 0 or @as(usize, @intCast(row)) >= indices.len)
         return QVariant.New();
 
-    const app = g_list.apps[indices[@as(usize, @intCast(row))]];
+    const src_idx = indices[@as(usize, @intCast(row))];
 
     if (role == 0) {
-        return QVariant.New24(app.name);
+        const name = switch (g_list.source) {
+            .desktop_apps => |apps| apps[src_idx].name,
+            .items => |items| items[src_idx].name,
+        };
+        return QVariant.New24(name);
     }
     if (role == 1) {
         if (g_no_icons) return QVariant.New();
-        const icon = tryLoadIcon(app);
+        const icon = switch (g_list.source) {
+            .desktop_apps => |apps| tryLoadIcon(apps[src_idx]),
+            .items => |items| loadItemIcon(items[src_idx]),
+        };
         defer icon.Delete();
         return icon.ToQVariant();
     }
@@ -136,10 +167,20 @@ pub const List = struct {
     allocator: std.mem.Allocator,
     view: QListView,
     model: QAbstractListModel,
-    apps: []const de.DesktopApp,
+    source: DataSource,
     indices: std.ArrayList(usize),
 
     pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp, icon_size: i32) List {
+        g_icon_size = icon_size;
+        return initInternal(allocator, .{ .desktop_apps = apps }, icon_size);
+    }
+
+    pub fn fromItems(allocator: std.mem.Allocator, items: []const ListItem, icon_size: i32) List {
+        g_icon_size = icon_size;
+        return initInternal(allocator, .{ .items = items }, icon_size);
+    }
+
+    fn initInternal(allocator: std.mem.Allocator, source: DataSource, icon_size: i32) List {
         g_icon_size = icon_size;
 
         var model = QAbstractListModel.New();
@@ -156,16 +197,31 @@ pub const List = struct {
             .allocator = allocator,
             .view = view,
             .model = model,
-            .apps = apps,
+            .source = source,
             .indices = std.ArrayList(usize).empty,
+        };
+    }
+
+    fn sourceLen(self: *const List) usize {
+        return switch (self.source) {
+            .desktop_apps => |apps| apps.len,
+            .items => |items| items.len,
+        };
+    }
+
+    fn sourceName(self: *const List, idx: usize) []const u8 {
+        return switch (self.source) {
+            .desktop_apps => |apps| apps[idx].name,
+            .items => |items| items[idx].name,
         };
     }
 
     pub fn setFilter(self: *List, text: []const u8) void {
         self.indices.clearRetainingCapacity();
 
+        const count = self.sourceLen();
         if (text.len == 0) {
-            for (0..self.apps.len) |i|
+            for (0..count) |i|
                 self.indices.append(self.allocator, i) catch |err| log.info("OOM in setFilter: {}", .{err});
         } else {
             var lower_text_buf: [256]u8 = undefined;
@@ -176,13 +232,14 @@ pub const List = struct {
 
             const max_distance: usize = if (text.len < 3) 0 else 3;
 
-            for (self.apps, 0..) |app, i| {
+            for (0..count) |i| {
+                const name = self.sourceName(i);
                 var lower_name_buf: [256]u8 = undefined;
                 var matches = false;
 
-                if (app.name.len <= lower_name_buf.len) {
-                    for (app.name, 0..) |c, j| lower_name_buf[j] = std.ascii.toLower(c);
-                    const lower_name = lower_name_buf[0..app.name.len];
+                if (name.len <= lower_name_buf.len) {
+                    for (name, 0..) |c, j| lower_name_buf[j] = std.ascii.toLower(c);
+                    const lower_name = lower_name_buf[0..name.len];
 
                     if (std.mem.indexOf(u8, lower_name, lower_text) != null) {
                         matches = true;
@@ -236,10 +293,18 @@ pub const List = struct {
         }
         const row = @as(usize, @intCast(idx.Row()));
         if (row >= self.indices.items.len) return;
-        const app = &self.apps[self.indices.items[row]];
-        const expanded = app.expandExec(self.allocator) catch return;
-        defer self.allocator.free(expanded);
-        utils.execute(expanded, self.allocator) catch {};
+        const src_idx = self.indices.items[row];
+        switch (self.source) {
+            .desktop_apps => |apps| {
+                const app = &apps[src_idx];
+                const expanded = app.expandExec(self.allocator) catch return;
+                defer self.allocator.free(expanded);
+                utils.execute(expanded, self.allocator) catch {};
+            },
+            .items => |items| {
+                utils.execute(items[src_idx].cmd, self.allocator) catch {};
+            },
+        }
         QApp.Quit();
     }
 

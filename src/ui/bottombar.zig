@@ -97,6 +97,11 @@ pub const BottomBar = struct {
         return el;
     }
 
+    pub fn deinit(self: *BottomBar) void {
+        self.removeItems();
+        self.removeActions();
+    }
+
     pub fn setDefaultActions(self: *BottomBar) void {
         self.setActions(&.{});
     }
@@ -107,7 +112,11 @@ pub const BottomBar = struct {
 
         const n = if (actions.len > 0) actions.len else @as(usize, 2);
         self.actions = self.allocator.alloc(QAction, n) catch return;
-        self.items = self.allocator.alloc(QWidget, n) catch return;
+        self.items = self.allocator.alloc(QWidget, n) catch {
+            self.allocator.free(self.actions);
+            self.actions = &.{};
+            return;
+        };
 
         if (actions.len > 0) {
             for (actions, 0..) |a, i| {
