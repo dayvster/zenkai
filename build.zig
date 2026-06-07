@@ -66,13 +66,24 @@ pub fn build(b: *std.Build) void {
         exe.root_module.linkLibrary(artifact);
     }
 
-    exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
-    exe.root_module.linkSystemLibrary("Qt6Core", .{});
-    exe.root_module.linkSystemLibrary("Qt6Gui", .{});
-    exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
-    exe.root_module.link_libcpp = false;
-    exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/libstdc++.so" });
-    exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/libgcc_eh.a" });
+    if (target.result.os.tag == .macos) {
+        const brew_qt = if (target.result.cpu.arch == .aarch64) "/opt/homebrew/opt/qt@6/lib" else "/usr/local/opt/qt@6/lib";
+        const brew_lua = if (target.result.cpu.arch == .aarch64) "/opt/homebrew/opt/lua/lib" else "/usr/local/opt/lua/lib";
+        exe.root_module.addLibraryPath(.{ .cwd_relative = brew_qt });
+        exe.root_module.addFrameworkPath(.{ .cwd_relative = brew_qt });
+        exe.root_module.linkFramework("Qt6Core", .{});
+        exe.root_module.linkFramework("Qt6Gui", .{});
+        exe.root_module.linkFramework("Qt6Widgets", .{});
+        exe.root_module.addLibraryPath(.{ .cwd_relative = brew_lua });
+    } else {
+        exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+        exe.root_module.linkSystemLibrary("Qt6Core", .{});
+        exe.root_module.linkSystemLibrary("Qt6Gui", .{});
+        exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
+        exe.root_module.link_libcpp = false;
+        exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/libstdc++.so" });
+        exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/libgcc_eh.a" });
+    }
     exe.root_module.linkSystemLibrary("lua", .{});
     exe.root_module.linkSystemLibrary("m", .{});
 
