@@ -72,9 +72,9 @@ pub fn build(b: *std.Build) void {
         const brew_lua = if (target.result.cpu.arch == .aarch64) "/opt/homebrew/opt/lua/lib" else "/usr/local/opt/lua/lib";
         exe.root_module.addLibraryPath(.{ .cwd_relative = brew_qt });
         exe.root_module.addFrameworkPath(.{ .cwd_relative = brew_qt });
-        exe.root_module.linkFramework("Qt6Core", .{});
-        exe.root_module.linkFramework("Qt6Gui", .{});
-        exe.root_module.linkFramework("Qt6Widgets", .{});
+        exe.root_module.linkFramework("QtCore", .{});
+        exe.root_module.linkFramework("QtGui", .{});
+        exe.root_module.linkFramework("QtWidgets", .{});
         exe.root_module.addLibraryPath(.{ .cwd_relative = brew_lua });
     } else {
         exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });

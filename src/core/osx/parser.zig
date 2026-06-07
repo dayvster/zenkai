@@ -39,7 +39,7 @@ pub const PlistParser = struct {
         return error.ParseError;
     }
 
-    fn parseNode(allocator: std.mem.Allocator, tok: *TokenIterator, eat_text: bool) !PlistValue {
+    fn parseNode(allocator: std.mem.Allocator, tok: *TokenIterator, eat_text: bool) error{ ParseError, OutOfMemory }!PlistValue {
         if (eat_text) {
             if (tok.next()) |t| {
                 switch (t) {
@@ -108,24 +108,23 @@ pub const PlistParser = struct {
     }
 
     fn parseArray(allocator: std.mem.Allocator, tok: *TokenIterator) !PlistValue {
-        var items = std.ArrayList(PlistValue).init(allocator);
-        errdefer items.deinit();
+        var items: std.ArrayList(PlistValue) = .empty;
+        errdefer items.deinit(allocator);
 
         while (true) {
             const t = tok.next() orelse return error.ParseError;
             switch (t) {
                 .close => |tag| {
                     if (std.mem.eql(u8, tag, "array")) {
-                        return PlistValue{ .array = try items.toOwnedSlice() };
+                        return PlistValue{ .array = try items.toOwnedSlice(allocator) };
                     }
                     return error.ParseError;
                 },
                 .self_close, .open => {
                     const val = try parseNode(allocator, tok, false);
-                    try items.append(val);
+                    try items.append(allocator, val);
                 },
                 .text => continue,
-                .close => return error.ParseError,
             }
         }
     }
