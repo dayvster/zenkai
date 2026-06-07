@@ -18,6 +18,12 @@ const QRect = qt.QRect;
 const QFont = qt.QFont;
 const QApp = qt.QApplication;
 
+pub const ListItemAction = struct {
+    name: []const u8,
+    exec: []const u8,
+    icon: []const u8,
+};
+
 var g_icon_size: i32 = 32;
 var g_no_icons: bool = false;
 
@@ -131,6 +137,8 @@ pub const ListItem = struct {
     icon: []const u8,
     cmd: []const u8,
     name: []const u8,
+    actions: []const ListItemAction = &.{},
+    desktop_app_idx: ?usize = null,
 };
 
 const DataSource = union(enum) {
@@ -153,6 +161,31 @@ fn freePluginResults(allocator: std.mem.Allocator, results: *std.ArrayList(plugi
 }
 
 var g_list: *List = undefined;
+var g_on_item_focused: ?*const fn (item_index: usize, actions: []const ListItemAction) void = null;
+var g_current_item_actions: []const ListItemAction = &.{};
+
+fn onCurrentChanged(_: QListView, current: QModelIndex, _: QModelIndex) callconv(.c) void {
+    const row = current.Row();
+    if (row < 0) return;
+    const urow = @as(usize, @intCast(row));
+    if (urow >= g_list.indices.items.len) return;
+
+    const entry = g_list.indices.items[urow];
+    switch (entry) {
+        .item => |item_idx| {
+            const items = switch (g_list.source) {
+                .items => |is| is,
+                .desktop_apps => return,
+            };
+            g_current_item_actions = items[item_idx].actions;
+            if (g_on_item_focused) |cb| cb(item_idx, items[item_idx].actions);
+        },
+        .plugin => {
+            g_current_item_actions = &.{};
+            if (g_on_item_focused) |cb| cb(0, &.{});
+        },
+    }
+}
 
 fn onRowCount(_: QAbstractListModel, _: QModelIndex) callconv(.c) i32 {
     return @intCast(g_list.indices.items.len);
@@ -235,6 +268,7 @@ pub const List = struct {
         defer icon_sz.Delete();
         view.SetIconSize(icon_sz);
         view.SetModel(model);
+        view.OnCurrentChanged(onCurrentChanged);
 
         return .{
             .allocator = allocator,
@@ -245,6 +279,14 @@ pub const List = struct {
             .plugin_results = std.ArrayList(plugins.PluginResult).empty,
             .plugin_manager = plugin_manager,
         };
+    }
+
+    pub fn setOnItemFocused(callback: *const fn (item_index: usize, actions: []const ListItemAction) void) void {
+        g_on_item_focused = callback;
+    }
+
+    pub fn currentItemActions() []const ListItemAction {
+        return g_current_item_actions;
     }
 
     fn sourceLen(self: *const List) usize {

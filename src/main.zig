@@ -21,19 +21,21 @@ pub fn main(init: std.process.Init) !void {
     var pm = plugins.setup(init.gpa);
     defer pm.deinit();
 
-    const items = try desktop_loader.load(init.gpa, ctx.cfg.benchmark_all);
+    const items = try desktop_loader.load(init.gpa, ctx.cfg.benchmark_all, ctx.cfg.show_actions, ctx.cfg.actions_bottombar);
     defer {
         for (items) |item| {
             init.gpa.free(item.icon);
             init.gpa.free(item.cmd);
             init.gpa.free(item.name);
+            if (item.actions.len > 0) desktop_loader.freeListItemActions(init.gpa, item.actions);
         }
         init.gpa.free(items);
+        desktop_loader.freeDesktopApps();
     }
 
     if (ctx.cfg.benchmark_all) debug.mark("window setup");
     var window: ui.Window = undefined;
-    ui.renderList(&window, init.gpa, items, ctx.cfg.icon_size, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons);
+    ui.renderList(&window, init.gpa, items, ctx.cfg.icon_size, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons, ctx.cfg.actions_bottombar);
     window.list.plugin_manager = &pm;
     defer window.deinit();
 

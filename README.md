@@ -27,12 +27,14 @@ zig build run
 
 Binary at `zig-out/bin/zenkai`.
 
-## Run 
-For optimal results especially if you are using a Nvidia graphics card I've included `zenkai.sh` with some sane defaults that brings the RAM usage of the launcher down to 20-50MB 
+## Run
+
+For optimal results especially if you are using a Nvidia graphics card I've included `zenkai.sh` with some sane defaults that brings the RAM usage of the launcher down to 20-50MB
 
 *Your results may vary
 
+Flags: `--theme=dark|light`, `--no-icons`, `--no-bottom-bar`, `--show-actions` (parses `[Desktop Action ...]` sections for entries like "New Window", "New Private Window").
 
 ## Status
 
-v0.1. Core loop works — scan, search, filter. What's missing: no app launching, no icons in the list, theme switching isn't wired. Getting there.
+v0.1. Core loop works — scan, search, filter, launch. Flatpak/symlinks supported. Desktop actions behind `--show-actions`.

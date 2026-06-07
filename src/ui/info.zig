@@ -3,6 +3,7 @@ const qt = @import("libqt6zig");
 const theme = @import("../theme/theme.zig");
 const applist = @import("list.zig");
 const de = @import("desktopapp");
+const desktop_loader = @import("../core/desktop_loader.zig");
 const utils = @import("utils");
 
 const QAction = qt.QAction;
@@ -24,17 +25,20 @@ fn currentApp() ?*const de.DesktopApp {
     if (!idx.IsValid()) return null;
     const row = @as(usize, @intCast(idx.Row()));
     if (row >= g_list.indices.items.len) return null;
-    return switch (g_list.source) {
-        .desktop_apps => |apps| {
-            const entry = g_list.indices.items[row];
-            const app_idx = switch (entry) {
-                .item => |i| i,
-                .plugin => return null,
-            };
-            return &apps[app_idx];
-        },
-        .items => null,
+    const entry = g_list.indices.items[row];
+    const item_idx = switch (entry) {
+        .item => |i| i,
+        .plugin => return null,
     };
+    const da_idx = switch (g_list.source) {
+        .desktop_apps => |apps| {
+            return &apps[item_idx];
+        },
+        .items => |items| items[item_idx].desktop_app_idx orelse return null,
+    };
+    const apps = desktop_loader.getDesktopApps();
+    if (da_idx < apps.len) return &apps[da_idx];
+    return null;
 }
 
 fn loadAppIcon(icon_name: ?[]const u8) QIcon {
@@ -121,6 +125,10 @@ const Html = struct {
 };
 
 pub fn onInfo(_: QAction) callconv(.c) void {
+    showInfoPanel();
+}
+
+pub fn showInfoPanel() void {
     const app = currentApp() orelse return;
 
     var html = Html{ .buf = .empty, .gpa = g_list.allocator };

@@ -1,11 +1,13 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const applist = @import("list.zig");
+const ListItemAction = @import("list.zig").ListItemAction;
 const info = @import("info.zig");
 
 const HBoxLayout = qt.QHBoxLayout;
 const QAction = qt.QAction;
 const QToolButton = qt.QToolButton;
+const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;
 const QIcon = qt.QIcon;
 const QLabel = qt.QLabel;
@@ -31,6 +33,7 @@ pub const BottomBar = struct {
     actions: []QAction,
     items: []QWidget,
     parent: QWidget,
+    info_shortcut: QShortcut,
 
     pub fn init(allocator: std.mem.Allocator, parent: qt.QWidget) BottomBar {
         const container = QWidget.New2();
@@ -45,12 +48,21 @@ pub const BottomBar = struct {
             .actions = &.{},
             .items = &.{},
             .parent = parent,
+            .info_shortcut = undefined,
         };
     }
 
     pub fn setup(self: *BottomBar, list: *applist.List) void {
         g_app_list = list;
         info.setup(list, self.parent);
+        const seq = QKeySequence.New2("Ctrl+I");
+        defer seq.Delete();
+        self.info_shortcut = QShortcut.New2(seq, self.parent);
+        self.info_shortcut.OnActivated(struct {
+            fn handler(_: QShortcut) callconv(.c) void {
+                info.showInfoPanel();
+            }
+        }.handler);
     }
 
     fn removeActions(self: *BottomBar) void {
@@ -106,6 +118,41 @@ pub const BottomBar = struct {
         self.setActions(&.{});
     }
 
+    pub fn setItemActions(self: *BottomBar, actions: []const ListItemAction) void {
+        self.removeItems();
+        self.removeActions();
+
+        const n = @min(actions.len, 10);
+        if (n == 0) {
+            self.setDefaultActions();
+            return;
+        }
+
+        self.actions = &.{};
+        self.items = self.allocator.alloc(QWidget, n) catch return;
+
+        for (actions[0..n], 0..) |a, i| {
+            const el = QWidget.New2();
+            var row = HBoxLayout.New(el);
+            row.SetContentsMargins(0, 0, 0, 0);
+            row.SetSpacing(4);
+
+            var buf: [8]u8 = undefined;
+            const shortcut_str = if (i < 9)
+                std.fmt.bufPrint(&buf, "Ctrl+{d}", .{i + 1}) catch "?"
+            else
+                std.fmt.bufPrint(&buf, "Ctrl+0", .{}) catch "?";
+            const shortcut_label = QLabel.New3(shortcut_str);
+            row.AddWidget(shortcut_label);
+
+            const name_label = QLabel.New3(a.name);
+            row.AddWidget(name_label);
+
+            self.layout.AddWidget(el);
+            self.items[i] = el;
+        }
+    }
+
     pub fn setActions(self: *BottomBar, actions: []const Action) void {
         self.removeItems();
         self.removeActions();
@@ -133,7 +180,7 @@ pub const BottomBar = struct {
             {
                 const icon = QIcon.FromTheme("dialog-information");
                 defer icon.Delete();
-                self.actions[1] = self.buildAction(icon, "Info", "Ctrl+I", info.onInfo);
+                self.actions[1] = self.buildAction(icon, "Info", "", info.onInfo);
                 self.items[1] = self.buildItem(self.actions[1], "Ctrl+I");
             }
         }
