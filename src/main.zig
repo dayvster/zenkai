@@ -53,11 +53,13 @@ pub fn main(init: std.process.Init) !void {
     defer window.deinit();
 
     if (ctx.cfg.benchmark_all) debug.mark("show window");
+    window.show();
+
     if (ctx.cfg.start_timer) {
         const elapsed = @as(f64, @floatFromInt(debug.monotonicNs() - ctx.start_ns)) / std.time.ns_per_ms;
         log.info("appeared on screen in {d:.2}ms", .{elapsed});
     }
     if (ctx.cfg.benchmark_all) debug.printBenchmarks();
 
-    window.show();
+    ui.Window.exec();
 }
