@@ -98,6 +98,34 @@ fn setupAPI(L: *lua.lua_State) void {
     lua.lua_setglobal(L, "api");
 }
 
+pub fn setup(allocator: std.mem.Allocator) PluginManager {
+    var pm = PluginManager.init(allocator);
+    pm.discoverAndLoad();
+    if (utils.log.verbose) {
+        utils.log.info("loaded {d} plugin(s)", .{pm.plugins.items.len});
+        for (pm.plugins.items) |plugin| {
+            var hooks_buffer: [128]u8 = undefined;
+            var cursor: usize = 0;
+            inline for (std.meta.tags(Hook)) |hook_tag| {
+                if (plugin.hooks.contains(hook_tag)) {
+                    const tag_name = @tagName(hook_tag);
+                    if (cursor > 0 and cursor + 2 <= hooks_buffer.len) {
+                        hooks_buffer[cursor] = ',';
+                        hooks_buffer[cursor + 1] = ' ';
+                        cursor += 2;
+                    }
+                    if (cursor + tag_name.len <= hooks_buffer.len) {
+                        @memcpy(hooks_buffer[cursor..][0..tag_name.len], tag_name);
+                        cursor += tag_name.len;
+                    }
+                }
+            }
+            utils.log.info("  plugin '{s}' hooks: {s}", .{ plugin.manifest.name, hooks_buffer[0..cursor] });
+        }
+    }
+    return pm;
+}
+
 pub const PluginManager = struct {
     allocator: std.mem.Allocator,
     plugins: std.ArrayList(Plugin),

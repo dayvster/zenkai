@@ -109,14 +109,14 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const osx_module = b.addModule("osx", .{
+    const osx_module = if (target.result.os.tag == .macos) b.addModule("osx", .{
         .root_source_file = b.path("src/core/osx/osx.zig"),
         .imports = &.{
             .{ .name = "desktopapp", .module = desktopapp_module },
             .{ .name = "utils", .module = utils_module },
             .{ .name = "libqt6zig", .module = qt6zig.module("libqt6zig") },
         },
-    });
+    }) else null;
 
     exe.root_module.addImport("utils", utils_module);
     exe.root_module.addImport("desktopapp", desktopapp_module);
@@ -124,7 +124,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("config", config_module);
     exe.root_module.addImport("lua_capi", lua_capi_module);
     exe.root_module.addImport("plugins", plugins_module);
-    exe.root_module.addImport("osx", osx_module);
+    if (osx_module) |mod| exe.root_module.addImport("osx", mod);
     exe.step.dependOn(&check_lua.step);
     b.installArtifact(exe);
 
