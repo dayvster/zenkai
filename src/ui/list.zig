@@ -1,6 +1,7 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const de = @import("desktopapp");
+const plugins = @import("plugins");
 const utils = @import("utils");
 const log = @import("utils").log;
 
@@ -114,6 +115,18 @@ fn tryLoadIcon(app: de.DesktopApp) QIcon {
     return makeFallbackIcon(app.name);
 }
 
+fn tryLoadPluginIcon(icon_name: []const u8) QIcon {
+    if (icon_name.len > 0) {
+        const icon = if (icon_name[0] == '/') QIcon.New4(icon_name) else QIcon.FromTheme(icon_name);
+        if (!icon.IsNull()) return icon;
+        icon.Delete();
+    }
+    const fallback = QIcon.FromTheme("application-x-executable");
+    if (!fallback.IsNull()) return fallback;
+    fallback.Delete();
+    return makeFallbackIcon("pl");
+}
+
 pub const ListItem = struct {
     icon: []const u8,
     cmd: []const u8,
@@ -124,6 +137,20 @@ const DataSource = union(enum) {
     desktop_apps: []const de.DesktopApp,
     items: []const ListItem,
 };
+
+pub const IndexEntry = union(enum) {
+    item: usize,
+    plugin: usize,
+};
+
+fn freePluginResults(allocator: std.mem.Allocator, results: *std.ArrayList(plugins.PluginResult)) void {
+    for (results.items) |plugin_result| {
+        allocator.free(plugin_result.title);
+        allocator.free(plugin_result.subtitle);
+        allocator.free(plugin_result.icon);
+    }
+    results.clearRetainingCapacity();
+}
 
 var g_list: *List = undefined;
 
@@ -141,23 +168,37 @@ fn onData(
     if (row < 0 or @as(usize, @intCast(row)) >= indices.len)
         return QVariant.New();
 
-    const src_idx = indices[@as(usize, @intCast(row))];
+    const entry = indices[@as(usize, @intCast(row))];
 
-    if (role == 0) {
-        const name = switch (g_list.source) {
-            .desktop_apps => |apps| apps[src_idx].name,
-            .items => |items| items[src_idx].name,
-        };
-        return QVariant.New24(name);
-    }
-    if (role == 1) {
-        if (g_no_icons) return QVariant.New();
-        const icon = switch (g_list.source) {
-            .desktop_apps => |apps| tryLoadIcon(apps[src_idx]),
-            .items => |items| loadItemIcon(items[src_idx]),
-        };
-        defer icon.Delete();
-        return icon.ToQVariant();
+    switch (entry) {
+        .item => |idx| {
+            if (role == 0) {
+                const name = switch (g_list.source) {
+                    .desktop_apps => |apps| apps[idx].name,
+                    .items => |items| items[idx].name,
+                };
+                return QVariant.New24(name);
+            }
+            if (role == 1) {
+                if (g_no_icons) return QVariant.New();
+                const icon = switch (g_list.source) {
+                    .desktop_apps => |apps| tryLoadIcon(apps[idx]),
+                    .items => |items| loadItemIcon(items[idx]),
+                };
+                defer icon.Delete();
+                return icon.ToQVariant();
+            }
+        },
+        .plugin => |plugin_idx| {
+            const plugin_result = &g_list.plugin_results.items[plugin_idx];
+            if (role == 0) return QVariant.New24(plugin_result.title);
+            if (role == 1) {
+                if (g_no_icons) return QVariant.New();
+                const icon = tryLoadPluginIcon(plugin_result.icon);
+                defer icon.Delete();
+                return icon.ToQVariant();
+            }
+        },
     }
 
     return QVariant.New();
@@ -168,19 +209,21 @@ pub const List = struct {
     view: QListView,
     model: QAbstractListModel,
     source: DataSource,
-    indices: std.ArrayList(usize),
+    indices: std.ArrayList(IndexEntry),
+    plugin_results: std.ArrayList(plugins.PluginResult),
+    plugin_manager: ?*plugins.PluginManager,
 
-    pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp, icon_size: i32) List {
+    pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp, icon_size: i32, plugin_manager: ?*plugins.PluginManager) List {
         g_icon_size = icon_size;
-        return initInternal(allocator, .{ .desktop_apps = apps }, icon_size);
+        return initInternal(allocator, .{ .desktop_apps = apps }, icon_size, plugin_manager);
     }
 
     pub fn fromItems(allocator: std.mem.Allocator, items: []const ListItem, icon_size: i32) List {
         g_icon_size = icon_size;
-        return initInternal(allocator, .{ .items = items }, icon_size);
+        return initInternal(allocator, .{ .items = items }, icon_size, null);
     }
 
-    fn initInternal(allocator: std.mem.Allocator, source: DataSource, icon_size: i32) List {
+    fn initInternal(allocator: std.mem.Allocator, source: DataSource, icon_size: i32, plugin_manager: ?*plugins.PluginManager) List {
         g_icon_size = icon_size;
 
         var model = QAbstractListModel.New();
@@ -198,7 +241,9 @@ pub const List = struct {
             .view = view,
             .model = model,
             .source = source,
-            .indices = std.ArrayList(usize).empty,
+            .indices = std.ArrayList(IndexEntry).empty,
+            .plugin_results = std.ArrayList(plugins.PluginResult).empty,
+            .plugin_manager = plugin_manager,
         };
     }
 
@@ -217,12 +262,13 @@ pub const List = struct {
     }
 
     pub fn setFilter(self: *List, text: []const u8) void {
+        freePluginResults(self.allocator, &self.plugin_results);
         self.indices.clearRetainingCapacity();
 
         const count = self.sourceLen();
         if (text.len == 0) {
             for (0..count) |i|
-                self.indices.append(self.allocator, i) catch |err| log.info("OOM in setFilter: {}", .{err});
+                self.indices.append(self.allocator, IndexEntry{ .item = i }) catch |err| log.info("OOM in setFilter: {}", .{err});
         } else {
             var lower_text_buf: [256]u8 = undefined;
             const lower_text = if (text.len <= lower_text_buf.len) blk: {
@@ -254,7 +300,16 @@ pub const List = struct {
                 }
 
                 if (matches) {
-                    self.indices.append(self.allocator, i) catch |err| log.info("OOM in setFilter: {}", .{err});
+                    self.indices.append(self.allocator, IndexEntry{ .item = i }) catch |err| log.info("OOM in setFilter: {}", .{err});
+                }
+            }
+        }
+
+        if (self.plugin_manager) |plugin_manager| {
+            if (text.len > 0) {
+                plugin_manager.queryAll(text, &self.plugin_results);
+                for (0..self.plugin_results.items.len) |plugin_index| {
+                    self.indices.append(self.allocator, IndexEntry{ .plugin = plugin_index }) catch |err| log.info("OOM in setFilter: {}", .{err});
                 }
             }
         }
@@ -293,16 +348,24 @@ pub const List = struct {
         }
         const row = @as(usize, @intCast(idx.Row()));
         if (row >= self.indices.items.len) return;
-        const src_idx = self.indices.items[row];
-        switch (self.source) {
-            .desktop_apps => |apps| {
-                const app = &apps[src_idx];
-                const expanded = app.expandExec(self.allocator) catch return;
-                defer self.allocator.free(expanded);
-                utils.execute(expanded, self.allocator) catch {};
+
+        switch (self.indices.items[row]) {
+            .item => |item_idx| {
+                switch (self.source) {
+                    .desktop_apps => |apps| {
+                        const app = &apps[item_idx];
+                        const expanded = app.expandExec(self.allocator) catch return;
+                        defer self.allocator.free(expanded);
+                        utils.execute(expanded, self.allocator) catch {};
+                    },
+                    .items => |items| {
+                        utils.execute(items[item_idx].cmd, self.allocator) catch {};
+                    },
+                }
             },
-            .items => |items| {
-                utils.execute(items[src_idx].cmd, self.allocator) catch {};
+            .plugin => |plugin_result_index| {
+                const plugin_result = &self.plugin_results.items[plugin_result_index];
+                if (self.plugin_manager) |plugin_manager| plugin_manager.handleSelect(plugin_result.plugin_index, plugin_result.id);
             },
         }
         QApp.Quit();
@@ -313,6 +376,8 @@ pub const List = struct {
     }
 
     pub fn deinit(self: *List) void {
+        freePluginResults(self.allocator, &self.plugin_results);
+        self.plugin_results.deinit(self.allocator);
         self.model.Delete();
         self.indices.deinit(self.allocator);
     }

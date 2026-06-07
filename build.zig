@@ -1,6 +1,9 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
+    const check_lua = b.addSystemCommand(&.{ "pkg-config", "--exists", "lua" });
+    check_lua.has_side_effects = false;
+
     const target = b.standardTargetOptions(.{});
 
     const module = b.createModule(.{
@@ -70,6 +73,12 @@ pub fn build(b: *std.Build) void {
     exe.root_module.link_libcpp = false;
     exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/libstdc++.so" });
     exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/libgcc_eh.a" });
+    exe.root_module.linkSystemLibrary("lua", .{});
+    exe.root_module.linkSystemLibrary("m", .{});
+
+    const lua_capi_module = b.addModule("lua_capi", .{
+        .root_source_file = b.path("src/plugins/lua_capi.zig"),
+    });
 
     const utils_module = b.addModule("utils", .{
         .root_source_file = b.path("src/utils/utils.zig"),
@@ -92,10 +101,21 @@ pub fn build(b: *std.Build) void {
         .imports = &.{.{ .name = "utils", .module = utils_module }},
     });
 
+    const plugins_module = b.addModule("plugins", .{
+        .root_source_file = b.path("src/plugins/plugins.zig"),
+        .imports = &.{
+            .{ .name = "lua_capi", .module = lua_capi_module },
+            .{ .name = "utils", .module = utils_module },
+        },
+    });
+
     exe.root_module.addImport("utils", utils_module);
     exe.root_module.addImport("desktopapp", desktopapp_module);
     exe.root_module.addImport("dapp_parser", dapp_parser_module);
     exe.root_module.addImport("config", config_module);
+    exe.root_module.addImport("lua_capi", lua_capi_module);
+    exe.root_module.addImport("plugins", plugins_module);
+    exe.step.dependOn(&check_lua.step);
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
@@ -118,6 +138,22 @@ pub fn build(b: *std.Build) void {
 
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
+    const plugin_test_module = b.createModule(.{
+        .root_source_file = b.path("src/plugins/plugins.test.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    plugin_test_module.addImport("lua_capi", lua_capi_module);
+    plugin_test_module.linkSystemLibrary("lua", .{});
+    plugin_test_module.linkSystemLibrary("m", .{});
+
+    const plugin_tests = b.addTest(.{
+        .root_module = plugin_test_module,
+    });
+
+    const run_plugin_tests = b.addRunArtifact(plugin_tests);
+
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_exe_tests.step);
+    test_step.dependOn(&run_plugin_tests.step);
 }

@@ -103,6 +103,9 @@ pub const Window = struct {
 
     pub fn show(self: *Window) void {
         self.widget.Show();
+    }
+
+    pub fn exec() void {
         _ = QApp.Exec();
     }
 
