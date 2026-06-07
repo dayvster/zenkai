@@ -13,8 +13,6 @@ pub const AppReader = struct {
 
     const default_locations = [_][]const u8{
         "/Applications",
-        "/System/Applications",
-        "/System/Library/CoreServices",
         "~/Applications",
         "/usr/local/Applications",
     };
@@ -46,7 +44,7 @@ pub const AppReader = struct {
         const options = fsutils.ReadDirOptions{
             .extensions = &[_][]const u8{".app"},
             .recursive = true,
-            .max_depth = 4,
+            .max_depth = 1,
         };
 
         for (default_locations) |loc| {
@@ -62,6 +60,15 @@ pub const AppReader = struct {
             }
 
             for (found.items) |bundle_path| {
+                const basename = std.fs.path.basename(bundle_path);
+                if (std.mem.indexOf(u8, basename, "Helper") != null or
+                    std.mem.indexOf(u8, basename, "Updater") != null or
+                    std.mem.indexOf(u8, basename, "Crashpad") != null or
+                    std.mem.indexOf(u8, bundle_path, "/Frameworks/") != null or
+                    std.mem.indexOf(u8, bundle_path, "/Contents/") != null)
+                {
+                    continue;
+                }
                 try new_bundles.append(self.allocator, try self.allocator.dupe(u8, bundle_path));
             }
         }

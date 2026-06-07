@@ -5,8 +5,16 @@ const debug = @import("debug/debug.zig");
 const bootstrap = @import("core/bootstrap.zig");
 const desktop_loader = @import("core/desktop_loader.zig");
 const plugins = @import("plugins");
+const builtin = @import("builtin");
 
 pub fn main(init: std.process.Init) !void {
+    if (builtin.os.tag == .macos) {
+        const H = struct {
+            extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
+            extern var __stderrp: *anyopaque;
+        };
+        _ = H.freopen("/dev/null", "w", H.__stderrp);
+    }
     var ctx = try bootstrap.init(init.gpa, init.minimal.args);
     defer ctx.deinit();
 

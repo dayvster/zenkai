@@ -3,6 +3,8 @@ const plist = @import("plist.zig");
 
 const PlistValue = plist.PlistValue;
 
+extern fn system([*:0]const u8) c_int;
+
 pub const PlistParser = struct {
     pub fn parse(allocator: std.mem.Allocator, content: []const u8) !PlistValue {
         const ptype = plist.BinOrXML(content) catch {
@@ -170,38 +172,42 @@ pub const PlistParser = struct {
     }
 
     fn convertBinToXML(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
-        const plutil_args = [_][*:0]const u8{ "plutil", "-convert", "xml1", "-o", "-", "-", null };
+        const tmp_in = "/tmp/zenkai_plist_in.bin";
+        const tmp_out = "/tmp/zenkai_plist_out.xml";
+        const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+        const cwd = std.Io.Dir.cwd();
 
-        var proc = std.process.Child.init(&plutil_args, allocator);
-        proc.stdin_behavior = .Pipe;
-        proc.stdout_behavior = .Pipe;
-        proc.stderr_behavior = .Ignore;
-
-        try proc.spawn();
-        try proc.stdin.?.writeAll(input);
-        proc.stdin.?.close();
-
-        const output = try proc.stdout.?.readToEndAlloc(allocator, 10 * 1024 * 1024);
-        const term = try proc.wait();
-
-        switch (term) {
-            .Exited => |code| {
-                if (code != 0) {
-                    allocator.free(output);
-                    return error.ParseError;
-                }
-            },
-            else => {
-                allocator.free(output);
-                return error.ParseError;
-            },
+        {
+            const file = try std.Io.Dir.createFile(cwd, io, tmp_in, .{});
+            defer std.Io.File.close(file, io);
+            var buf: [4096]u8 = undefined;
+            var writer = std.Io.File.Writer.init(file, io, &buf);
+            try writer.interface.writeAll(input);
+            try writer.flush();
         }
+        defer std.Io.Dir.deleteFile(cwd, io, tmp_in) catch {};
+        defer std.Io.Dir.deleteFile(cwd, io, tmp_out) catch {};
 
-        if (output.len == 0) {
-            allocator.free(output);
+        const exit_code = system("plutil -convert xml1 -o /tmp/zenkai_plist_out.xml /tmp/zenkai_plist_in.bin");
+        if (exit_code != 0) {
             return error.ParseError;
         }
-        return output;
+
+        const xml_file = try std.Io.Dir.openFile(cwd, io, tmp_out, .{});
+        defer std.Io.File.close(xml_file, io);
+
+        const stat = try std.Io.Dir.statFile(cwd, io, tmp_out, .{});
+        const size = @as(usize, @intCast(stat.size));
+
+        var buf: [4096]u8 = undefined;
+        var reader = std.Io.File.Reader.init(xml_file, io, &buf);
+        const xml = try reader.interface.readAlloc(allocator, size);
+
+        if (xml.len == 0) {
+            allocator.free(xml);
+            return error.ParseError;
+        }
+        return xml;
     }
 };
 
