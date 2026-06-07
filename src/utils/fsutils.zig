@@ -83,17 +83,15 @@ fn readDirInternal(
         else
             true;
 
-        if (entry.kind == .directory) {
+        if (entry.kind == .file or entry.kind == .sym_link) {
             if (matches_ext) {
                 try results.append(allocator, full_path);
-            } else if (options.recursive and depth < options.max_depth) {
-                try readDirInternal(allocator, full_path, options, results, depth + 1);
-                allocator.free(full_path);
             } else {
                 allocator.free(full_path);
             }
-        } else if (entry.kind == .file and matches_ext) {
-            try results.append(allocator, full_path);
+        } else if ((entry.kind == .directory or entry.kind == .sym_link) and options.recursive) {
+            try readDirInternal(allocator, full_path, options, results, depth + 1);
+            allocator.free(full_path);
         } else {
             allocator.free(full_path);
         }
