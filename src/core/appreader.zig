@@ -65,7 +65,9 @@ pub const AppReader = struct {
             }
 
             for (found.items) |file_path| {
-                try new_files.append(self.allocator, try self.allocator.dupe(u8, file_path));
+                const duped = try self.allocator.dupe(u8, file_path);
+                errdefer self.allocator.free(duped);
+                try new_files.append(self.allocator, duped);
             }
         }
 

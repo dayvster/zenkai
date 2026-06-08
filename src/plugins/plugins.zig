@@ -18,8 +18,6 @@ var g_active_results: *std.ArrayList(PluginResult) = undefined;
 var g_next_result_identifier: usize = 0;
 var g_pending_open_url: ?[]const u8 = null;
 
-extern "c" var environ: [*:null]?[*:0]u8;
-
 fn apiAddResult(L: *lua.lua_State) callconv(.c) c_int {
     const title = if (lua.lua_tostring(L, 1)) |s| std.mem.sliceTo(s, 0) else "";
     const subtitle = if (lua.lua_tostring(L, 2)) |s| std.mem.sliceTo(s, 0) else "";
@@ -333,8 +331,8 @@ pub const PluginManager = struct {
             };
             const pid = std.os.linux.fork();
             if (std.os.linux.errno(pid) == .SUCCESS and pid == 0) {
-                _ = std.os.linux.execve("/usr/bin/xdg-open", &argv, environ);
-                _ = std.os.linux.execve("/bin/xdg-open", &argv, environ);
+                _ = std.os.linux.execve("/usr/bin/xdg-open", &argv, utils.environ);
+                _ = std.os.linux.execve("/bin/xdg-open", &argv, utils.environ);
                 std.os.linux.exit(1);
             }
         }

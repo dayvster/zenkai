@@ -51,7 +51,7 @@ pub const DappParser = struct {
         };
     }
 
-    fn splitToKV(line: []const u8) ?struct { key: []const u8, value: []const u8 } {
+    pub fn splitToKV(line: []const u8) ?struct { key: []const u8, value: []const u8 } {
         if (std.mem.indexOfScalar(u8, line, '=')) |eq_pos| {
             const key = std.mem.trim(u8, line[0..eq_pos], " \t");
             const value = std.mem.trim(u8, line[eq_pos + 1 ..], " \t");
