@@ -3,7 +3,7 @@ QWidget {
     font-size: 13px;
 }
 
-QLineEdit {
+#searchbarInput {
     border-width: 1px;
     border-style: solid;
     border-radius: 6px;
@@ -11,66 +11,56 @@ QLineEdit {
     font-size: 14px;
 }
 
-QLineEdit:focus {
+#searchbarInput:focus {
     border-width: 1px;
     border-style: solid;
 }
 
-QLineEdit::placeholder {
+#searchbarInput::placeholder {
 }
 
-QListWidget {
+#appList {
     border: none;
     outline: none;
     padding: 0px;
 }
 
-QListWidget::item {
+#appList::item {
     padding: 8px 12px;
-    border-radius: 4px;
 }
 
-QListWidget::item:hover {
+#appList::item:hover {
 }
 
-QListWidget::item:selected {
+#appList::item:current,
+#appList::item:selected {
 }
 
-QScrollArea {
-    border: none;
-}
-
-QScrollBar:vertical {
+#appList QScrollBar:vertical {
     width: 6px;
     margin: 0;
     border-radius: 3px;
 }
 
-QScrollBar::handle:vertical {
+#appList QScrollBar::handle:vertical {
     min-height: 30px;
     border-radius: 3px;
 }
 
-QScrollBar::handle:vertical:hover {
+#appList QScrollBar::handle:vertical:hover {
 }
 
-QScrollBar::add-line:vertical,
-QScrollBar::sub-line:vertical {
+#appList QScrollBar::add-line:vertical,
+#appList QScrollBar::sub-line:vertical {
     height: 0;
 }
 
-QScrollBar::add-page:vertical,
-QScrollBar::sub-page:vertical {
+#appList QScrollBar::add-page:vertical,
+#appList QScrollBar::sub-page:vertical {
     background: none;
 }
 
-QLabel {
-    border: none;
-    font-size: 11px;
-    padding-right: 8px;
-}
-
-QToolButton {
+#bottomBar QToolButton {
     border: none;
     padding: 4px 6px;
     font-size: 12px;
@@ -78,4 +68,11 @@ QToolButton {
     background: transparent;
 }
 
+#bottomBar QToolButton:hover {
+}
 
+#bottomBar QLabel {
+    border: none;
+    font-size: 11px;
+    padding-right: 8px;
+}

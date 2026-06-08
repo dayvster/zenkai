@@ -1,5 +1,6 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
+const config = @import("config");
 
 const List = @import("list.zig").List;
 const ListItem = @import("list.zig").ListItem;
@@ -19,21 +20,16 @@ var g_search_text_len: usize = 0;
 
 fn onSearchTextChanged(_: QLineEdit, text_cstr: [*:0]const u8) callconv(.c) void {
     const text = std.mem.span(text_cstr);
-    
-    // Store the search text
     const len = @min(text.len, g_search_text.len);
     @memcpy(g_search_text[0..len], text[0..len]);
     g_search_text_len = len;
-    
-    // Restart the debounce timer
     if (g_window.debounce_timer) |timer| {
         timer.Stop();
-        timer.Start(150); // 150ms debounce delay
+        timer.Start(150);
     }
 }
 
 fn onDebounceTimeout(_: QTimer) callconv(.c) void {
-    // Apply the filter after debounce delay
     const text = g_search_text[0..g_search_text_len];
     g_window.list.setFilter(text);
 }
@@ -54,14 +50,14 @@ pub const Window = struct {
         self: *Window,
         allocator: std.mem.Allocator,
         items: []const ListItem,
-        icon_size: i32,
+        vis: config.VisualConfig,
         no_bottom_bar: bool,
         no_icons: bool,
     ) void {
         List.setNoIcons(no_icons);
 
-        const win_w: i32 = 600;
-        const win_h: i32 = 500;
+        const win_w: i32 = @max(vis.window_width, 200);
+        const win_h: i32 = @max(vis.window_height, 200);
 
         var window = QWidget.New2();
         window.SetWindowTitle("zenkai");
@@ -75,18 +71,20 @@ pub const Window = struct {
         );
 
         const main_layout = QVBoxLayout.New(window);
+        main_layout.SetContentsMargins(vis.layout_margin, vis.layout_margin, vis.layout_margin, vis.layout_margin);
+        main_layout.SetSpacing(vis.layout_spacing);
 
         var search_bar = QLineEdit.New2();
+        search_bar.SetObjectName("searchbarInput");
         search_bar.SetPlaceholderText("Search apps...");
         search_bar.SetClearButtonEnabled(false);
 
-        var list = List.fromItems(allocator, items, icon_size);
+        var list = List.fromItems(allocator, items, vis.icon_size);
         list.setFilter("");
 
         main_layout.AddWidget(search_bar);
         main_layout.AddWidget(list.view);
 
-        // Create debounce timer
         var debounce_timer = QTimer.New2(window);
         debounce_timer.SetSingleShot(true);
         debounce_timer.OnTimeout(onDebounceTimeout);
@@ -101,7 +99,7 @@ pub const Window = struct {
         };
 
         if (!no_bottom_bar) {
-            var bar = BottomBar.init(allocator, window);
+            var bar = BottomBar.init(allocator, window, vis);
             bar.setup(&self.list);
             bar.setDefaultActions();
             main_layout.AddWidget(bar.container);

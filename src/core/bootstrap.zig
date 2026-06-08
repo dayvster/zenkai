@@ -14,6 +14,7 @@ pub const Context = struct {
     allocator: std.mem.Allocator,
     argv: [][:0]u8,
     cfg: args.Config,
+    visual: config.VisualConfig,
     app: qt.QApplication,
     start_ns: u64,
 
@@ -28,6 +29,15 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     errdefer qt.deinit(allocator, argv);
 
     const cfg = args.parse(argv);
+
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const config_path = try config.deploy(io, allocator);
+    defer allocator.free(config_path);
+
+    var visual = try config.loadConfig(allocator, config_path);
+    visual.applyOverrides(cfg);
+    if (cfg.icon_size) |s| visual.icon_size = s;
+
     const theme_resolved = theme.resolve(allocator, cfg.theme);
     defer if (theme_resolved.allocation) |m| allocator.free(m);
 
@@ -40,14 +50,8 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     ui.theme.setApp(app);
 
     if (cfg.benchmark_all) debug.mark("theme apply");
-    ui.theme.apply(allocator, theme_resolved.qss, theme.current);
-
-    if (cfg.benchmark_all) debug.mark("config deploy");
-    {
-        const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
-        const config_path = try config.deploy(io, allocator);
-        defer allocator.free(config_path);
-    }
+    const custom_qss: ?[]const u8 = if (theme_resolved.allocation != null) theme_resolved.qss else null;
+    ui.theme.apply(allocator, visual, custom_qss, theme.current);
 
     if (cfg.benchmark_all) debug.mark("icon theme");
     if (config.detectIconTheme(allocator)) |icon_theme| {
@@ -62,6 +66,7 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
         .allocator = allocator,
         .argv = argv,
         .cfg = cfg,
+        .visual = visual,
         .app = app,
         .start_ns = start_ns,
     };

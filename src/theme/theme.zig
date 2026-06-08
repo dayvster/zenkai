@@ -6,6 +6,7 @@ pub const dark_qss = @embedFile("../styles/dark.theme.qss");
 pub const light_qss = @embedFile("../styles/light.theme.qss");
 pub const dracula_qss = @embedFile("../styles/dracula.qss");
 pub const ayu_dark_qss = @embedFile("../styles/ayu-dark.qss");
+pub const minimal_qss = @embedFile("../styles/minimal.qss");
 
 pub const Colors = struct {
     bg: []const u8,
@@ -14,6 +15,7 @@ pub const Colors = struct {
     border: []const u8,
     accent: []const u8,
     surface: []const u8,
+    highlight: []const u8,
 };
 
 pub var current: Colors = undefined;
@@ -25,6 +27,7 @@ pub const dark_colors = Colors{
     .border = "#45475a",
     .accent = "#89b4fa",
     .surface = "#313244",
+    .highlight = "#585b70",
 };
 
 pub const light_colors = Colors{
@@ -34,15 +37,17 @@ pub const light_colors = Colors{
     .border = "#ccd0da",
     .accent = "#7287fd",
     .surface = "#e6e9ef",
+    .highlight = "#acb0be",
 };
 
 pub const dracula_colors = Colors{
     .bg = "#282a36",
     .text = "#f8f8f2",
     .muted = "#6272a4",
-    .border = "#6272a4",
+    .border = "#44475a",
     .accent = "#bd93f9",
     .surface = "#44475a",
+    .highlight = "#ff79c6",
 };
 
 pub const ayu_dark_colors = Colors{
@@ -50,8 +55,19 @@ pub const ayu_dark_colors = Colors{
     .text = "#bfc7d5",
     .muted = "#565f73",
     .border = "#1f2430",
-    .accent = "#39bae6",
+    .accent = "#f29718",
     .surface = "#131721",
+    .highlight = "#e6b450",
+};
+
+pub const minimal_colors = Colors{
+    .bg = "#000000",
+    .text = "#cccccc",
+    .muted = "#555555",
+    .border = "#333333",
+    .accent = "#888888",
+    .surface = "#111111",
+    .highlight = "#444444",
 };
 
 const ThemeResult = struct {
@@ -77,6 +93,9 @@ pub fn resolve(allocator: std.mem.Allocator, theme_arg: ?[]const u8) ThemeResult
         } else if (std.mem.eql(u8, name, "ayu-dark")) {
             current = ayu_dark_colors;
             return .{ .qss = ayu_dark_qss, .allocation = null };
+        } else if (std.mem.eql(u8, name, "minimal")) {
+            current = minimal_colors;
+            return .{ .qss = minimal_qss, .allocation = null };
         } else if (!std.mem.eql(u8, name, "dark")) {
             if (readThemeFile(allocator, name)) |content| {
                 current = dark_colors;

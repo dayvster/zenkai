@@ -3,69 +3,54 @@ QWidget {
     color: #f8f8f2;
 }
 
-QLineEdit {
+#searchbarInput {
     background-color: #44475a;
     color: #f8f8f2;
-    border-color: #6272a4;
-    selection-background-color: #bd93f9;
+    border-color: #44475a;
+    selection-background-color: #ff79c6;
     selection-color: #282a36;
 }
 
-QLineEdit:focus {
+#searchbarInput:focus {
     border-color: #bd93f9;
 }
 
-QLineEdit::placeholder {
+#searchbarInput::placeholder {
     color: #6272a4;
 }
 
-QListWidget {
+#appList {
+}
+
+#appList::item {
+}
+
+#appList::item:hover {
+}
+
+#appList::item:current,
+#appList::item:selected {
+}
+
+#appList QScrollBar:vertical {
     background-color: transparent;
 }
 
-QListWidget::item {
-    color: #f8f8f2;
-    background-color: transparent;
-}
-
-QListWidget::item:hover {
-    background-color: #44475a;
-    color: #8be9fd;
-}
-
-QListWidget::item:selected {
-    background-color: #44475a;
-    color: #ff79c6;
-}
-
-QScrollBar:vertical {
-    background-color: transparent;
-}
-
-QScrollBar::handle:vertical {
-    background-color: #44475a;
-    min-height: 30px;
-    border-radius: 3px;
-}
-
-QScrollBar::handle:vertical:hover {
-    background-color: #bd93f9;
-}
-
-QScrollBar::add-line:vertical,
-QScrollBar::sub-line:vertical {
-    height: 0;
-}
-
-QScrollBar::add-page:vertical,
-QScrollBar::sub-page:vertical {
-    background: none;
-}
-
-QToolButton:hover {
+#appList QScrollBar::handle:vertical {
     background-color: #44475a;
 }
 
-QLabel {
+#appList QScrollBar::handle:vertical:hover {
+    background-color: #ff79c6;
+}
+
+#bottomBar QToolButton {
+}
+
+#bottomBar QToolButton:hover {
+    background-color: #44475a;
+}
+
+#bottomBar QLabel {
     color: #6272a4;
 }

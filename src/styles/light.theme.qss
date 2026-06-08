@@ -3,7 +3,7 @@ QWidget {
     color: #4c4f69;
 }
 
-QLineEdit {
+#searchbarInput {
     background-color: #e6e9ef;
     color: #4c4f69;
     border-color: #ccd0da;
@@ -11,34 +11,46 @@ QLineEdit {
     selection-color: #4c4f69;
 }
 
-QLineEdit:focus {
+#searchbarInput:focus {
     border-color: #7287fd;
 }
 
-QLineEdit::placeholder {
+#searchbarInput::placeholder {
     color: #9ca0b0;
 }
 
-QScrollArea {
-    background-color: transparent;
+#appList {
 }
 
-QScrollBar:vertical {
+#appList::item {
+}
+
+#appList::item:hover {
+}
+
+#appList::item:current,
+#appList::item:selected {
+}
+
+#appList QScrollBar:vertical {
     background-color: #eff1f5;
 }
 
-QScrollBar::handle:vertical {
+#appList QScrollBar::handle:vertical {
     background-color: #ccd0da;
 }
 
-QScrollBar::handle:vertical:hover {
+#appList QScrollBar::handle:vertical:hover {
     background-color: #acb0be;
 }
 
-QToolButton:hover {
+#bottomBar QToolButton {
+}
+
+#bottomBar QToolButton:hover {
     background-color: #e6e9ef;
 }
 
-QLabel {
+#bottomBar QLabel {
     color: #9ca0b0;
 }

@@ -1,5 +1,6 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
+const config = @import("config");
 const applist = @import("list.zig");
 const ListItemAction = @import("list.zig").ListItemAction;
 const info = @import("info.zig");
@@ -35,11 +36,17 @@ pub const BottomBar = struct {
     parent: QWidget,
     info_shortcut: QShortcut,
 
-    pub fn init(allocator: std.mem.Allocator, parent: qt.QWidget) BottomBar {
+    pub fn init(allocator: std.mem.Allocator, parent: qt.QWidget, vis: config.VisualConfig) BottomBar {
         const container = QWidget.New2();
+        container.SetObjectName("bottomBar");
         const layout = qt.QHBoxLayout.New(container);
-        layout.SetContentsMargins(8, 4, 8, 4);
-        layout.SetSpacing(4);
+        layout.SetContentsMargins(
+            vis.bottom_bar_margin_left,
+            vis.bottom_bar_margin_top,
+            vis.bottom_bar_margin_right,
+            vis.bottom_bar_margin_bottom,
+        );
+        layout.SetSpacing(vis.bottom_bar_spacing);
         layout.AddStretch();
         return .{
             .allocator = allocator,

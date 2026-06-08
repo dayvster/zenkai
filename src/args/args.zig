@@ -2,7 +2,7 @@ const std = @import("std");
 const log = @import("utils").log;
 
 pub const Config = struct {
-    icon_size: i32,
+    icon_size: ?i32,
     start_timer: bool,
     benchmark_all: bool,
     no_bottom_bar: bool,
@@ -10,6 +10,8 @@ pub const Config = struct {
     theme: ?[]const u8,
     show_actions: bool,
     actions_bottombar: bool,
+    window_width: ?i32,
+    window_height: ?i32,
 };
 
 pub const MenuEntry = struct {
@@ -62,7 +64,7 @@ pub fn deinitMenuEntries(allocator: std.mem.Allocator, entries: []MenuEntry) voi
 
 pub fn parse(args: [][:0]u8) Config {
     var cfg: Config = .{
-        .icon_size = 32,
+        .icon_size = null,
         .start_timer = false,
         .benchmark_all = false,
         .no_bottom_bar = false,
@@ -70,12 +72,18 @@ pub fn parse(args: [][:0]u8) Config {
         .theme = null,
         .show_actions = false,
         .actions_bottombar = false,
+        .window_width = null,
+        .window_height = null,
     };
 
     for (args) |arg_slice| {
         const arg: []const u8 = arg_slice;
         if (std.mem.startsWith(u8, arg, "--size=")) {
-            cfg.icon_size = std.fmt.parseInt(i32, arg["--size=".len..], 10) catch 32;
+            cfg.icon_size = std.fmt.parseInt(i32, arg["--size=".len..], 10) catch null;
+        } else if (std.mem.startsWith(u8, arg, "--width=")) {
+            cfg.window_width = std.fmt.parseInt(i32, arg["--width=".len..], 10) catch null;
+        } else if (std.mem.startsWith(u8, arg, "--height=")) {
+            cfg.window_height = std.fmt.parseInt(i32, arg["--height=".len..], 10) catch null;
         } else if (std.mem.eql(u8, arg, "--verbose") or std.mem.eql(u8, arg, "-v")) {
             log.verbose = true;
         } else if (std.mem.eql(u8, arg, "--debug")) {

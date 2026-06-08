@@ -264,6 +264,11 @@ pub const List = struct {
         model.OnData(onData);
 
         var view = QListView.New2();
+        view.SetAutoFillBackground(false);
+        view.SetAlternatingRowColors(false);
+        view.SetObjectName("appList");
+        var viewport = view.Viewport();
+        viewport.SetAutoFillBackground(false);
         var icon_sz = QSize.New4(icon_size, icon_size);
         defer icon_sz.Delete();
         view.SetIconSize(icon_sz);
@@ -359,8 +364,6 @@ pub const List = struct {
         g_list = self;
         self.model.BeginResetModel();
         self.model.EndResetModel();
-
-        self.selectFirst();
     }
 
     pub fn invalidIndex() QModelIndex {

@@ -74,7 +74,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (ctx.cfg.benchmark_all) debug.mark("window setup");
     var window: ui.Window = undefined;
-    ui.renderList(&window, init.gpa, items, ctx.cfg.icon_size, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons);
+    ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons);
     window.list.plugin_manager = &pm;
     defer window.deinit();
 
