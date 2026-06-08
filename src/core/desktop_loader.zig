@@ -1,7 +1,6 @@
 const std = @import("std");
 const platform = @import("platform.zig");
 const de = @import("desktopapp");
-const appreader = @import("appreader.zig");
 const ui = @import("../ui/ui.zig");
 const debug = @import("../debug/debug.zig");
 const actions_mod = @import("actions.zig");
@@ -9,7 +8,7 @@ const fsutils = @import("utils").fsutils;
 
 pub const Error = error{ LoadFailed, ScanFailed };
 
-var g_reader: ?appreader.AppReader = null;
+var g_reader: ?platform.AppReader = null;
 
 pub fn getDesktopApps() []const de.DesktopApp {
     if (g_reader) |*r| return r.apps.items;
