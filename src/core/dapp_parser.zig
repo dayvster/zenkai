@@ -13,6 +13,7 @@ pub const DappParser = struct {
         var entry_iter = desktopEntryIterator(content);
 
         while (entry_iter.next()) |entry| {
+            if (!isDesktopEntry(entry)) continue;
             var line_iter = lineIterator(entry);
             while (line_iter.next()) |line| {
                 const trimmed = std.mem.trim(u8, line, " \t\r\n");
@@ -181,15 +182,12 @@ pub const DesktopEntryIterator = struct {
 
             const trimmed = std.mem.trim(u8, raw_line, " \t");
 
-            if (std.mem.startsWith(u8, trimmed, "[Desktop Entry]")) {
+            if (trimmed.len > 0 and trimmed[0] == '[') {
                 if (start != null) {
-                    const section = self.source[start.?..line_start];
-                    return section;
+                    self.index = line_start;
+                    return self.source[start.?..line_start];
                 }
                 start = line_start;
-            } else if (start != null and trimmed.len > 0 and trimmed[0] == '[') {
-                const section = self.source[start.?..line_start];
-                return section;
             }
         }
 
@@ -202,3 +200,13 @@ pub const DesktopEntryIterator = struct {
         return null;
     }
 };
+
+pub fn isDesktopEntry(section: []const u8) bool {
+    var iter = lineIterator(section);
+    while (iter.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r\n");
+        if (trimmed.len == 0) continue;
+        return std.mem.startsWith(u8, trimmed, "[Desktop Entry]");
+    }
+    return false;
+}

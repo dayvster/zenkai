@@ -8,6 +8,8 @@ pub const Config = struct {
     no_bottom_bar: bool,
     no_icons: bool,
     theme: ?[]const u8,
+    show_actions: bool,
+    actions_bottombar: bool,
 };
 
 pub fn parse(args: [][:0]u8) Config {
@@ -18,6 +20,8 @@ pub fn parse(args: [][:0]u8) Config {
         .no_bottom_bar = false,
         .no_icons = false,
         .theme = null,
+        .show_actions = false,
+        .actions_bottombar = false,
     };
 
     for (args) |arg_slice| {
@@ -39,6 +43,10 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.no_icons = true;
         } else if (std.mem.eql(u8, arg, "--no-bottom-bar")) {
             cfg.no_bottom_bar = true;
+        } else if (std.mem.eql(u8, arg, "--show-actions")) {
+            cfg.show_actions = true;
+        } else if (std.mem.eql(u8, arg, "--actions-bottombar")) {
+            cfg.actions_bottombar = true;
         }
     }
 

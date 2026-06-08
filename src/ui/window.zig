@@ -3,6 +3,7 @@ const qt = @import("libqt6zig");
 
 const List = @import("list.zig").List;
 const ListItem = @import("list.zig").ListItem;
+const ListItemAction = @import("list.zig").ListItemAction;
 const Keyboard = @import("keyboard.zig").Keyboard;
 const BottomBar = @import("bottombar.zig").BottomBar;
 
@@ -52,6 +53,7 @@ pub const Window = struct {
         icon_size: i32,
         no_bottom_bar: bool,
         no_icons: bool,
+        actions_bottombar: bool,
     ) void {
         List.setNoIcons(no_icons);
 
@@ -100,6 +102,14 @@ pub const Window = struct {
             bar.setDefaultActions();
             main_layout.AddWidget(bar.container);
             self.bottom_bar = bar;
+        }
+
+        if (actions_bottombar and !no_bottom_bar) {
+            List.setOnItemFocused(struct {
+                fn callback(_: usize, actions: []const ListItemAction) void {
+                    if (g_window.bottom_bar) |*bar| bar.setItemActions(actions);
+                }
+            }.callback);
         }
 
         window.SetMinimumSize2(win_w, win_h);

@@ -1,43 +1,126 @@
 const std = @import("std");
 const platform = @import("platform.zig");
+const de = @import("desktopapp");
+const appreader = @import("appreader.zig");
 const ui = @import("../ui/ui.zig");
 const debug = @import("../debug/debug.zig");
+const actions_mod = @import("actions.zig");
+const fsutils = @import("utils").fsutils;
 
 pub const Error = error{ LoadFailed, ScanFailed };
 
-pub fn load(allocator: std.mem.Allocator, benchmark: bool) ![]ui.ListItem {
+var g_reader: ?appreader.AppReader = null;
+
+pub fn getDesktopApps() []const de.DesktopApp {
+    if (g_reader) |*r| return r.apps.items;
+    return &.{};
+}
+
+pub fn freeDesktopApps() void {
+    if (g_reader) |*r| r.deinit();
+    g_reader = null;
+}
+
+fn parseAndStoreActions(allocator: std.mem.Allocator, da: *const de.DesktopApp, actions_out: *std.ArrayList(ui.ListItemAction)) !void {
+    if (da.file_path) |fp| {
+        const content = fsutils.readFile(allocator, fp) catch return;
+        defer allocator.free(content);
+
+        const parsed = actions_mod.parseActions(allocator, content, da.actions) catch return;
+        defer actions_mod.deinitActions(allocator, parsed);
+
+        for (parsed) |action| {
+            try actions_out.append(allocator, .{
+                .name = try allocator.dupe(u8, action.name),
+                .exec = try allocator.dupe(u8, action.exec),
+                .icon = if (action.icon) |ic| try allocator.dupe(u8, ic) else try allocator.dupe(u8, if (da.icon) |ic2| ic2 else ""),
+            });
+        }
+    }
+}
+
+pub fn freeListItemActions(allocator: std.mem.Allocator, actions: []const ui.ListItemAction) void {
+    for (actions) |a| {
+        allocator.free(a.name);
+        allocator.free(a.exec);
+        allocator.free(a.icon);
+    }
+    allocator.free(actions);
+}
+
+fn makeListItem(allocator: std.mem.Allocator, da: *const de.DesktopApp, actions: []const ui.ListItemAction, app_idx: usize) !ui.ListItem {
+    return .{
+        .icon = try allocator.dupe(u8, if (da.icon) |ic| ic else ""),
+        .cmd = try allocator.dupe(u8, if (da.exec) |e| e else ""),
+        .name = try allocator.dupe(u8, da.name),
+        .actions = actions,
+        .desktop_app_idx = app_idx,
+    };
+}
+
+pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, actions_bottombar: bool) ![]ui.ListItem {
     if (benchmark) debug.mark("reader load");
+    freeDesktopApps();
+
     var reader = platform.AppReader.init(allocator);
     defer reader.deinit();
     reader.load() catch {
+        reader.deinit();
         ui.showError("Error loading desktop files");
         return Error.LoadFailed;
     };
 
     if (benchmark) debug.mark("reader scan");
     reader.scan() catch {
+        reader.deinit();
         ui.showError("Error parsing desktop files");
         return Error.ScanFailed;
     };
 
     if (benchmark) debug.mark("list init");
-    const items = try allocator.alloc(ui.ListItem, reader.apps.items.len);
-    errdefer allocator.free(items);
 
-    var i: usize = 0;
-    errdefer for (0..i) |j| {
-        allocator.free(items[j].icon);
-        allocator.free(items[j].cmd);
-        allocator.free(items[j].name);
-    };
+    const need_actions = actions_bottombar or show_actions;
+    const show_list_actions = show_actions and !actions_bottombar;
 
-    for (reader.apps.items, 0..) |da, idx| {
-        i = idx;
-        items[idx] = .{
-            .icon = try allocator.dupe(u8, if (da.icon) |ic| ic else ""),
-            .cmd = try allocator.dupe(u8, if (da.exec) |e| e else ""),
-            .name = try allocator.dupe(u8, da.name),
-        };
+    var all_items = std.ArrayList(ui.ListItem).empty;
+    errdefer {
+        for (all_items.items) |item| {
+            allocator.free(item.icon);
+            allocator.free(item.cmd);
+            allocator.free(item.name);
+            if (item.actions.len > 0) freeListItemActions(allocator, item.actions);
+        }
+        all_items.deinit(allocator);
+        reader.deinit();
     }
-    return items;
+
+    g_reader = reader;
+
+    for (reader.apps.items, 0..) |*da, app_idx| {
+        if (need_actions and da.actions.len > 0) {
+            var action_list = std.ArrayList(ui.ListItemAction).empty;
+            parseAndStoreActions(allocator, da, &action_list) catch {};
+            const action_slice = try action_list.toOwnedSlice(allocator);
+
+            try all_items.append(allocator, try makeListItem(allocator, da, action_slice, app_idx));
+
+            if (show_list_actions) {
+                for (action_slice) |action_item| {
+                    const label = try std.fmt.allocPrint(allocator, "{s}: {s}", .{ da.name, action_item.name });
+                    const cmd = try allocator.dupe(u8, action_item.exec);
+                    const icon = try allocator.dupe(u8, action_item.icon);
+                    try all_items.append(allocator, .{
+                        .icon = icon,
+                        .cmd = cmd,
+                        .name = label,
+                        .desktop_app_idx = app_idx,
+                    });
+                }
+            }
+        } else {
+            try all_items.append(allocator, try makeListItem(allocator, da, &.{}, app_idx));
+        }
+    }
+
+    return try all_items.toOwnedSlice(allocator);
 }
