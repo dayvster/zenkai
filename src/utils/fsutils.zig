@@ -41,7 +41,7 @@ pub fn readFile(allocator: std.mem.Allocator, path: []const u8, max_size: usize)
     defer std.Io.File.close(file, io);
 
     const stat = try std.Io.Dir.statFile(cwd, io, path, .{});
-    const size = @as(usize, @intCast(stat.size));
+    const size: usize = @intCast(stat.size);
     if (size > max_size) return error.FileTooBig;
 
     var buf: [4096]u8 = undefined;
