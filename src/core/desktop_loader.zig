@@ -23,7 +23,7 @@ pub fn freeDesktopApps() void {
 
 fn parseAndStoreActions(allocator: std.mem.Allocator, da: *const de.DesktopApp, actions_out: *std.ArrayList(ui.ListItemAction)) !void {
     if (da.file_path) |fp| {
-        const content = fsutils.readFile(allocator, fp) catch return;
+        const content = fsutils.readFile(allocator, fp, 2 * 1024 * 1024) catch return;
         defer allocator.free(content);
 
         const parsed = actions_mod.parseActions(allocator, content, da.actions) catch return;
@@ -63,7 +63,6 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
     freeDesktopApps();
 
     var reader = platform.AppReader.init(allocator);
-    defer reader.deinit();
     reader.load() catch {
         reader.deinit();
         ui.showError("Error loading desktop files");
@@ -84,6 +83,7 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
 
     var all_items = std.ArrayList(ui.ListItem).empty;
     errdefer {
+        g_reader = null;
         for (all_items.items) |item| {
             allocator.free(item.icon);
             allocator.free(item.cmd);
@@ -102,13 +102,25 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
             parseAndStoreActions(allocator, da, &action_list) catch {};
             const action_slice = try action_list.toOwnedSlice(allocator);
 
-            try all_items.append(allocator, try makeListItem(allocator, da, action_slice, app_idx));
+            {
+                const item = try makeListItem(allocator, da, action_slice, app_idx);
+                errdefer {
+                    allocator.free(item.icon);
+                    allocator.free(item.cmd);
+                    allocator.free(item.name);
+                    if (item.actions.len > 0) freeListItemActions(allocator, item.actions);
+                }
+                try all_items.append(allocator, item);
+            }
 
             if (show_list_actions) {
                 for (action_slice) |action_item| {
                     const label = try std.fmt.allocPrint(allocator, "{s}: {s}", .{ da.name, action_item.name });
+                    errdefer allocator.free(label);
                     const cmd = try allocator.dupe(u8, action_item.exec);
+                    errdefer allocator.free(cmd);
                     const icon = try allocator.dupe(u8, action_item.icon);
+                    errdefer allocator.free(icon);
                     try all_items.append(allocator, .{
                         .icon = icon,
                         .cmd = cmd,
@@ -118,7 +130,15 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
                 }
             }
         } else {
-            try all_items.append(allocator, try makeListItem(allocator, da, &.{}, app_idx));
+            {
+                const item = try makeListItem(allocator, da, &.{}, app_idx);
+                errdefer {
+                    allocator.free(item.icon);
+                    allocator.free(item.cmd);
+                    allocator.free(item.name);
+                }
+                try all_items.append(allocator, item);
+            }
         }
     }
 

@@ -25,26 +25,11 @@ fn kdeglobalsPath(allocator: std.mem.Allocator) ![]u8 {
     return try std.fs.path.join(allocator, &.{ std.mem.sliceTo(home, 0), ".config", "kdeglobals" });
 }
 
-fn readFileAlloc(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]const u8 {
-    const cwd = std.Io.Dir.cwd();
-    const file = try std.Io.Dir.openFile(cwd, io, path, .{});
-    defer file.close(io);
-
-    const stat = try std.Io.Dir.statFile(cwd, io, path, .{});
-    const size = @as(usize, @intCast(stat.size));
-    if (size > 128 * 1024) return error.FileTooBig;
-
-    const buf = try allocator.alloc(u8, size);
-    const n = try file.readStreaming(io, &.{buf});
-    return buf[0..n];
-}
-
 fn readFromKdeglobals(allocator: std.mem.Allocator) ?[]const u8 {
     const path = kdeglobalsPath(allocator) catch return null;
     defer allocator.free(path);
 
-    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
-    const content = readFileAlloc(allocator, io, path) catch return null;
+    const content = fsutils.readFile(allocator, path, 128 * 1024) catch return null;
     defer allocator.free(content);
 
     var in_icons_section = false;
@@ -75,8 +60,7 @@ fn readFromGtkSettings(allocator: std.mem.Allocator, ver: []const u8) ?[]const u
     const path = gtkSettingsPath(allocator, ver) catch return null;
     defer allocator.free(path);
 
-    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
-    const content = readFileAlloc(allocator, io, path) catch return null;
+    const content = fsutils.readFile(allocator, path, 128 * 1024) catch return null;
     defer allocator.free(content);
 
     var lines = std.mem.splitScalar(u8, content, '\n');

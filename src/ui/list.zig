@@ -123,7 +123,7 @@ fn tryLoadIcon(app: de.DesktopApp) QIcon {
 
 fn tryLoadPluginIcon(icon_name: []const u8) QIcon {
     if (icon_name.len > 0) {
-        const icon = if (icon_name[0] == '/') QIcon.New4(icon_name) else QIcon.FromTheme(icon_name);
+        const icon = loadIcon(icon_name);
         if (!icon.IsNull()) return icon;
         icon.Delete();
     }

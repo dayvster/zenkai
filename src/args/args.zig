@@ -12,6 +12,54 @@ pub const Config = struct {
     actions_bottombar: bool,
 };
 
+pub const MenuEntry = struct {
+    name: []const u8,
+    cmd: []const u8,
+    icon: []const u8,
+};
+
+pub fn parseMenus(allocator: std.mem.Allocator, args: [][:0]u8) ![]MenuEntry {
+    var menus = std.ArrayList(MenuEntry).empty;
+    errdefer {
+        for (menus.items) |m| {
+            allocator.free(m.name);
+            allocator.free(m.cmd);
+            allocator.free(m.icon);
+        }
+        menus.deinit(allocator);
+    }
+
+    for (args) |arg_slice| {
+        const arg: []const u8 = arg_slice;
+        if (std.mem.startsWith(u8, arg, "--menu=")) {
+            const val = arg["--menu=".len..];
+            if (val.len == 0) continue;
+
+            var it = std.mem.splitScalar(u8, val, '|');
+            const name = it.first();
+            const cmd = it.next() orelse continue;
+            const icon = it.next() orelse "";
+
+            try menus.append(allocator, .{
+                .name = try allocator.dupe(u8, name),
+                .cmd = try allocator.dupe(u8, cmd),
+                .icon = try allocator.dupe(u8, icon),
+            });
+        }
+    }
+
+    return try menus.toOwnedSlice(allocator);
+}
+
+pub fn deinitMenuEntries(allocator: std.mem.Allocator, entries: []MenuEntry) void {
+    for (entries) |e| {
+        allocator.free(e.name);
+        allocator.free(e.cmd);
+        allocator.free(e.icon);
+    }
+    allocator.free(entries);
+}
+
 pub fn parse(args: [][:0]u8) Config {
     var cfg: Config = .{
         .icon_size = 32,

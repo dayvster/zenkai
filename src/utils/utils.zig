@@ -146,7 +146,7 @@ fn reapChild(data: *ThreadData) void {
     data.allocator.destroy(data);
 }
 
-extern "c" var environ: [*:null]?[*:0]u8;
+pub extern "c" var environ: [*:null]?[*:0]u8;
 
 pub fn strcomp(key: []const u8, literal: []const u8) bool {
     return std.mem.eql(u8, key, literal);
