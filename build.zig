@@ -59,6 +59,7 @@ pub fn build(b: *std.Build) void {
         "qmessagebox",
         "qtoolbutton",
         "qlistview",
+        "qtimer",
     };
 
     for (libs) |lib| {
@@ -66,13 +67,24 @@ pub fn build(b: *std.Build) void {
         exe.root_module.linkLibrary(artifact);
     }
 
-    exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
-    exe.root_module.linkSystemLibrary("Qt6Core", .{});
-    exe.root_module.linkSystemLibrary("Qt6Gui", .{});
-    exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
-    exe.root_module.link_libcpp = false;
-    exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/libstdc++.so" });
-    exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/libgcc_eh.a" });
+    if (target.result.os.tag == .macos) {
+        const brew_qt = if (target.result.cpu.arch == .aarch64) "/opt/homebrew/opt/qt@6/lib" else "/usr/local/opt/qt@6/lib";
+        const brew_lua = if (target.result.cpu.arch == .aarch64) "/opt/homebrew/opt/lua/lib" else "/usr/local/opt/lua/lib";
+        exe.root_module.addLibraryPath(.{ .cwd_relative = brew_qt });
+        exe.root_module.addFrameworkPath(.{ .cwd_relative = brew_qt });
+        exe.root_module.linkFramework("QtCore", .{});
+        exe.root_module.linkFramework("QtGui", .{});
+        exe.root_module.linkFramework("QtWidgets", .{});
+        exe.root_module.addLibraryPath(.{ .cwd_relative = brew_lua });
+    } else {
+        exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+        exe.root_module.linkSystemLibrary("Qt6Core", .{});
+        exe.root_module.linkSystemLibrary("Qt6Gui", .{});
+        exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
+        exe.root_module.link_libcpp = false;
+        exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/libstdc++.so" });
+        exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/libgcc_eh.a" });
+    }
     exe.root_module.linkSystemLibrary("lua", .{});
     exe.root_module.linkSystemLibrary("m", .{});
 
@@ -109,12 +121,22 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const osx_module = if (target.result.os.tag == .macos) b.addModule("osx", .{
+        .root_source_file = b.path("src/core/osx/osx.zig"),
+        .imports = &.{
+            .{ .name = "desktopapp", .module = desktopapp_module },
+            .{ .name = "utils", .module = utils_module },
+            .{ .name = "libqt6zig", .module = qt6zig.module("libqt6zig") },
+        },
+    }) else null;
+
     exe.root_module.addImport("utils", utils_module);
     exe.root_module.addImport("desktopapp", desktopapp_module);
     exe.root_module.addImport("dapp_parser", dapp_parser_module);
     exe.root_module.addImport("config", config_module);
     exe.root_module.addImport("lua_capi", lua_capi_module);
     exe.root_module.addImport("plugins", plugins_module);
+    if (osx_module) |mod| exe.root_module.addImport("osx", mod);
     exe.step.dependOn(&check_lua.step);
     b.installArtifact(exe);
 

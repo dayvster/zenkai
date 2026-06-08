@@ -1,5 +1,5 @@
 const std = @import("std");
-const appreader = @import("appreader.zig");
+const platform = @import("platform.zig");
 const ui = @import("../ui/ui.zig");
 const debug = @import("../debug/debug.zig");
 
@@ -7,7 +7,7 @@ pub const Error = error{ LoadFailed, ScanFailed };
 
 pub fn load(allocator: std.mem.Allocator, benchmark: bool) ![]ui.ListItem {
     if (benchmark) debug.mark("reader load");
-    var reader = appreader.AppReader.init(allocator);
+    var reader = platform.AppReader.init(allocator);
     defer reader.deinit();
     reader.load() catch {
         ui.showError("Error loading desktop files");

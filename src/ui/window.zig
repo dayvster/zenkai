@@ -11,11 +11,25 @@ const QWidget = qt.QWidget;
 const QVBoxLayout = qt.QVBoxLayout;
 const QLineEdit = qt.QLineEdit;
 const QCloseEvent = qt.QCloseEvent;
+const QTimer = qt.QTimer;
 
 var g_window: *Window = undefined;
+var g_search_text: [256]u8 = undefined;
+var g_search_text_len: usize = 0;
 
 fn onSearchTextChanged(_: QLineEdit, text_cstr: [*:0]const u8) callconv(.c) void {
     const text = std.mem.span(text_cstr);
+    const len = @min(text.len, g_search_text.len);
+    @memcpy(g_search_text[0..len], text[0..len]);
+    g_search_text_len = len;
+    if (g_window.debounce_timer) |timer| {
+        timer.Stop();
+        timer.Start(150);
+    }
+}
+
+fn onDebounceTimeout(_: QTimer) callconv(.c) void {
+    const text = g_search_text[0..g_search_text_len];
     g_window.list.setFilter(text);
 }
 
@@ -29,6 +43,7 @@ pub const Window = struct {
     search_bar: QLineEdit,
     list: List,
     bottom_bar: ?BottomBar,
+    debounce_timer: ?QTimer,
 
     pub fn init(
         self: *Window,
@@ -66,12 +81,17 @@ pub const Window = struct {
         main_layout.AddWidget(search_bar);
         main_layout.AddWidget(list.view);
 
+        var debounce_timer = QTimer.New2(window);
+        debounce_timer.SetSingleShot(true);
+        debounce_timer.OnTimeout(onDebounceTimeout);
+
         self.* = .{
             .allocator = allocator,
             .widget = window,
             .search_bar = search_bar,
             .list = list,
             .bottom_bar = null,
+            .debounce_timer = debounce_timer,
         };
 
         if (!no_bottom_bar) {
@@ -112,6 +132,7 @@ pub const Window = struct {
     pub fn deinit(self: *Window) void {
         self.list.deinit();
         if (self.bottom_bar) |*bar| bar.deinit();
+        if (self.debounce_timer) |timer| timer.Delete();
         self.search_bar.Delete();
         self.widget.Delete();
     }

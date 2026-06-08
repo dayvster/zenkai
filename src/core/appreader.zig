@@ -81,7 +81,7 @@ pub const AppReader = struct {
         self.apps.clearRetainingCapacity();
 
         for (self.desktop_files.items) |file_path| {
-            const content = try readFile(self.arena.allocator(), file_path);
+            const content = try fsutils.readFile(self.arena.allocator(), file_path, 2 * 1024 * 1024);
             var app = dapp_parser.DappParser.parseDesktopFile(self.arena.allocator(), content) catch |err| switch (err) {
                 error.NoDisplay => continue,
                 else => |e| return e,
@@ -105,20 +105,5 @@ pub const AppReader = struct {
         }
 
         self.desktop_files_checksum = hasher.final();
-    }
-
-    fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-        const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
-        const cwd = std.Io.Dir.cwd();
-        const file = try std.Io.Dir.openFile(cwd, io, path, .{});
-        defer std.Io.File.close(file, io);
-
-        const stat = try std.Io.Dir.statFile(cwd, io, path, .{});
-        const size = @as(usize, @intCast(stat.size));
-        if (size > 2 * 1024 * 1024) return error.FileTooBig;
-
-        var buf: [4096]u8 = undefined;
-        var reader = std.Io.File.Reader.init(file, io, &buf);
-        return try reader.interface.readAlloc(allocator, size);
     }
 };

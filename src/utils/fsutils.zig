@@ -34,6 +34,21 @@ pub fn dirExists(io: std.Io, path: []const u8) bool {
     return true;
 }
 
+pub fn readFile(allocator: std.mem.Allocator, path: []const u8, max_size: usize) ![]u8 {
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const cwd = std.Io.Dir.cwd();
+    const file = try std.Io.Dir.openFile(cwd, io, path, .{});
+    defer std.Io.File.close(file, io);
+
+    const stat = try std.Io.Dir.statFile(cwd, io, path, .{});
+    const size: usize = @intCast(stat.size);
+    if (size > max_size) return error.FileTooBig;
+
+    var buf: [4096]u8 = undefined;
+    var reader = std.Io.File.Reader.init(file, io, &buf);
+    return try reader.interface.readAlloc(allocator, size);
+}
+
 pub fn makeDir(io: std.Io, path: []const u8) !void {
     try std.Io.Dir.createDirAbsolute(io, path, .default_dir);
 }
@@ -63,8 +78,13 @@ fn readDirInternal(
         const full_path = try std.fs.path.join(allocator, &.{ dir_path, entry.name });
         errdefer allocator.free(full_path);
 
+        const matches_ext = if (options.extensions) |exts|
+            filterExtensions(entry.name, exts)
+        else
+            true;
+
         if (entry.kind == .file or entry.kind == .sym_link) {
-            if (filterExtensions(entry.name, options.extensions)) {
+            if (matches_ext) {
                 try results.append(allocator, full_path);
             } else {
                 allocator.free(full_path);
