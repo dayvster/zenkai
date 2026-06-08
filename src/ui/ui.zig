@@ -36,7 +36,6 @@ pub fn renderList(
     icon_size: i32,
     show_bottom_bar: bool,
     no_icons: bool,
-    actions_bottombar: bool,
 ) void {
-    self.init(allocator, items, icon_size, !show_bottom_bar, no_icons, actions_bottombar);
+    self.init(allocator, items, icon_size, !show_bottom_bar, no_icons);
 }

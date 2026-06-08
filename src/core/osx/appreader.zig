@@ -1,277 +1,159 @@
 const std = @import("std");
-const plist = @import("plist.zig");
+const de = @import("desktopapp");
+const fsutils = @import("utils").fsutils;
+const PlistParser = @import("parser.zig").PlistParser;
+const InfoPlist = @import("plist.zig").InfoPlist;
 
-const PlistValue = plist.PlistValue;
+pub const AppReader = struct {
+    apps: std.ArrayList(de.DesktopApp),
+    app_bundles: std.ArrayList([]const u8),
+    app_bundles_checksum: u64,
+    allocator: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
 
-extern fn system([*:0]const u8) c_int;
+    const default_locations = [_][]const u8{
+        "/Applications",
+        "~/Applications",
+        "/usr/local/Applications",
+    };
 
-pub const PlistParser = struct {
-    pub fn parse(allocator: std.mem.Allocator, content: []const u8) !PlistValue {
-        const ptype = plist.BinOrXML(content) catch {
-            return error.ParseError;
+    pub fn init(allocator: std.mem.Allocator) AppReader {
+        return .{
+            .apps = .empty,
+            .app_bundles = .empty,
+            .app_bundles_checksum = 0,
+            .allocator = allocator,
+            .arena = std.heap.ArenaAllocator.init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *AppReader) void {
+        self.apps.deinit(self.allocator);
+        for (self.app_bundles.items) |p| self.allocator.free(p);
+        self.app_bundles.deinit(self.allocator);
+        self.arena.deinit();
+    }
+
+    pub fn load(self: *AppReader) !void {
+        var new_bundles: std.ArrayList([]const u8) = .empty;
+        errdefer {
+            for (new_bundles.items) |p| self.allocator.free(p);
+            new_bundles.deinit(self.allocator);
+        }
+
+        const options = fsutils.ReadDirOptions{
+            .extensions = &[_][]const u8{".app"},
+            .recursive = true,
+            .max_depth = 1, // Only scan direct children, not helper apps in Frameworks
         };
 
-        const xml = switch (ptype) {
-            .XML => content,
-            .BIN => try convertBinToXML(allocator, content),
-        };
+        for (default_locations) |loc| {
+            var found = fsutils.readDir(self.allocator, loc, options) catch |err| {
+                switch (err) {
+                    error.FileNotFound, error.AccessDenied, error.NotDir => continue,
+                    else => continue,
+                }
+            };
+            defer {
+                for (found.items) |p| self.allocator.free(p);
+                found.deinit(self.allocator);
+            }
 
-        if (xml.len == 0) return error.ParseError;
+            for (found.items) |bundle_path| {
+                // Skip helper apps and updaters
+                const basename = std.fs.path.basename(bundle_path);
+                if (std.mem.indexOf(u8, basename, "Helper") != null or
+                    std.mem.indexOf(u8, basename, "Updater") != null or
+                    std.mem.indexOf(u8, basename, "Crashpad") != null or
+                    std.mem.indexOf(u8, bundle_path, "/Frameworks/") != null or
+                    std.mem.indexOf(u8, bundle_path, "/Contents/") != null)
+                {
+                    continue;
+                }
+                try new_bundles.append(self.allocator, try self.allocator.dupe(u8, bundle_path));
+            }
+        }
 
-        var tok = tokenIterator(xml);
+        for (self.app_bundles.items) |p| self.allocator.free(p);
+        self.app_bundles.deinit(self.allocator);
+        self.app_bundles = new_bundles;
+        self.computeChecksum();
+    }
 
-        _ = tok.next(); // <?xml ...?>
-        _ = tok.next(); // <!DOCTYPE ...>
-        _ = tok.next(); // maybe another processing instruction
+    pub fn scan(self: *AppReader) !void {
+        self.arena.deinit();
+        self.arena = std.heap.ArenaAllocator.init(self.allocator);
+        self.apps.clearRetainingCapacity();
 
-        while (tok.next()) |t| {
-            switch (t) {
-                .open => |tag| {
-                    if (std.mem.eql(u8, tag, "plist")) {
-                        const val = try parseNode(allocator, &tok, false);
-                        return val;
-                    }
-                },
+        for (self.app_bundles.items) |bundle_path| {
+            const plist_path = try std.fs.path.join(self.arena.allocator(), &.{ bundle_path, "Contents", "Info.plist" });
+            const content = fsutils.readFile(self.arena.allocator(), plist_path, 512 * 1024) catch |err| switch (err) {
+                error.FileNotFound, error.AccessDenied => continue,
+                else => |e| return e,
+            };
+
+            const plist_val = PlistParser.parse(self.arena.allocator(), content, false) catch continue;
+            const dict = switch (plist_val) {
+                .dict => |d| d,
                 else => continue,
+            };
+
+            const info = InfoPlist.fromDict(self.arena.allocator(), dict) catch continue;
+
+            var app = initDefaultDapp(self.arena.allocator());
+            app.file_path = try self.arena.allocator().dupe(u8, bundle_path);
+
+            if (info.display_name) |n| {
+                app.name = n;
+            } else if (info.name) |n| {
+                app.name = n;
+            } else {
+                const base = std.fs.path.basename(bundle_path);
+                app.name = if (std.mem.endsWith(u8, base, ".app")) base[0 .. base.len - 4] else base;
             }
-        }
 
-        return error.ParseError;
-    }
-
-    fn parseNode(allocator: std.mem.Allocator, tok: *TokenIterator, eat_text: bool) error{ ParseError, OutOfMemory }!PlistValue {
-        if (eat_text) {
-            if (tok.next()) |t| {
-                switch (t) {
-                    .text => {},
-                    else => return error.ParseError,
-                }
-            } else return error.ParseError;
-        }
-
-        const t = tok.next() orelse return error.ParseError;
-        switch (t) {
-            .self_close => |tag| {
-                if (std.mem.eql(u8, tag, "true")) return PlistValue{ .boolean = true };
-                if (std.mem.eql(u8, tag, "false")) return PlistValue{ .boolean = false };
-                return error.ParseError;
-            },
-            .open => |tag| {
-                if (std.mem.eql(u8, tag, "dict")) return parseDict(allocator, tok);
-                if (std.mem.eql(u8, tag, "array")) return parseArray(allocator, tok);
-                if (std.mem.eql(u8, tag, "string")) return parsePrimitive(allocator, tok, "string");
-                if (std.mem.eql(u8, tag, "integer")) return parsePrimitive(allocator, tok, "integer");
-                if (std.mem.eql(u8, tag, "real")) return parsePrimitive(allocator, tok, "real");
-                if (std.mem.eql(u8, tag, "date")) return parsePrimitive(allocator, tok, "date");
-                if (std.mem.eql(u8, tag, "data")) return parsePrimitive(allocator, tok, "data");
-                return error.ParseError;
-            },
-            else => return error.ParseError,
-        }
-    }
-
-    fn parseDict(allocator: std.mem.Allocator, tok: *TokenIterator) !PlistValue {
-        var map: std.StringHashMapUnmanaged(PlistValue) = .empty;
-
-        while (true) {
-            const t = tok.next() orelse return error.ParseError;
-            switch (t) {
-                .close => |tag| {
-                    if (std.mem.eql(u8, tag, "dict")) return PlistValue{ .dict = map };
-                    return error.ParseError;
-                },
-                .open => |tag| {
-                    if (!std.mem.eql(u8, tag, "key")) return error.ParseError;
-
-                    const key_text = tok.next() orelse return error.ParseError;
-                    const key = switch (key_text) {
-                        .text => |s| s,
-                        else => return error.ParseError,
-                    };
-
-                    const close = tok.next() orelse return error.ParseError;
-                    switch (close) {
-                        .close => |ct| {
-                            if (!std.mem.eql(u8, ct, "key")) return error.ParseError;
-                        },
-                        else => return error.ParseError,
-                    }
-
-                    const value = try parseNode(allocator, tok, false);
-                    const key_dup = try allocator.dupe(u8, key);
-                    map.put(allocator, key_dup, value) catch {};
-                },
-                .text => continue,
-                else => return error.ParseError,
+            if (info.executable) |exec| {
+                app.exec = try std.fs.path.join(self.arena.allocator(), &.{ bundle_path, "Contents", "MacOS", exec });
             }
-        }
-    }
 
-    fn parseArray(allocator: std.mem.Allocator, tok: *TokenIterator) !PlistValue {
-        var items: std.ArrayList(PlistValue) = .empty;
-        errdefer items.deinit(allocator);
-
-        while (true) {
-            const t = tok.next() orelse return error.ParseError;
-            switch (t) {
-                .close => |tag| {
-                    if (std.mem.eql(u8, tag, "array")) {
-                        return PlistValue{ .array = try items.toOwnedSlice(allocator) };
-                    }
-                    return error.ParseError;
-                },
-                .self_close, .open => {
-                    const val = try parseNode(allocator, tok, false);
-                    try items.append(allocator, val);
-                },
-                .text => continue,
+            if (info.icon) |icon| {
+                const icon_file = if (std.mem.endsWith(u8, icon, ".icns"))
+                    icon
+                else
+                    try std.fmt.allocPrint(self.arena.allocator(), "{s}.icns", .{icon});
+                app.icon = try std.fs.path.join(self.arena.allocator(), &.{ bundle_path, "Contents", "Resources", icon_file });
             }
+
+            app.comment = info.info_string orelse info.copyright;
+
+            try self.apps.append(self.allocator, app);
         }
     }
 
-    fn parsePrimitive(allocator: std.mem.Allocator, tok: *TokenIterator, comptime tag: []const u8) !PlistValue {
-        const text_t = tok.next() orelse return error.ParseError;
-        const text = switch (text_t) {
-            .text => |s| s,
-            .self_close => |t| {
-                if (std.mem.eql(u8, t, tag)) {
-                    return PlistValue{ .string = try allocator.dupe(u8, "") };
-                }
-                return error.ParseError;
-            },
-            else => return error.ParseError,
-        };
+    fn computeChecksum(self: *AppReader) void {
+        var hasher = std.hash.Wyhash.init(0xDEADBEEF);
 
-        const close = tok.next() orelse return error.ParseError;
-        switch (close) {
-            .close => |ct| {
-                if (!std.mem.eql(u8, ct, tag)) return error.ParseError;
-            },
-            else => return error.ParseError,
+        std.mem.sort([]const u8, self.app_bundles.items, {}, struct {
+            fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.lessThan(u8, a, b);
+            }
+        }.lessThan);
+
+        for (self.app_bundles.items) |path| {
+            hasher.update(path);
         }
 
-        if (comptime std.mem.eql(u8, tag, "string")) {
-            return PlistValue{ .string = try allocator.dupe(u8, text) };
-        }
-        if (comptime std.mem.eql(u8, tag, "integer")) {
-            const val = std.fmt.parseInt(i64, std.mem.trim(u8, text, " \t\n\r"), 10) catch return error.ParseError;
-            return PlistValue{ .integer = val };
-        }
-        if (comptime std.mem.eql(u8, tag, "real")) {
-            const val = std.fmt.parseFloat(f64, std.mem.trim(u8, text, " \t\n\r")) catch return error.ParseError;
-            return PlistValue{ .float = val };
-        }
-        if (comptime std.mem.eql(u8, tag, "date")) {
-            return PlistValue{ .date = 0 };
-        }
-        if (comptime std.mem.eql(u8, tag, "data")) {
-            return PlistValue{ .data = try allocator.dupe(u8, text) };
-        }
-        return error.ParseError;
-    }
-
-    fn convertBinToXML(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
-        const tmp_in = "/tmp/zenkai_plist_in.bin";
-        const tmp_out = "/tmp/zenkai_plist_out.xml";
-        const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
-        const cwd = std.Io.Dir.cwd();
-
-        {
-            const file = try std.Io.Dir.createFile(cwd, io, tmp_in, .{});
-            defer std.Io.File.close(file, io);
-            var buf: [4096]u8 = undefined;
-            var writer = std.Io.File.Writer.init(file, io, &buf);
-            try writer.interface.writeAll(input);
-            try writer.flush();
-        }
-        defer std.Io.Dir.deleteFile(cwd, io, tmp_in) catch {};
-        defer std.Io.Dir.deleteFile(cwd, io, tmp_out) catch {};
-
-        const exit_code = system("plutil -convert xml1 -o /tmp/zenkai_plist_out.xml /tmp/zenkai_plist_in.bin");
-        if (exit_code != 0) {
-            return error.ParseError;
-        }
-
-        const xml_file = try std.Io.Dir.openFile(cwd, io, tmp_out, .{});
-        defer std.Io.File.close(xml_file, io);
-
-        const stat = try std.Io.Dir.statFile(cwd, io, tmp_out, .{});
-        const size = @as(usize, @intCast(stat.size));
-
-        var buf: [4096]u8 = undefined;
-        var reader = std.Io.File.Reader.init(xml_file, io, &buf);
-        const xml = try reader.interface.readAlloc(allocator, size);
-
-        if (xml.len == 0) {
-            allocator.free(xml);
-            return error.ParseError;
-        }
-        return xml;
+        self.app_bundles_checksum = hasher.final();
     }
 };
 
-const Token = union(enum) {
-    open: []const u8,
-    close: []const u8,
-    self_close: []const u8,
-    text: []const u8,
-};
-
-pub fn tokenIterator(input: []const u8) TokenIterator {
-    return .{ .input = input, .pos = 0 };
+fn initDefaultDapp(allocator: std.mem.Allocator) de.DesktopApp {
+    return de.DesktopApp{
+        .name = "",
+        .exec = null,
+        .icon = null,
+        .comment = null,
+        .type = .Application,
+        .extra = std.StringHashMap([]const u8).init(allocator),
+    };
 }
-
-pub const TokenIterator = struct {
-    input: []const u8,
-    pos: usize,
-
-    fn skipWhitespace(self: *TokenIterator) void {
-        while (self.pos < self.input.len) {
-            switch (self.input[self.pos]) {
-                ' ', '\t', '\n', '\r' => self.pos += 1,
-                else => break,
-            }
-        }
-    }
-
-    pub fn next(self: *TokenIterator) ?Token {
-        self.skipWhitespace();
-        if (self.pos >= self.input.len) return null;
-
-        if (self.input[self.pos] != '<') {
-            const start = self.pos;
-            while (self.pos < self.input.len and self.input[self.pos] != '<') {
-                self.pos += 1;
-            }
-            return Token{ .text = self.input[start..self.pos] };
-        }
-
-        self.pos += 1;
-        if (self.pos >= self.input.len) return null;
-
-        const is_close = self.input[self.pos] == '/';
-        if (is_close) self.pos += 1;
-
-        const tag_start = self.pos;
-        while (self.pos < self.input.len and self.input[self.pos] != '>' and self.input[self.pos] != '/') {
-            self.pos += 1;
-        }
-        if (self.pos >= self.input.len) return null;
-
-        const tag_name = std.mem.trim(u8, self.input[tag_start..self.pos], " \t");
-
-        const is_self_close = self.input[self.pos] == '/';
-        if (is_self_close) {
-            self.pos += 1;
-            if (self.pos >= self.input.len or self.input[self.pos] != '>') return null;
-            self.pos += 1;
-            return Token{ .self_close = tag_name };
-        }
-
-        self.pos += 1;
-
-        if (is_close) return Token{ .close = tag_name };
-        return Token{ .open = tag_name };
-    }
-};
-

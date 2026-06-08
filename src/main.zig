@@ -1,56 +1,27 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const ui = @import("ui/ui.zig");
 const log = @import("utils").log;
 const debug = @import("debug/debug.zig");
 const bootstrap = @import("core/bootstrap.zig");
 const desktop_loader = @import("core/desktop_loader.zig");
-const args = @import("args/args.zig");
 const plugins = @import("plugins");
-const builtin = @import("builtin");
+
+extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
+extern var __stderrp: *anyopaque;
 
 pub fn main(init: std.process.Init) !void {
     if (builtin.os.tag == .macos) {
-        const H = struct {
-            extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
-            extern var __stderrp: *anyopaque;
-        };
-        _ = H.freopen("/dev/null", "w", H.__stderrp);
+        _ = freopen("/dev/null", "w", __stderrp);
     }
+
     var ctx = try bootstrap.init(init.gpa, init.minimal.args);
     defer ctx.deinit();
-
-    const menu_entries = try args.parseMenus(init.gpa, ctx.argv);
-    defer args.deinitMenuEntries(init.gpa, menu_entries);
 
     var pm = plugins.setup(init.gpa);
     defer pm.deinit();
 
-    const items = if (menu_entries.len > 0) blk: {
-        var list_items = try std.ArrayList(ui.ListItem).initCapacity(init.gpa, menu_entries.len);
-        errdefer {
-            for (list_items.items) |item| {
-                init.gpa.free(item.icon);
-                init.gpa.free(item.cmd);
-                init.gpa.free(item.name);
-            }
-            list_items.deinit(init.gpa);
-        }
-        for (menu_entries) |me| {
-            const icon = try init.gpa.dupe(u8, me.icon);
-            errdefer init.gpa.free(icon);
-            const cmd = try init.gpa.dupe(u8, me.cmd);
-            errdefer init.gpa.free(cmd);
-            const name = try init.gpa.dupe(u8, me.name);
-            errdefer init.gpa.free(name);
-            list_items.appendAssumeCapacity(.{
-                .icon = icon,
-                .cmd = cmd,
-                .name = name,
-            });
-        }
-        break :blk try list_items.toOwnedSlice(init.gpa);
-    } else try desktop_loader.load(init.gpa, ctx.cfg.benchmark_all, ctx.cfg.show_actions, ctx.cfg.actions_bottombar);
-
+    const items = try desktop_loader.load(init.gpa, ctx.cfg.benchmark_all, ctx.cfg.show_actions, ctx.cfg.actions_bottombar);
     defer {
         for (items) |item| {
             init.gpa.free(item.icon);
@@ -64,7 +35,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (ctx.cfg.benchmark_all) debug.mark("window setup");
     var window: ui.Window = undefined;
-    ui.renderList(&window, init.gpa, items, ctx.cfg.icon_size, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons, ctx.cfg.actions_bottombar);
+    ui.renderList(&window, init.gpa, items, ctx.cfg.icon_size, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons);
     window.list.plugin_manager = &pm;
     defer window.deinit();
 

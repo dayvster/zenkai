@@ -3,7 +3,6 @@ const qt = @import("libqt6zig");
 
 const List = @import("list.zig").List;
 const ListItem = @import("list.zig").ListItem;
-const ListItemAction = @import("list.zig").ListItemAction;
 const Keyboard = @import("keyboard.zig").Keyboard;
 const BottomBar = @import("bottombar.zig").BottomBar;
 
@@ -20,16 +19,21 @@ var g_search_text_len: usize = 0;
 
 fn onSearchTextChanged(_: QLineEdit, text_cstr: [*:0]const u8) callconv(.c) void {
     const text = std.mem.span(text_cstr);
+    
+    // Store the search text
     const len = @min(text.len, g_search_text.len);
     @memcpy(g_search_text[0..len], text[0..len]);
     g_search_text_len = len;
+    
+    // Restart the debounce timer
     if (g_window.debounce_timer) |timer| {
         timer.Stop();
-        timer.Start(150);
+        timer.Start(150); // 150ms debounce delay
     }
 }
 
 fn onDebounceTimeout(_: QTimer) callconv(.c) void {
+    // Apply the filter after debounce delay
     const text = g_search_text[0..g_search_text_len];
     g_window.list.setFilter(text);
 }
@@ -53,7 +57,6 @@ pub const Window = struct {
         icon_size: i32,
         no_bottom_bar: bool,
         no_icons: bool,
-        actions_bottombar: bool,
     ) void {
         List.setNoIcons(no_icons);
 
@@ -83,6 +86,7 @@ pub const Window = struct {
         main_layout.AddWidget(search_bar);
         main_layout.AddWidget(list.view);
 
+        // Create debounce timer
         var debounce_timer = QTimer.New2(window);
         debounce_timer.SetSingleShot(true);
         debounce_timer.OnTimeout(onDebounceTimeout);
@@ -102,14 +106,6 @@ pub const Window = struct {
             bar.setDefaultActions();
             main_layout.AddWidget(bar.container);
             self.bottom_bar = bar;
-        }
-
-        if (actions_bottombar and !no_bottom_bar) {
-            List.setOnItemFocused(struct {
-                fn callback(_: usize, actions: []const ListItemAction) void {
-                    if (g_window.bottom_bar) |*bar| bar.setItemActions(actions);
-                }
-            }.callback);
         }
 
         window.SetMinimumSize2(win_w, win_h);

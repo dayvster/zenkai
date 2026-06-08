@@ -23,10 +23,10 @@ pub const PlistParser = struct {
             count += 1;
             if (debug and count <= 10) {
                 switch (t) {
-                    .open => |tag| std.debug.print("    Token {}: open '{s}'\n", .{ count, tag }),
-                    .close => |tag| std.debug.print("    Token {}: close '{s}'\n", .{ count, tag }),
-                    .self_close => |tag| std.debug.print("    Token {}: self_close '{s}'\n", .{ count, tag }),
-                    .text => |txt| std.debug.print("    Token {}: text '{s}'\n", .{ count, txt[0..@min(40, txt.len)] }),
+                    .open => |tag| std.debug.print("    Token {}: open '{s}'\n", .{count, tag}),
+                    .close => |tag| std.debug.print("    Token {}: close '{s}'\n", .{count, tag}),
+                    .self_close => |tag| std.debug.print("    Token {}: self_close '{s}'\n", .{count, tag}),
+                    .text => |txt| std.debug.print("    Token {}: text '{s}'\n", .{count, txt[0..@min(40, txt.len)]}),
                 }
             }
             switch (t) {
@@ -55,7 +55,7 @@ pub const PlistParser = struct {
         }
 
         var t = tok.next() orelse return error.ParseError;
-
+        
         if (debug) {
             switch (t) {
                 .open => |tag| std.debug.print("    parseNode got: open '{s}'\n", .{tag}),
@@ -64,7 +64,7 @@ pub const PlistParser = struct {
                 .text => |txt| std.debug.print("    parseNode got: text '{s}'\n", .{txt[0..@min(40, txt.len)]}),
             }
         }
-
+        
         // Skip whitespace-only text tokens (but stop at first non-whitespace text)
         while (true) {
             switch (t) {
@@ -90,7 +90,7 @@ pub const PlistParser = struct {
             }
             break;
         }
-
+        
         switch (t) {
             .self_close => |tag| {
                 if (std.mem.eql(u8, tag, "true")) return PlistValue{ .boolean = true };
@@ -284,10 +284,10 @@ pub const PlistParser = struct {
         // Write binary plist to temp file
         const tmp_in = "/tmp/zenkai_plist_in.bin";
         const tmp_out = "/tmp/zenkai_plist_out.xml";
-
+        
         const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
         const cwd = std.Io.Dir.cwd();
-
+        
         {
             const file = try std.Io.Dir.createFile(cwd, io, tmp_in, .{});
             defer std.Io.File.close(file, io);
@@ -298,29 +298,29 @@ pub const PlistParser = struct {
         }
         defer std.Io.Dir.deleteFile(cwd, io, tmp_in) catch {};
         defer std.Io.Dir.deleteFile(cwd, io, tmp_out) catch {};
-
+        
         // Convert using plutil
         const exit_code = system("plutil -convert xml1 -o /tmp/zenkai_plist_out.xml /tmp/zenkai_plist_in.bin");
         if (exit_code != 0) {
             return error.ParseError;
         }
-
+        
         // Read converted XML
         const xml_file = try std.Io.Dir.openFile(cwd, io, tmp_out, .{});
         defer std.Io.File.close(xml_file, io);
-
+        
         const stat = try std.Io.Dir.statFile(cwd, io, tmp_out, .{});
         const size = @as(usize, @intCast(stat.size));
-
+        
         var buf: [4096]u8 = undefined;
         var reader = std.Io.File.Reader.init(xml_file, io, &buf);
         const xml = try reader.interface.readAlloc(allocator, size);
-
+        
         if (xml.len == 0) {
             allocator.free(xml);
             return error.ParseError;
         }
-
+        
         return xml;
     }
 };
@@ -396,7 +396,7 @@ pub const TokenIterator = struct {
         if (self.pos >= self.input.len) return null;
 
         const tag_name = self.input[tag_start..self.pos];
-
+        
         // Skip any attributes (everything until > or />)
         while (self.pos < self.input.len and self.input[self.pos] != '>' and self.input[self.pos] != '/') {
             self.pos += 1;

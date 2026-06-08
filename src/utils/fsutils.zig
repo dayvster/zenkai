@@ -41,7 +41,7 @@ pub fn readFile(allocator: std.mem.Allocator, path: []const u8, max_size: usize)
     defer std.Io.File.close(file, io);
 
     const stat = try std.Io.Dir.statFile(cwd, io, path, .{});
-    const size: usize = @intCast(stat.size);
+    const size = @as(usize, @intCast(stat.size));
     if (size > max_size) return error.FileTooBig;
 
     var buf: [4096]u8 = undefined;
@@ -78,20 +78,27 @@ fn readDirInternal(
         const full_path = try std.fs.path.join(allocator, &.{ dir_path, entry.name });
         errdefer allocator.free(full_path);
 
-        const matches_ext = if (options.extensions) |exts|
-            filterExtensions(entry.name, exts)
-        else
-            true;
+        // Check if this entry matches the extension filter
+        const matches_filter = filterExtensions(entry.name, options.extensions);
 
         if (entry.kind == .file or entry.kind == .sym_link) {
-            if (matches_ext) {
+            if (matches_filter) {
                 try results.append(allocator, full_path);
             } else {
                 allocator.free(full_path);
             }
-        } else if ((entry.kind == .directory or entry.kind == .sym_link) and options.recursive) {
-            try readDirInternal(allocator, full_path, options, results, depth + 1);
-            allocator.free(full_path);
+        } else if (entry.kind == .directory) {
+            // If it matches the filter (e.g., .app bundle), add it and don't recurse into it
+            if (matches_filter) {
+                try results.append(allocator, full_path);
+                // Don't free full_path - it's now owned by results
+            } else if (options.recursive) {
+                // Otherwise, recurse into it if recursive is enabled
+                try readDirInternal(allocator, full_path, options, results, depth + 1);
+                allocator.free(full_path);
+            } else {
+                allocator.free(full_path);
+            }
         } else {
             allocator.free(full_path);
         }
