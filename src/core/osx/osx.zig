@@ -12,12 +12,6 @@ pub fn appDirs(allocator: std.mem.Allocator) [][]const u8 {
         "/System/Library/CoreServices",
     };
     const result = allocator.alloc([]const u8, dirs.len) catch return &.{};
-    for (dirs, 0..) |dir, i| {
-        result[i] = allocator.dupe(u8, dir) catch {
-            for (0..i) |j| allocator.free(result[j]);
-            allocator.free(result);
-            return &.{};
-        };
-    }
+    for (dirs, 0..) |dir, i| result[i] = dir;
     return result;
 }
