@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 pub const log = @import("log.zig");
 pub const fsutils = @import("fsutils.zig");
 
@@ -94,6 +95,10 @@ pub fn demerauLevenshteinDistance(
 }
 
 pub fn execute(cmd: []const u8, allocator: std.mem.Allocator) !void {
+    if (builtin.os.tag == .windows) {
+        return executeWindows(cmd);
+    }
+
     var buf: [1024:0]u8 = undefined;
 
     if (cmd.len >= buf.len) {
@@ -135,6 +140,13 @@ pub fn execute(cmd: []const u8, allocator: std.mem.Allocator) !void {
     thread.detach();
 }
 
+fn executeWindows(cmd: []const u8) !void {
+    var child = std.ChildProcess.init(&.{ "cmd.exe", "/c", cmd }, std.heap.page_allocator);
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Ignore;
+    try child.spawn();
+}
+
 const ThreadData = struct {
     pid: i32,
     allocator: std.mem.Allocator,
@@ -146,7 +158,9 @@ fn reapChild(data: *ThreadData) void {
     data.allocator.destroy(data);
 }
 
-pub extern "c" var environ: [*:null]?[*:0]u8;
+pub const environ: [*:null]?[*:0]u8 = @extern([*:null]?[*:0]u8, .{
+    .name = if (builtin.os.tag == .windows) "_environ" else "environ",
+});
 
 pub fn strcomp(key: []const u8, literal: []const u8) bool {
     return std.mem.eql(u8, key, literal);

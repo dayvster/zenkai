@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub const ReadDirOptions = struct {
     extensions: ?[]const []const u8 = null,
@@ -107,7 +108,9 @@ fn readDirInternal(
 
 pub fn expandTilde(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     if (path.len == 0 or path[0] != '~') return try allocator.dupe(u8, path);
-    const home = if (std.c.getenv("HOME")) |h| std.mem.sliceTo(h, 0) else "/home";
+    const home_env = if (builtin.os.tag == .windows) "USERPROFILE" else "HOME";
+    const fallback = if (builtin.os.tag == .windows) "C:\\Users\\Default" else "/home";
+    const home = if (std.c.getenv(home_env)) |h| std.mem.sliceTo(h, 0) else fallback;
     if (path.len == 1) return try allocator.dupe(u8, home);
     return try std.fmt.allocPrint(allocator, "{s}{s}", .{ home, path[1..] });
 }

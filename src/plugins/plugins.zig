@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const lua = @import("lua_capi");
 const utils = @import("utils");
 const types = @import("types.zig");
@@ -323,17 +324,24 @@ pub const PluginManager = struct {
             self.allocator.free(url);
             g_pending_open_url = null;
 
-            const xdg_open = @as([*:0]const u8, "xdg-open");
-            const argv = [_:null]?[*:0]u8{
-                @constCast(xdg_open),
-                url_z,
-                null,
-            };
-            const pid = std.os.linux.fork();
-            if (std.os.linux.errno(pid) == .SUCCESS and pid == 0) {
-                _ = std.os.linux.execve("/usr/bin/xdg-open", &argv, utils.environ);
-                _ = std.os.linux.execve("/bin/xdg-open", &argv, utils.environ);
-                std.os.linux.exit(1);
+            if (builtin.os.tag == .windows) {
+                var child = std.ChildProcess.init(&.{ "cmd.exe", "/c", "start", url }, std.heap.page_allocator);
+                child.stdout_behavior = .Ignore;
+                child.stderr_behavior = .Ignore;
+                child.spawn() catch {};
+            } else {
+                const xdg_open = @as([*:0]const u8, "xdg-open");
+                const argv = [_:null]?[*:0]u8{
+                    @constCast(xdg_open),
+                    url_z,
+                    null,
+                };
+                const pid = std.os.linux.fork();
+                if (std.os.linux.errno(pid) == .SUCCESS and pid == 0) {
+                    _ = std.os.linux.execve("/usr/bin/xdg-open", &argv, utils.environ);
+                    _ = std.os.linux.execve("/bin/xdg-open", &argv, utils.environ);
+                    std.os.linux.exit(1);
+                }
             }
         }
     }

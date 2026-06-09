@@ -8,11 +8,10 @@ const desktop_loader = @import("core/desktop_loader.zig");
 const args = @import("args/args.zig");
 const plugins = @import("plugins");
 
-extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
-extern var __stderrp: *anyopaque;
-
 pub fn main(init: std.process.Init) !void {
     if (builtin.os.tag == .macos) {
+        const freopen = @extern(*const fn ([*:0]const u8, [*:0]const u8, *anyopaque) callconv(.C) ?*anyopaque, .{ .name = "freopen" });
+        const __stderrp = @extern(*anyopaque, .{ .name = "__stderrp" });
         _ = freopen("/dev/null", "w", __stderrp);
     }
 

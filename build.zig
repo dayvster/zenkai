@@ -76,6 +76,10 @@ pub fn build(b: *std.Build) void {
         exe.root_module.linkFramework("QtGui", .{});
         exe.root_module.linkFramework("QtWidgets", .{});
         exe.root_module.addLibraryPath(.{ .cwd_relative = brew_lua });
+    } else if (target.result.os.tag == .windows) {
+        exe.root_module.linkSystemLibrary("Qt6Core", .{});
+        exe.root_module.linkSystemLibrary("Qt6Gui", .{});
+        exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
     } else {
         exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
         exe.root_module.linkSystemLibrary("Qt6Core", .{});
@@ -137,6 +141,16 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("lua_capi", lua_capi_module);
     exe.root_module.addImport("plugins", plugins_module);
     if (osx_module) |mod| exe.root_module.addImport("osx", mod);
+
+    if (target.result.os.tag == .windows) {
+        const build_getapps = b.addSystemCommand(&.{ "dotnet", "build", "-c", "Release", "external/getapps.csproj" });
+        build_getapps.has_side_effects = true;
+
+        const copy_getapps = b.addSystemCommand(&.{ "cmd", "/c", "copy", "/y", "external\\bin\\Release\\net9.0-windows\\getapps.exe", "external\\getapps.exe" });
+        copy_getapps.step.dependOn(&build_getapps.step);
+        exe.step.dependOn(&copy_getapps.step);
+    }
+
     exe.step.dependOn(&check_lua.step);
     b.installArtifact(exe);
 

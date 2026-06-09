@@ -1,10 +1,18 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const fsutils = @import("utils").fsutils;
 const log = @import("utils").log;
 
 const default_config = @embedFile("config.toml");
 
 fn configDir(allocator: std.mem.Allocator) ![]u8 {
+    if (builtin.os.tag == .windows) {
+        if (std.c.getenv("APPDATA")) |appdata| {
+            const dir = std.mem.sliceTo(appdata, 0);
+            return try std.fs.path.join(allocator, &.{ dir, "zenkai" });
+        }
+        return error.MissingConfigDir;
+    }
     if (std.c.getenv("XDG_CONFIG_HOME")) |xdg| {
         const dir = std.mem.sliceTo(xdg, 0);
         return try std.fs.path.join(allocator, &.{ dir, "zenkai" });
