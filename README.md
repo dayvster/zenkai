@@ -3,15 +3,18 @@
 </p>
 
 # zenkai
-<p align="center">
-<img width="450"  alt="image" src="https://github.com/user-attachments/assets/3297778a-7a09-4b76-9f77-9d401f7d048a" />
-</p>
+
 
 A fast app launcher for Linux. Written in Zig with Qt6.
 
 Scans your .desktop files from the usual places, shows you everything in a searchable list, and lets you filter through it as you type with fuzzy matching.
 
 Thanks to [rcalixte](https://github.com/rcalixte) for [libqt6zig](https://github.com/rcalixte/libqt6zig), the Zig bindings this project is built on.
+
+## Preview
+<p align="center">
+<img width="450"  alt="image" src="https://github.com/user-attachments/assets/3297778a-7a09-4b76-9f77-9d401f7d048a" />
+</p>
 
 ## Requirements
 
