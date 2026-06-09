@@ -3,7 +3,7 @@
 </p>
 
 # zenkai
-<img width="450" height="954" alt="image" src="https://github.com/user-attachments/assets/3297778a-7a09-4b76-9f77-9d401f7d048a" />
+<img width="450"  alt="image" src="https://github.com/user-attachments/assets/3297778a-7a09-4b76-9f77-9d401f7d048a" />
 
 
 A fast app launcher for Linux. Written in Zig with Qt6.
