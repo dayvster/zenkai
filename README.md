@@ -20,9 +20,7 @@ Thanks to [rcalixte](https://github.com/rcalixte) for [libqt6zig](https://github
 ## Build
 
 ```sh
-zig build fetch
 zig build
-zig build run
 ```
 
 Binary at `zig-out/bin/zenkai`.
