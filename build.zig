@@ -85,8 +85,8 @@ pub fn build(b: *std.Build) void {
         exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
 
         exe.root_module.link_libcpp = false;
-        for ([_][]const u8{ "libstdc++.so", "libgcc_eh.a" }) |libname| {
-            const path = std.mem.trim(u8, b.run(&.{ "gcc", b.fmt("-print-file-name={s}", .{libname}) }), &std.ascii.whitespace);
+        for ([_][]const u8{ "libstdc++.so.6", "libgcc_eh.a" }) |libname| {
+            const path = std.mem.trim(u8, b.run(&.{ "gcc", b.fmt("--print-file-name={s}", .{libname}) }), &std.ascii.whitespace);
             if (!std.mem.eql(u8, path, libname)) {
                 exe.root_module.addObjectFile(.{ .cwd_relative = path });
             }
