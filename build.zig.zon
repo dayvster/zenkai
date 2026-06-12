@@ -8,6 +8,10 @@
             .url = "git+https://github.com/rcalixte/libqt6zig#5682682b84ddbac22003b09bb65011292b318e35",
             .hash = "libqt6zig-6.8.2-OSXtXFigyxsY_zbXRSeV7-5jOe7k5yrUjTMj30xIv4JL",
         },
+        .zlua = .{
+            .url = "git+https://github.com/natecraddock/ziglua#d59103e257b25ae892cdede9a671366e8d4f3e51",
+            .hash = "zlua-0.1.0-hGRpC4aUBQCOTE7WgTqCz0YBVUUaIpqDu1cNBu8nN6jH",
+        },
     },
     .paths = .{
         "build.zig",

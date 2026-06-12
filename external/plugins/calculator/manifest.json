@@ -1,0 +1,8 @@
+{
+    "name": "calculator",
+    "version": "1.0.0",
+    "main": "main.lua",
+    "description": "Evaluate math expressions inline",
+    "author": "built-in",
+    "disabled": false
+}
