@@ -86,11 +86,9 @@ pub fn build(b: *std.Build) void {
 
         exe.root_module.link_libcpp = false;
         for ([_][]const u8{ "libstdc++.so", "libgcc_eh.a" }) |libname| {
-            var code: u8 = 0;
-            const path = b.runAllowFail(&.{ "gcc", b.fmt("-print-file-name={s}", .{libname}) }, &code, .ignore) catch continue;
-            const trimmed = std.mem.trim(u8, path, " \n\r");
-            if (trimmed.len > 0 and !std.mem.eql(u8, trimmed, libname)) {
-                exe.root_module.addObjectFile(.{ .cwd_relative = trimmed });
+            const path = std.mem.trim(u8, b.run(&.{ "gcc", b.fmt("-print-file-name={s}", .{libname}) }), &std.ascii.whitespace);
+            if (!std.mem.eql(u8, path, libname)) {
+                exe.root_module.addObjectFile(.{ .cwd_relative = path });
             }
         }
     }
