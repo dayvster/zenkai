@@ -80,11 +80,10 @@ pub const Window = struct {
         self.search_bar.setup();
 
         if (!no_bottom_bar) {
-            var bar = BottomBar.init(allocator, window, vis);
-            bar.setup(&self.list);
-            bar.setDefaultActions();
-            main_layout.AddWidget(bar.container);
-            self.bottom_bar = bar;
+            self.bottom_bar = BottomBar.init(allocator, window, vis);
+            self.bottom_bar.?.setup(&self.list);
+            self.bottom_bar.?.setDefaultActions();
+            main_layout.AddWidget(self.bottom_bar.?.container);
         }
 
         window.SetMinimumSize2(win_w, win_h);

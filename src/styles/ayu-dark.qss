@@ -1,37 +1,37 @@
 QWidget {
-    background-color: #0d1017;
-    color: #bfc7d5;
+    background-color: #0a0e14;
+    color: #b3b1ad;
 }
 
 #searchbarInput {
-    background-color: #131721;
-    color: #bfc7d5;
-    border-color: #1f2430;
+    background-color: #1a1f29;
+    color: #b3b1ad;
+    border: none;
     selection-background-color: #e6b450;
-    selection-color: #0d1017;
+    selection-color: #0a0e14;
 }
 
 #searchbarInput:focus {
-    border-color: #f29718;
+    border: none;
 }
 
 #searchbarInput::placeholder {
-    color: #565f73;
+    color: #8a9199;
 }
 
 #appList {
-    background: #0d1017;
+    background: #0a0e14;
 }
 
 #appList::item {
     padding: 8px 12px;
     border-radius: 4px;
-    color: #bfc7d5;
+    color: #b3b1ad;
 }
 
 #appList::item:selected {
     background: #f29718;
-    color: #0d1017;
+    color: #0a0e14;
 }
 
 #appList QScrollBar:vertical {
@@ -46,7 +46,7 @@ QWidget {
 }
 
 #appList QScrollBar::handle:vertical:hover {
-    background-color: #95e6cb;
+    background-color: #f29718;
 }
 
 #appList QScrollBar::add-line:vertical,
@@ -60,23 +60,23 @@ QWidget {
 }
 
 #bottomBar {
-    background: #0d1017;
+    background: #0a0e14;
     border-top: 1px solid #1f2430;
 }
 
 #bottomBar QToolButton {
     padding: 4px 6px;
     border-radius: 4px;
-    color: #bfc7d5;
+    color: #b3b1ad;
 }
 
 #bottomBar QToolButton:hover {
-    background-color: #131721;
+    background-color: #1a1f29;
     border: 1px solid #f29718;
 }
 
 #bottomBar QLabel {
-    color: #565f73;
+    color: #8a9199;
 }
 
 #actionItem {
@@ -87,27 +87,27 @@ QWidget {
     background: transparent;
     border: none;
     padding: 4px 6px;
-    color: #bfc7d5;
+    color: #b3b1ad;
     border-radius: 4px;
 }
 
 #actionButton:hover {
-    background: #131721;
+    background: #1a1f29;
     border: 1px solid #f29718;
 }
 
 #actionShortcut {
-    color: #565f73;
+    color: #8a9199;
     background: transparent;
 }
 
 #actionName {
-    color: #bfc7d5;
+    color: #b3b1ad;
     background: transparent;
 }
 
 #listFade {
     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                                  stop: 0 transparent,
-                                 stop: 1 #0d1017);
+                                 stop: 1 #0a0e14);
 }
