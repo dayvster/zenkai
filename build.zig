@@ -6,14 +6,11 @@ pub fn build(b: *std.Build) void {
 
     const target = b.standardTargetOptions(.{});
 
-    const optimize = b.standardOptimizeOption(.{});
-    const strip = b.option(bool, "strip", "Strip debug info") orelse (optimize != .Debug);
-
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
-        .optimize = optimize,
-        .strip = strip,
+        .optimize = .ReleaseFast,
+        .strip = true,
     });
 
     const exe = b.addExecutable(.{
@@ -23,7 +20,7 @@ pub fn build(b: *std.Build) void {
 
     const qt6zig = b.dependency("libqt6zig", .{
         .target = target,
-        .optimize = optimize,
+        .optimize = .ReleaseFast,
     });
 
     exe.root_module.addImport("libqt6zig", qt6zig.module("libqt6zig"));
@@ -167,7 +164,7 @@ pub fn build(b: *std.Build) void {
     const plugin_test_module = b.createModule(.{
         .root_source_file = b.path("src/plugins/plugins.test.zig"),
         .target = target,
-        .optimize = optimize,
+        .optimize = .ReleaseFast,
     });
     plugin_test_module.addImport("lua_capi", lua_capi_module);
     plugin_test_module.linkSystemLibrary("lua", .{});
