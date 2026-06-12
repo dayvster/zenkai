@@ -4,47 +4,33 @@ QWidget {
 }
 
 #searchbarInput {
-    border-width: 1px;
-    border-style: solid;
-    border-radius: 6px;
-    padding: 8px 12px;
-    font-size: 14px;
+  padding: 8px 12px;
 }
 
 #searchbarInput:focus {
-    border-width: 1px;
-    border-style: solid;
 }
 
 #searchbarInput::placeholder {
 }
 
 #appList {
-    border: none;
-    outline: none;
-    padding: 0px;
+   
 }
 
 #appList::item {
-    padding: 8px 12px;
+    
 }
 
-#appList::item:hover {
-}
-
-#appList::item:current,
 #appList::item:selected {
 }
 
 #appList QScrollBar:vertical {
-    width: 6px;
-    margin: 0;
-    border-radius: 3px;
+  max-width:6px;
+    
 }
 
 #appList QScrollBar::handle:vertical {
-    min-height: 30px;
-    border-radius: 3px;
+   
 }
 
 #appList QScrollBar::handle:vertical:hover {
@@ -52,27 +38,39 @@ QWidget {
 
 #appList QScrollBar::add-line:vertical,
 #appList QScrollBar::sub-line:vertical {
-    height: 0;
 }
 
 #appList QScrollBar::add-page:vertical,
 #appList QScrollBar::sub-page:vertical {
-    background: none;
 }
-
+#bottomBar {
+ 
+}
 #bottomBar QToolButton {
-    border: none;
-    padding: 4px 6px;
-    font-size: 12px;
-    border-radius: 4px;
-    background: transparent;
+   
 }
 
 #bottomBar QToolButton:hover {
+    
 }
 
 #bottomBar QLabel {
-    border: none;
-    font-size: 11px;
-    padding-right: 8px;
+    
 }
+
+#actionButton {
+    
+}
+
+#actionButton:hover {
+    
+}
+
+#actionShortcut {
+    
+}
+
+#actionName {
+}
+
+

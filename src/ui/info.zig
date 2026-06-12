@@ -1,6 +1,5 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
-const theme = @import("../theme/theme.zig");
 const applist = @import("list.zig");
 const de = @import("desktopapp");
 const desktop_loader = @import("../core/desktop_loader.zig");
@@ -75,9 +74,7 @@ const Html = struct {
     fn field(self: *Html, label: []const u8, value: []const u8) void {
         const ev = utils.esc(self.gpa, value) catch return;
         defer self.gpa.free(ev);
-        self.append("<tr><td style='color: ");
-        self.append(theme.current.muted);
-        self.append("; padding-right: 20px; white-space: nowrap; vertical-align: top; padding-bottom: 3px; font-weight: 600; font-size: 12px;'>");
+        self.append("<tr><td style='padding-right: 20px; white-space: nowrap; vertical-align: top; padding-bottom: 3px; font-weight: 600; font-size: 12px;'>");
         self.append(label);
         self.append("</td><td style='padding-bottom: 3px;'>");
         self.append(ev);
@@ -110,15 +107,11 @@ const Html = struct {
     }
 
     fn rowBreak(self: *Html) void {
-        self.append("<tr><td colspan='2' style='padding-top: 8px;'><hr style='border: none; border-top: 1px solid ");
-        self.append(theme.current.border);
-        self.append(";'></td></tr>");
+        self.append("<tr><td colspan='2' style='padding-top: 8px;'><hr></td></tr>");
     }
 
     fn rowHeader(self: *Html, label: []const u8) void {
-        self.append("<tr><td colspan='2' style='padding-top: 2px; padding-bottom: 6px; color: ");
-        self.append(theme.current.accent);
-        self.append("; font-size: 12px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;'>");
+        self.append("<tr><td colspan='2' style='padding-top: 2px; padding-bottom: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;'>");
         self.append(label);
         self.append("</td></tr>");
     }
@@ -137,13 +130,7 @@ pub fn showInfoPanel() void {
     {
         const name_esc = utils.esc(html.gpa, app.name) catch return;
         defer html.gpa.free(name_esc);
-        html.append("<html><body style='font-family: sans-serif; font-size: 13px; color: ");
-        html.append(theme.current.text);
-        html.append("; background: ");
-        html.append(theme.current.bg);
-        html.append("; padding: 12px; margin: 0;'><h2 style='margin: 0 0 14px 0; padding: 0; color: ");
-        html.append(theme.current.accent);
-        html.append("; font-size: 20px; font-weight: 700; letter-spacing: 0.3px;'>");
+        html.append("<html><body style='padding: 12px; margin: 0;'><h2 style='margin: 0 0 14px 0; padding: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.3px;'>");
         html.append(name_esc);
         html.append("</h2><table style='border-collapse: collapse; width: 100%;'>");
     }

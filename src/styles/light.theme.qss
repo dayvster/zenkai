@@ -19,19 +19,6 @@ QWidget {
     color: #9ca0b0;
 }
 
-#appList {
-}
-
-#appList::item {
-}
-
-#appList::item:hover {
-}
-
-#appList::item:current,
-#appList::item:selected {
-}
-
 #appList QScrollBar:vertical {
     background-color: #eff1f5;
 }
@@ -44,13 +31,51 @@ QWidget {
     background-color: #acb0be;
 }
 
-#bottomBar QToolButton {
-}
-
 #bottomBar QToolButton:hover {
     background-color: #e6e9ef;
 }
 
+#appList::item:selected {
+    background: #ccd0da;
+}
+
+#listFade {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 transparent,
+                                 stop: 1 #eff1f5);
+}
+
+#bottomBar {
+    background: #eff1f5;
+    border-top: 1px solid #ccd0da;
+}
+
 #bottomBar QLabel {
     color: #9ca0b0;
+}
+
+#actionItem {
+    margin: 4px 6px;
+}
+
+#actionButton {
+    background: transparent;
+    border: none;
+    padding: 4px 6px;
+    color: #4c4f69;
+}
+
+#actionButton:hover {
+    background: #e6e9ef;
+    border: 1px solid #ccd0da;
+}
+
+#actionShortcut {
+    color: #9ca0b0;
+    background: transparent;
+}
+
+#actionName {
+    color: #4c4f69;
+    background: transparent;
 }

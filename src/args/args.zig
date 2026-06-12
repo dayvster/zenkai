@@ -1,6 +1,25 @@
 const std = @import("std");
 const log = @import("utils").log;
 
+pub const help =
+    \\Usage: zenkai [options]
+    \\
+    \\Options:
+    \\  --menu=name|cmd|icon      Add a custom menu entry
+    \\  --size=N                  Icon size in pixels
+    \\  --width=N                 Window width in pixels
+    \\  --height=N                Window height in pixels
+    \\  --theme=NAME              Theme (dark, light, dracula, ayu-dark, minimal, or path)
+    \\  --debug                   Start debug timer
+    \\  --verbose, -v             Verbose logging
+    \\  --benchmark-all           Benchmark all stages
+    \\  --no-icons                Hide icons
+    \\  --no-bottom-bar           Hide bottom bar
+    \\  --show-actions            Show item actions
+    \\  --actions-bottombar       Show actions in bottom bar
+    \\  --help, -h                Show this help and exit
+;
+
 pub const Config = struct {
     icon_size: ?i32,
     start_timer: bool,
@@ -53,6 +72,10 @@ pub fn parseMenus(allocator: std.mem.Allocator, args: [][:0]u8) ![]MenuEntry {
     return try menus.toOwnedSlice(allocator);
 }
 
+pub fn show_help() void {
+    std.debug.print("{s}", .{help});
+}
+
 pub fn deinitMenuEntries(allocator: std.mem.Allocator, entries: []MenuEntry) void {
     for (entries) |e| {
         allocator.free(e.name);
@@ -78,7 +101,10 @@ pub fn parse(args: [][:0]u8) Config {
 
     for (args) |arg_slice| {
         const arg: []const u8 = arg_slice;
-        if (std.mem.startsWith(u8, arg, "--size=")) {
+        if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
+            show_help();
+            std.process.exit(0);
+        } else if (std.mem.startsWith(u8, arg, "--size=")) {
             cfg.icon_size = std.fmt.parseInt(i32, arg["--size=".len..], 10) catch null;
         } else if (std.mem.startsWith(u8, arg, "--width=")) {
             cfg.window_width = std.fmt.parseInt(i32, arg["--width=".len..], 10) catch null;

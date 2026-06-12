@@ -1,0 +1,124 @@
+QWidget {
+    background-color: #c0c0c0;
+    color: #000000;
+    font-size: 11px;
+}
+
+#searchbarInput {
+    background-color: #ffffff;
+    color: #000000;
+    padding: 3px 6px;
+    border: 2px solid;
+    border-color: #808080 #ffffff #ffffff #808080;
+    selection-background-color: #000080;
+    selection-color: #ffffff;
+}
+
+#searchbarInput:focus {
+    border-color: #000000 #808080 #808080 #000000;
+}
+
+#searchbarInput::placeholder {
+    color: #808080;
+}
+
+#appList {
+    background: #c0c0c0;
+}
+
+#appList::item {
+    padding: 2px 6px;
+    border-radius: 0px;
+    color: #000000;
+}
+
+#appList::item:selected {
+    background: #000080;
+    color: #ffffff;
+}
+
+#appList QScrollBar:vertical {
+    background-color: #c0c0c0;
+    width: 16px;
+    border: none;
+}
+
+#appList QScrollBar::handle:vertical {
+    background-color: #c0c0c0;
+    min-height: 16px;
+    border: 2px solid;
+    border-color: #ffffff #808080 #808080 #ffffff;
+}
+
+#appList QScrollBar::handle:vertical:hover {
+    background-color: #d4d0c8;
+    border-color: #ffffff #808080 #808080 #ffffff;
+}
+
+#appList QScrollBar::add-line:vertical,
+#appList QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+#appList QScrollBar::add-page:vertical,
+#appList QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+#bottomBar {
+    background: #c0c0c0;
+    border-top: 2px solid #808080;
+}
+
+#bottomBar QToolButton {
+    padding: 2px 8px;
+    border: 2px solid;
+    border-color: #ffffff #808080 #808080 #ffffff;
+    color: #000000;
+}
+
+#bottomBar QToolButton:hover {
+    background-color: #d4d0c8;
+    border-color: #ffffff #000000 #000000 #ffffff;
+}
+
+#bottomBar QToolButton:pressed {
+    border-color: #808080 #ffffff #ffffff #808080;
+}
+
+#bottomBar QLabel {
+    color: #808080;
+}
+
+#actionItem {
+    margin: 2px 4px;
+}
+
+#actionButton {
+    background: transparent;
+    border: none;
+    padding: 2px 6px;
+    color: #000000;
+}
+
+#actionButton:hover {
+    background: #d4d0c8;
+    border: 2px solid;
+    border-color: #ffffff #808080 #808080 #ffffff;
+}
+
+#actionShortcut {
+    color: #808080;
+    background: transparent;
+}
+
+#actionName {
+    color: #000000;
+    background: transparent;
+}
+
+#listFade {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 transparent,
+                                 stop: 1 #c0c0c0);
+}

@@ -248,12 +248,14 @@ pub const List = struct {
 
     pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp, icon_size: i32, plugin_manager: ?*plugins.PluginManager) List {
         g_icon_size = icon_size;
-        return initInternal(allocator, .{ .desktop_apps = apps }, icon_size, plugin_manager);
+        const result = initInternal(allocator, .{ .desktop_apps = apps }, icon_size, plugin_manager);
+        return result;
     }
 
     pub fn fromItems(allocator: std.mem.Allocator, items: []const ListItem, icon_size: i32) List {
         g_icon_size = icon_size;
-        return initInternal(allocator, .{ .items = items }, icon_size, null);
+        const result = initInternal(allocator, .{ .items = items }, icon_size, null);
+        return result;
     }
 
     fn initInternal(allocator: std.mem.Allocator, source: DataSource, icon_size: i32, plugin_manager: ?*plugins.PluginManager) List {
@@ -272,10 +274,9 @@ pub const List = struct {
         var icon_sz = QSize.New4(icon_size, icon_size);
         defer icon_sz.Delete();
         view.SetIconSize(icon_sz);
-        view.SetModel(model);
-        view.OnCurrentChanged(onCurrentChanged);
+        view.SetVerticalScrollMode(qt.qabstractitemview_enums.ScrollMode.ScrollPerItem);
 
-        return .{
+        var result = List{
             .allocator = allocator,
             .view = view,
             .model = model,
@@ -284,10 +285,19 @@ pub const List = struct {
             .plugin_results = std.ArrayList(plugins.PluginResult).empty,
             .plugin_manager = plugin_manager,
         };
+        g_list = &result;
+        view.SetModel(model);
+        view.OnCurrentChanged(onCurrentChanged);
+
+        return result;
     }
 
     pub fn setOnItemFocused(callback: *const fn (item_index: usize, actions: []const ListItemAction) void) void {
         g_on_item_focused = callback;
+    }
+
+    pub fn adoptGList(self: *List) void {
+        g_list = self;
     }
 
     pub fn currentItemActions() []const ListItemAction {
@@ -382,6 +392,7 @@ pub const List = struct {
         var idx = self.model.Index(row, 0, invalid);
         defer idx.Delete();
         self.view.SetCurrentIndex(idx);
+        self.view.ScrollTo(idx, qt.qabstractitemview_enums.ScrollHint.EnsureVisible);
     }
 
     pub fn launchSelected(self: *List) void {

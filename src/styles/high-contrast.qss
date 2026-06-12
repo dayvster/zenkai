@@ -1,0 +1,115 @@
+QWidget {
+    background-color: #000000;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+#searchbarInput {
+    background-color: #000000;
+    color: #ffffff;
+    border: 2px solid #ffffff;
+    selection-background-color: #ffffff;
+    selection-color: #000000;
+}
+
+#searchbarInput:focus {
+    border: 2px solid #ffffff;
+}
+
+#searchbarInput::placeholder {
+    color: #ffffff;
+}
+
+#appList {
+    background: #000000;
+}
+
+#appList::item {
+    padding: 4px 8px;
+    border-radius: 0px;
+    color: #ffffff;
+}
+
+#appList::item:selected {
+    background: #ffffff;
+    color: #000000;
+}
+
+#appList QScrollBar:vertical {
+    background-color: #000000;
+    width: 12px;
+    border: 1px solid #ffffff;
+}
+
+#appList QScrollBar::handle:vertical {
+    background-color: #ffffff;
+    min-height: 20px;
+    border: none;
+}
+
+#appList QScrollBar::handle:vertical:hover {
+    background-color: #ffffff;
+}
+
+#appList QScrollBar::add-line:vertical,
+#appList QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+#appList QScrollBar::add-page:vertical,
+#appList QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+#bottomBar {
+    background: #000000;
+    border-top: 2px solid #ffffff;
+}
+
+#bottomBar QToolButton {
+    padding: 4px 8px;
+    border: 2px solid #ffffff;
+    color: #ffffff;
+}
+
+#bottomBar QToolButton:hover {
+    background-color: #ffffff;
+    color: #000000;
+}
+
+#bottomBar QLabel {
+    color: #ffffff;
+}
+
+#actionItem {
+    margin: 2px 4px;
+}
+
+#actionButton {
+    background: transparent;
+    border: 2px solid transparent;
+    padding: 2px 6px;
+    color: #ffffff;
+}
+
+#actionButton:hover {
+    background: #ffffff;
+    color: #000000;
+    border: 2px solid #ffffff;
+}
+
+#actionShortcut {
+    color: #ffffff;
+    background: transparent;
+}
+
+#actionName {
+    color: #ffffff;
+    background: transparent;
+}
+
+#listFade {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 #000000,
+                                 stop: 1 #000000);
+}

@@ -50,8 +50,10 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     ui.theme.setApp(app);
 
     if (cfg.benchmark_all) debug.mark("theme apply");
-    const custom_qss: ?[]const u8 = if (theme_resolved.allocation != null) theme_resolved.qss else null;
-    ui.theme.apply(allocator, visual, custom_qss, theme.current);
+    const main_qss_loaded = theme.readMainQss(allocator);
+    const base_qss = main_qss_loaded orelse theme.main_qss;
+    defer if (main_qss_loaded) |m| allocator.free(m);
+    ui.theme.apply(allocator, base_qss, theme_resolved.qss);
 
     if (cfg.benchmark_all) debug.mark("icon theme");
     if (config.detectIconTheme(allocator)) |icon_theme| {

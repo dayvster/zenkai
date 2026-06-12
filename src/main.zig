@@ -7,6 +7,7 @@ const bootstrap = @import("core/bootstrap.zig");
 const desktop_loader = @import("core/desktop_loader.zig");
 const args = @import("args/args.zig");
 const plugins = @import("plugins");
+const styles_watcher = @import("ui/styles_watcher.zig");
 
 extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
 extern var __stderrp: *anyopaque;
@@ -87,5 +88,6 @@ pub fn main(init: std.process.Init) !void {
     }
     if (ctx.cfg.benchmark_all) debug.printBenchmarks();
 
+    if (ctx.cfg.start_timer) styles_watcher.start(init.gpa);
     ui.Window.exec();
 }

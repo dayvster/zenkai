@@ -6,31 +6,16 @@ const List = @import("list.zig").List;
 const ListItem = @import("list.zig").ListItem;
 const Keyboard = @import("keyboard.zig").Keyboard;
 const BottomBar = @import("bottombar.zig").BottomBar;
+const SearchBar = @import("search_bar.zig").SearchBar;
 
 const QApp = qt.QApplication;
 const QWidget = qt.QWidget;
 const QVBoxLayout = qt.QVBoxLayout;
-const QLineEdit = qt.QLineEdit;
 const QCloseEvent = qt.QCloseEvent;
-const QTimer = qt.QTimer;
 
 var g_window: *Window = undefined;
-var g_search_text: [256]u8 = undefined;
-var g_search_text_len: usize = 0;
 
-fn onSearchTextChanged(_: QLineEdit, text_cstr: [*:0]const u8) callconv(.c) void {
-    const text = std.mem.span(text_cstr);
-    const len = @min(text.len, g_search_text.len);
-    @memcpy(g_search_text[0..len], text[0..len]);
-    g_search_text_len = len;
-    if (g_window.debounce_timer) |timer| {
-        timer.Stop();
-        timer.Start(150);
-    }
-}
-
-fn onDebounceTimeout(_: QTimer) callconv(.c) void {
-    const text = g_search_text[0..g_search_text_len];
+fn onSearchDebounced(text: []const u8) void {
     g_window.list.setFilter(text);
 }
 
@@ -41,10 +26,9 @@ fn onWindowClose(_: QWidget, _: QCloseEvent) callconv(.c) void {
 pub const Window = struct {
     allocator: std.mem.Allocator,
     widget: QWidget,
-    search_bar: QLineEdit,
+    search_bar: SearchBar,
     list: List,
     bottom_bar: ?BottomBar,
-    debounce_timer: ?QTimer,
 
     pub fn init(
         self: *Window,
@@ -74,20 +58,15 @@ pub const Window = struct {
         main_layout.SetContentsMargins(vis.layout_margin, vis.layout_margin, vis.layout_margin, vis.layout_margin);
         main_layout.SetSpacing(vis.layout_spacing);
 
-        var search_bar = QLineEdit.New2();
-        search_bar.SetObjectName("searchbarInput");
-        search_bar.SetPlaceholderText("Search apps...");
-        search_bar.SetClearButtonEnabled(false);
+        var search_bar = SearchBar.init(window, 150);
+        search_bar.on_debounced = onSearchDebounced;
 
         var list = List.fromItems(allocator, items, vis.icon_size);
+        list.adoptGList();
         list.setFilter("");
 
-        main_layout.AddWidget(search_bar);
+        main_layout.AddWidget(search_bar.widget);
         main_layout.AddWidget(list.view);
-
-        var debounce_timer = QTimer.New2(window);
-        debounce_timer.SetSingleShot(true);
-        debounce_timer.OnTimeout(onDebounceTimeout);
 
         self.* = .{
             .allocator = allocator,
@@ -95,8 +74,10 @@ pub const Window = struct {
             .search_bar = search_bar,
             .list = list,
             .bottom_bar = null,
-            .debounce_timer = debounce_timer,
         };
+
+        self.list.adoptGList();
+        self.search_bar.setup();
 
         if (!no_bottom_bar) {
             var bar = BottomBar.init(allocator, window, vis);
@@ -118,10 +99,21 @@ pub const Window = struct {
             win_h,
         );
 
+        const fade_h: i32 = 40;
+        var fade = QWidget.New(window);
+        fade.SetObjectName("listFade");
+        fade.SetFixedHeight(fade_h);
+        if (no_bottom_bar) {
+            fade.SetGeometry(0, win_h - fade_h, win_w, fade_h);
+        } else {
+            fade.SetGeometry(vis.layout_margin, win_h - vis.layout_margin - 28 - fade_h, win_w - 2 * vis.layout_margin, fade_h);
+        }
+        fade.Raise();
+        fade.SetAttribute2(qt.qnamespace_enums.WidgetAttribute.WA_TransparentForMouseEvents, true);
+
         g_window = self;
 
         window.OnCloseEvent(onWindowClose);
-        search_bar.OnTextChanged(onSearchTextChanged);
         Keyboard.setup(window, &self.list);
     }
 
@@ -134,10 +126,9 @@ pub const Window = struct {
     }
 
     pub fn deinit(self: *Window) void {
+        self.search_bar.deinit();
         self.list.deinit();
         if (self.bottom_bar) |*bar| bar.deinit();
-        if (self.debounce_timer) |timer| timer.Delete();
-        self.search_bar.Delete();
         self.widget.Delete();
     }
 };

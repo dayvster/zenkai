@@ -10,30 +10,8 @@ layout_spacing = 0
 # Icon size for app list items
 icon_size = 32
 
-# Theme — built-in: "dark", "light", "dracula", "ayu-dark", or path to .qss file
-theme = "dark"
-
-# Font family (global, used by all widgets)
-font_family = "Fira Sans, Noto Sans, DejaVu Sans, sans-serif"
-# Global font size (px)
-font_size = 13
-
-# -- Search bar (QLineEdit) ---------------------------------------------------
-search_font_size = 14
-search_padding_top = 8
-search_padding_bottom = 8
-search_padding_left = 12
-search_padding_right = 12
-search_border_width = 1
-search_border_radius = 6
-
-# -- App list (QListView) -----------------------------------------------------
-list_font_size = 13
-list_item_padding_top = 8
-list_item_padding_bottom = 8
-list_item_padding_left = 12
-list_item_padding_right = 12
-list_item_border_radius = 4
+# Theme: pass via --theme CLI flag (e.g. --theme=minimal)
+# Built-in themes: dark, light, dracula, ayu-dark, minimal
 
 # -- Bottom bar (action buttons bar) ------------------------------------------
 bottom_bar_margin_top = 4
@@ -41,19 +19,3 @@ bottom_bar_margin_bottom = 4
 bottom_bar_margin_left = 8
 bottom_bar_margin_right = 8
 bottom_bar_spacing = 4
-
-# -- Labels (keyboard shortcut hints, e.g. "Ctrl+I") --------------------------
-label_font_size = 11
-
-# -- Tool buttons (bottom bar action buttons) ---------------------------------
-button_font_size = 12
-button_padding_top = 4
-button_padding_bottom = 4
-button_padding_left = 6
-button_padding_right = 6
-button_border_radius = 4
-
-# -- Scrollbar ----------------------------------------------------------------
-scrollbar_width = 6
-scrollbar_border_radius = 3
-scrollbar_handle_min_height = 30

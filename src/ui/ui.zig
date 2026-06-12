@@ -9,6 +9,7 @@ pub const Keyboard = @import("keyboard.zig").Keyboard;
 pub const BottomBar = @import("bottombar.zig").BottomBar;
 pub const Window = @import("window.zig").Window;
 pub const theme = @import("theme_handler.zig");
+pub const SearchBar = @import("search_bar.zig").SearchBar;
 
 const QApp = qt.QApplication;
 
