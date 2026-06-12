@@ -11,6 +11,7 @@ pub const help =
     \\  --height=N                Window height in pixels
     \\  --theme=NAME              Theme (dark, light, dracula, ayu-dark, minimal, or path)
     \\  --debug                   Start debug timer
+    \\  --theme-reloader          Enable live QSS reloading (requires --debug)
     \\  --verbose, -v             Verbose logging
     \\  --benchmark-all           Benchmark all stages
     \\  --no-icons                Hide icons
@@ -24,6 +25,7 @@ pub const help =
 pub const Config = struct {
     icon_size: ?i32,
     start_timer: bool,
+    theme_reloader: bool,
     benchmark_all: bool,
     no_bottom_bar: bool,
     no_icons: bool,
@@ -91,6 +93,7 @@ pub fn parse(args: [][:0]u8) Config {
     var cfg: Config = .{
         .icon_size = null,
         .start_timer = false,
+        .theme_reloader = false,
         .benchmark_all = false,
         .no_bottom_bar = false,
         .no_icons = false,
@@ -118,6 +121,8 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.eql(u8, arg, "--debug")) {
             cfg.start_timer = true;
             log.verbose = true;
+        } else if (std.mem.eql(u8, arg, "--theme-reloader")) {
+            cfg.theme_reloader = true;
         } else if (std.mem.startsWith(u8, arg, "--theme=")) {
             const val = arg["--theme=".len..];
             cfg.theme = if (val.len > 0) val else null;

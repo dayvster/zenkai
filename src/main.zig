@@ -102,6 +102,6 @@ pub fn main(init: std.process.Init) !void {
     }
     if (ctx.cfg.benchmark_all) debug.printBenchmarks();
 
-    if (ctx.cfg.start_timer) styles_watcher.start(init.gpa);
+    if (ctx.cfg.start_timer and ctx.cfg.theme_reloader) styles_watcher.start(init.gpa);
     ui.Window.exec();
 }
