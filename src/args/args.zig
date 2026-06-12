@@ -17,6 +17,7 @@ pub const help =
     \\  --no-bottom-bar           Hide bottom bar
     \\  --show-actions            Show item actions
     \\  --actions-bottombar       Show actions in bottom bar
+    \\  --list-themes             List all available themes with descriptions
     \\  --help, -h                Show this help and exit
 ;
 
@@ -29,6 +30,7 @@ pub const Config = struct {
     theme: ?[]const u8,
     show_actions: bool,
     actions_bottombar: bool,
+    list_themes: bool,
     window_width: ?i32,
     window_height: ?i32,
 };
@@ -95,6 +97,7 @@ pub fn parse(args: [][:0]u8) Config {
         .theme = null,
         .show_actions = false,
         .actions_bottombar = false,
+        .list_themes = false,
         .window_width = null,
         .window_height = null,
     };
@@ -129,6 +132,8 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.show_actions = true;
         } else if (std.mem.eql(u8, arg, "--actions-bottombar")) {
             cfg.actions_bottombar = true;
+        } else if (std.mem.eql(u8, arg, "--list-themes")) {
+            cfg.list_themes = true;
         }
     }
 

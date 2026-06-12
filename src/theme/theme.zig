@@ -242,3 +242,82 @@ pub fn resolve(allocator: std.mem.Allocator, theme_arg: ?[]const u8) ThemeResult
     }
     return resolveWithDisk(allocator, "dark.theme.qss", dark_qss);
 }
+
+pub const ThemeEntry = struct {
+    name: []const u8,
+    desc: []const u8,
+};
+
+pub const theme_entries = [_]ThemeEntry{
+    .{ .name = "adwaita", .desc = "Light GNOME" },
+    .{ .name = "adwaita-dark", .desc = "Dark GNOME" },
+    .{ .name = "arc-dark", .desc = "Classic GTK blue/gray" },
+    .{ .name = "ayu-dark", .desc = "Warm dark Ayu" },
+    .{ .name = "ayu-mirage", .desc = "Dusky Ayu mirage" },
+    .{ .name = "breeze-dark", .desc = "KDE Plasma 6 dark" },
+    .{ .name = "breeze-light", .desc = "KDE Plasma light" },
+    .{ .name = "bulma", .desc = "Cyan/teal Capsule Corp genius" },
+    .{ .name = "buu", .desc = "Hot pink Majin menace" },
+    .{ .name = "catppuccin", .desc = "Soft pastel mocha dark" },
+    .{ .name = "catppuccin-frappe", .desc = "Warm catppuccin" },
+    .{ .name = "catppuccin-latte", .desc = "Light catppuccin" },
+    .{ .name = "catppuccin-macchiato", .desc = "Rich catppuccin" },
+    .{ .name = "cobalt", .desc = "Deep blue cobalt" },
+    .{ .name = "cupertino", .desc = "Light macOS Spotlight" },
+    .{ .name = "cupertino-dark", .desc = "Dark macOS Finder" },
+    .{ .name = "dark", .desc = "Catppuccin Mocha dark (default)" },
+    .{ .name = "dracula", .desc = "Dark purple Dracula" },
+    .{ .name = "everforest", .desc = "Forest green dark" },
+    .{ .name = "frieza", .desc = "Pale white/purple final form" },
+    .{ .name = "github-dark", .desc = "GitHub dark" },
+    .{ .name = "github-light", .desc = "GitHub light" },
+    .{ .name = "gohan", .desc = "Scholarly purple DBZ" },
+    .{ .name = "goku", .desc = "Dark blue + orange DBZ" },
+    .{ .name = "gruvbox", .desc = "Warm earthy retro" },
+    .{ .name = "high-contrast", .desc = "Bold high contrast" },
+    .{ .name = "high-contrast-dark", .desc = "Bold dark high contrast" },
+    .{ .name = "high-contrast-light", .desc = "Bold light high contrast" },
+    .{ .name = "kanagawa", .desc = "Calm dark cyan wave" },
+    .{ .name = "kanagawa-dragon", .desc = "Earthy muted kanagawa" },
+    .{ .name = "kanagawa-lotus", .desc = "Warm cream kanagawa light" },
+    .{ .name = "light", .desc = "Catppuccin Latte light" },
+    .{ .name = "material", .desc = "Material Design teal/purple" },
+    .{ .name = "matrix", .desc = "Green matrix rain" },
+    .{ .name = "minimal", .desc = "Clean minimal dark" },
+    .{ .name = "minimal-light", .desc = "Clean light minimal" },
+    .{ .name = "monokai", .desc = "Vibrant saturated dark" },
+    .{ .name = "monokai-pro", .desc = "Balanced monokai" },
+    .{ .name = "night-owl", .desc = "Owl-inspired dark" },
+    .{ .name = "noctis", .desc = "Deep blue-gray night" },
+    .{ .name = "nord", .desc = "Frosty blue arctic" },
+    .{ .name = "one-dark", .desc = "Atom's signature dark" },
+    .{ .name = "one-light", .desc = "Atom light" },
+    .{ .name = "palenight", .desc = "Material Palenight" },
+    .{ .name = "piccolo", .desc = "Namekian guardian green" },
+    .{ .name = "poimandres", .desc = "Teal/blue creative dark" },
+    .{ .name = "retro", .desc = "Amber CRT phosphor" },
+    .{ .name = "rose-pine", .desc = "Rosy pine forest" },
+    .{ .name = "rose-pine-dawn", .desc = "Light rose pine" },
+    .{ .name = "shades-of-purple", .desc = "Deep purple" },
+    .{ .name = "solarized-dark", .desc = "Warm amber scientific" },
+    .{ .name = "solarized-light", .desc = "Scientific light" },
+    .{ .name = "spacegray", .desc = "Xcode gray dark" },
+    .{ .name = "sweet", .desc = "Purple/pink candy" },
+    .{ .name = "synthwave84", .desc = "Neon retro synthwave" },
+    .{ .name = "tien", .desc = "Terracotta + Tri-Beam green" },
+    .{ .name = "tokyonight", .desc = "Deep blue night" },
+    .{ .name = "tokyo-night-light", .desc = "Light Tokyo day" },
+    .{ .name = "tokyo-night-moon", .desc = "Purple Tokyo variant" },
+    .{ .name = "tokyo-night-storm", .desc = "Blue Tokyo variant" },
+    .{ .name = "trunks", .desc = "Lavender + Capsule Corp blue" },
+    .{ .name = "ubuntu", .desc = "Warm light Ubuntu" },
+    .{ .name = "ubuntu-dark", .desc = "Dark Yaru Ubuntu" },
+    .{ .name = "vegeta", .desc = "Royal blue Saiyan prince" },
+    .{ .name = "win95", .desc = "Classic Windows 95" },
+};
+
+pub fn listThemes(writer: anytype) !void {
+    for (theme_entries) |entry| {
+        try writer.print("  {s:<26} {s}\n", .{ entry.name, entry.desc });
+    }
+}

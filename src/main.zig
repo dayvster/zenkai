@@ -6,6 +6,7 @@ const debug = @import("debug/debug.zig");
 const bootstrap = @import("core/bootstrap.zig");
 const desktop_loader = @import("core/desktop_loader.zig");
 const args = @import("args/args.zig");
+const theme = @import("theme/theme.zig");
 const plugins = @import("plugins");
 const styles_watcher = @import("ui/styles_watcher.zig");
 
@@ -15,6 +16,19 @@ extern var __stderrp: *anyopaque;
 pub fn main(init: std.process.Init) !void {
     if (builtin.os.tag == .macos) {
         _ = freopen("/dev/null", "w", __stderrp);
+    }
+
+    {
+        var args_iter = init.minimal.args.iterate();
+        while (args_iter.next()) |arg| {
+            if (std.mem.eql(u8, arg, "--list-themes")) {
+                std.debug.print("Available themes:\n", .{});
+                for (theme.theme_entries) |entry| {
+                    std.debug.print("  {s:<26} {s}\n", .{ entry.name, entry.desc });
+                }
+                std.process.exit(0);
+            }
+        }
     }
 
     var ctx = try bootstrap.init(init.gpa, init.minimal.args);
