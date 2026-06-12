@@ -1,0 +1,113 @@
+QWidget {
+    background-color: #faf4ed;
+    color: #575279;
+}
+
+#searchbarInput {
+    background-color: #fffaf3;
+    color: #575279;
+    border-color: #dfdad9;
+    selection-background-color: #907aa9;
+    selection-color: #ffffff;
+}
+
+#searchbarInput:focus {
+    border-color: #907aa9;
+}
+
+#searchbarInput::placeholder {
+    color: #9893a5;
+}
+
+#appList {
+    background: #faf4ed;
+}
+
+#appList::item {
+    padding: 8px 12px;
+    border-radius: 4px;
+    color: #575279;
+}
+
+#appList::item:selected {
+    background: #907aa9;
+    color: #ffffff;
+}
+
+#appList QScrollBar:vertical {
+    background-color: transparent;
+    width: 6px;
+}
+
+#appList QScrollBar::handle:vertical {
+    background-color: #dfdad9;
+    min-height: 30px;
+    border-radius: 3px;
+}
+
+#appList QScrollBar::handle:vertical:hover {
+    background-color: #907aa9;
+}
+
+#appList QScrollBar::add-line:vertical,
+#appList QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+#appList QScrollBar::add-page:vertical,
+#appList QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+#bottomBar {
+    background: #faf4ed;
+    border-top: 1px solid #dfdad9;
+}
+
+#bottomBar QToolButton {
+    padding: 4px 6px;
+    border-radius: 4px;
+    color: #575279;
+}
+
+#bottomBar QToolButton:hover {
+    background-color: #fffaf3;
+    border: 1px solid #907aa9;
+}
+
+#bottomBar QLabel {
+    color: #9893a5;
+}
+
+#actionItem {
+    margin: 4px 6px;
+}
+
+#actionButton {
+    background: transparent;
+    border: none;
+    padding: 4px 6px;
+    color: #575279;
+    border-radius: 4px;
+}
+
+#actionButton:hover {
+    background: #fffaf3;
+    border: 1px solid #907aa9;
+}
+
+#actionShortcut {
+    color: #9893a5;
+    background: transparent;
+}
+
+#actionName {
+    color: #575279;
+    background: transparent;
+}
+
+#listFade {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 transparent,
+                                 stop: 1 #faf4ed);
+}

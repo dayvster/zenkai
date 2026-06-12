@@ -44,6 +44,7 @@ pub fn build(b: *std.Build) void {
         "qstylehints",
         "qnamespace",
         "qabstractitemview",
+        "qabstractscrollarea",
         "qimage",
         "qpixmap",
         "qicon",

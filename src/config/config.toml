@@ -1,2 +1,21 @@
+# Window dimensions
+window_width = 600
+window_height = 500
+
+# Main layout — space between window border and inner widgets
+layout_margin = 0
+# Vertical spacing between search bar and list
+layout_spacing = 0
+
+# Icon size for app list items
 icon_size = 32
-theme = "dark"
+
+# Theme: pass via --theme CLI flag (e.g. --theme=minimal)
+# Built-in themes: dark, light, dracula, ayu-dark, minimal
+
+# -- Bottom bar (action buttons bar) ------------------------------------------
+bottom_bar_margin_top = 4
+bottom_bar_margin_bottom = 4
+bottom_bar_margin_left = 8
+bottom_bar_margin_right = 8
+bottom_bar_spacing = 4

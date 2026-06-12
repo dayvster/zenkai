@@ -1,8 +1,28 @@
 const std = @import("std");
 const log = @import("utils").log;
 
+pub const help =
+    \\Usage: zenkai [options]
+    \\
+    \\Options:
+    \\  --menu=name|cmd|icon      Add a custom menu entry
+    \\  --size=N                  Icon size in pixels
+    \\  --width=N                 Window width in pixels
+    \\  --height=N                Window height in pixels
+    \\  --theme=NAME              Theme (dark, light, dracula, ayu-dark, minimal, or path)
+    \\  --debug                   Start debug timer
+    \\  --verbose, -v             Verbose logging
+    \\  --benchmark-all           Benchmark all stages
+    \\  --no-icons                Hide icons
+    \\  --no-bottom-bar           Hide bottom bar
+    \\  --show-actions            Show item actions
+    \\  --actions-bottombar       Show actions in bottom bar
+    \\  --list-themes             List all available themes with descriptions
+    \\  --help, -h                Show this help and exit
+;
+
 pub const Config = struct {
-    icon_size: i32,
+    icon_size: ?i32,
     start_timer: bool,
     benchmark_all: bool,
     no_bottom_bar: bool,
@@ -10,6 +30,9 @@ pub const Config = struct {
     theme: ?[]const u8,
     show_actions: bool,
     actions_bottombar: bool,
+    list_themes: bool,
+    window_width: ?i32,
+    window_height: ?i32,
 };
 
 pub const MenuEntry = struct {
@@ -51,6 +74,10 @@ pub fn parseMenus(allocator: std.mem.Allocator, args: [][:0]u8) ![]MenuEntry {
     return try menus.toOwnedSlice(allocator);
 }
 
+pub fn show_help() void {
+    std.debug.print("{s}", .{help});
+}
+
 pub fn deinitMenuEntries(allocator: std.mem.Allocator, entries: []MenuEntry) void {
     for (entries) |e| {
         allocator.free(e.name);
@@ -62,7 +89,7 @@ pub fn deinitMenuEntries(allocator: std.mem.Allocator, entries: []MenuEntry) voi
 
 pub fn parse(args: [][:0]u8) Config {
     var cfg: Config = .{
-        .icon_size = 32,
+        .icon_size = null,
         .start_timer = false,
         .benchmark_all = false,
         .no_bottom_bar = false,
@@ -70,12 +97,22 @@ pub fn parse(args: [][:0]u8) Config {
         .theme = null,
         .show_actions = false,
         .actions_bottombar = false,
+        .list_themes = false,
+        .window_width = null,
+        .window_height = null,
     };
 
     for (args) |arg_slice| {
         const arg: []const u8 = arg_slice;
-        if (std.mem.startsWith(u8, arg, "--size=")) {
-            cfg.icon_size = std.fmt.parseInt(i32, arg["--size=".len..], 10) catch 32;
+        if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
+            show_help();
+            std.process.exit(0);
+        } else if (std.mem.startsWith(u8, arg, "--size=")) {
+            cfg.icon_size = std.fmt.parseInt(i32, arg["--size=".len..], 10) catch null;
+        } else if (std.mem.startsWith(u8, arg, "--width=")) {
+            cfg.window_width = std.fmt.parseInt(i32, arg["--width=".len..], 10) catch null;
+        } else if (std.mem.startsWith(u8, arg, "--height=")) {
+            cfg.window_height = std.fmt.parseInt(i32, arg["--height=".len..], 10) catch null;
         } else if (std.mem.eql(u8, arg, "--verbose") or std.mem.eql(u8, arg, "-v")) {
             log.verbose = true;
         } else if (std.mem.eql(u8, arg, "--debug")) {
@@ -95,6 +132,8 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.show_actions = true;
         } else if (std.mem.eql(u8, arg, "--actions-bottombar")) {
             cfg.actions_bottombar = true;
+        } else if (std.mem.eql(u8, arg, "--list-themes")) {
+            cfg.list_themes = true;
         }
     }
 

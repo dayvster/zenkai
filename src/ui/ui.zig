@@ -1,5 +1,6 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
+const config = @import("config");
 
 pub const List = @import("list.zig").List;
 pub const ListItem = @import("list.zig").ListItem;
@@ -8,6 +9,7 @@ pub const Keyboard = @import("keyboard.zig").Keyboard;
 pub const BottomBar = @import("bottombar.zig").BottomBar;
 pub const Window = @import("window.zig").Window;
 pub const theme = @import("theme_handler.zig");
+pub const SearchBar = @import("search_bar.zig").SearchBar;
 
 const QApp = qt.QApplication;
 
@@ -33,9 +35,9 @@ pub fn renderList(
     self: *Window,
     allocator: std.mem.Allocator,
     items: []const ListItem,
-    icon_size: i32,
+    vis: config.VisualConfig,
     show_bottom_bar: bool,
     no_icons: bool,
 ) void {
-    self.init(allocator, items, icon_size, !show_bottom_bar, no_icons);
+    self.init(allocator, items, vis, !show_bottom_bar, no_icons);
 }

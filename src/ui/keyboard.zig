@@ -22,12 +22,18 @@ fn onEnter(_: QShortcut) callconv(.c) void {
 }
 
 fn onUp(_: QShortcut) callconv(.c) void {
-    const row = currentRow() orelse return;
+    const row = currentRow() orelse {
+        if (L.indices.items.len > 0) L.selectRow(@intCast(L.indices.items.len - 1));
+        return;
+    };
     if (row > 0) L.selectRow(row - 1);
 }
 
 fn onDown(_: QShortcut) callconv(.c) void {
-    const row = currentRow() orelse return;
+    const row = currentRow() orelse {
+        if (L.indices.items.len > 0) L.selectRow(0);
+        return;
+    };
     if (row < L.indices.items.len - 1) L.selectRow(row + 1);
 }
 

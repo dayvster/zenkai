@@ -63,14 +63,12 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
 
     var reader = platform.AppReader.init(allocator);
     reader.load() catch {
-        reader.deinit();
         ui.showError("Error loading desktop files");
         return Error.LoadFailed;
     };
 
     if (benchmark) debug.mark("reader scan");
     reader.scan() catch {
-        reader.deinit();
         ui.showError("Error parsing desktop files");
         return Error.ScanFailed;
     };
