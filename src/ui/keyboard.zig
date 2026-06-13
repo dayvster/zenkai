@@ -7,14 +7,23 @@ const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;
 const QWidget = qt.QWidget;
 const QApp = qt.QApplication;
+const QLineEdit = qt.QLineEdit;
 
 var L: *List = undefined;
+var search_widget: QLineEdit = undefined;
 
 fn currentRow() ?i32 {
     var idx = L.view.CurrentIndex();
     defer idx.Delete();
     if (!idx.IsValid()) return null;
     return idx.Row();
+}
+
+fn focusSearch() void {
+    var invalid = List.invalidIndex();
+    defer invalid.Delete();
+    L.view.SetCurrentIndex(invalid);
+    search_widget.SetFocus();
 }
 
 fn onEnter(_: QShortcut) callconv(.c) void {
@@ -26,7 +35,11 @@ fn onUp(_: QShortcut) callconv(.c) void {
         if (L.indices.items.len > 0) L.selectRow(@intCast(L.indices.items.len - 1));
         return;
     };
-    if (row > 0) L.selectRow(row - 1);
+    if (row > 0) {
+        L.selectRow(row - 1);
+    } else {
+        focusSearch();
+    }
 }
 
 fn onDown(_: QShortcut) callconv(.c) void {
@@ -34,7 +47,11 @@ fn onDown(_: QShortcut) callconv(.c) void {
         if (L.indices.items.len > 0) L.selectRow(0);
         return;
     };
-    if (row < L.indices.items.len - 1) L.selectRow(row + 1);
+    if (row < L.indices.items.len - 1) {
+        L.selectRow(row + 1);
+    } else {
+        focusSearch();
+    }
 }
 
 fn bind(window: QWidget, key: []const u8, handler: *const fn (QShortcut) callconv(.c) void) void {
@@ -62,8 +79,9 @@ fn makeActionHandler(comptime n: usize) *const fn (QShortcut) callconv(.c) void 
 }
 
 pub const Keyboard = struct {
-    pub fn setup(window: QWidget, list: *List) void {
+    pub fn setup(window: QWidget, list: *List, search: QLineEdit) void {
         L = list;
+        search_widget = search;
         bind(window, "Return", onEnter);
         bind(window, "Up", onUp);
         bind(window, "Down", onDown);
