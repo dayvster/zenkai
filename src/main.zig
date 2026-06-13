@@ -9,6 +9,8 @@ const args = @import("args/args.zig");
 const theme = @import("theme/theme.zig");
 const plugins = @import("plugins");
 const styles_watcher = @import("ui/styles_watcher.zig");
+const config = @import("config");
+const core_freq = @import("core_freq");
 
 extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
 extern var __stderrp: *anyopaque;
@@ -18,6 +20,7 @@ pub fn main(init: std.process.Init) !void {
         _ = freopen("/dev/null", "w", __stderrp);
     }
 
+    var debug_freq = false;
     {
         var args_iter = init.minimal.args.iterate();
         while (args_iter.next()) |arg| {
@@ -27,6 +30,9 @@ pub fn main(init: std.process.Init) !void {
                     std.debug.print("  {s:<26} {s}\n", .{ entry.name, entry.desc });
                 }
                 std.process.exit(0);
+            }
+            if (std.mem.eql(u8, arg, "--debug-freq")) {
+                debug_freq = true;
             }
         }
     }
@@ -100,6 +106,28 @@ pub fn main(init: std.process.Init) !void {
     window.list.plugin_manager = &pm;
     defer window.deinit();
 
+    var freq_store = core_freq.FrequencyStore.init(init.gpa);
+    defer freq_store.deinit();
+    var cfg_dir_opt: ?[]u8 = null;
+    if (config.configDir(init.gpa)) |cfg_dir| {
+        freq_store.load(cfg_dir);
+        window.list.frequency_store = &freq_store;
+        window.list.setFilter("");
+        cfg_dir_opt = cfg_dir;
+    } else |_| {}
+    defer {
+        if (cfg_dir_opt) |cfg_dir| init.gpa.free(cfg_dir);
+    }
+
+    if (debug_freq) {
+        std.debug.print("Frequency store contents:\n", .{});
+        var it = freq_store.scores.iterator();
+        while (it.next()) |entry| {
+            std.debug.print("  {s} = {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+        }
+        std.debug.print("  (dirty: {any})\n", .{freq_store.dirty});
+    }
+
     if (ctx.cfg.benchmark_all) debug.mark("show window");
     window.show();
 
@@ -111,4 +139,6 @@ pub fn main(init: std.process.Init) !void {
 
     if (ctx.cfg.start_timer and ctx.cfg.theme_reloader) styles_watcher.start(init.gpa);
     ui.Window.exec();
+
+    if (cfg_dir_opt) |cfg_dir| freq_store.save(cfg_dir);
 }
