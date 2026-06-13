@@ -16,26 +16,68 @@ Thanks to [rcalixte](https://github.com/rcalixte) for [libqt6zig](https://github
 <img width="450"  alt="image" src="https://github.com/user-attachments/assets/3297778a-7a09-4b76-9f77-9d401f7d048a" />
 </p>
 
+- [Requirements](#requirements)
+- [Building](#building)
+- [Using](#using)
+- [Examples](#examples)
+- [Plugins](#plugins)
+
 ## Requirements
 
-- Zig 0.16.0
-- Qt 6.8.2 development libraries (Core, Gui, Widgets)
-- GCC / Clang (for linking C++)
-- libstdc++ (or libc++)
-- pkg-config
+- **Zig 0.16.0** - the compiler and build system. Download from [ziglang.org/download](https://ziglang.org/download/) or use your distro's package manager if it has a recent enough version.
+- **Qt 6.8.2 development libraries** (Core, Gui, Widgets) - the GUI toolkit. Install `qt6-base-dev` or equivalent for your distro.
+- **GCC or Clang** - used by Zig to link C++ code (Qt is written in C++).
+- **libstdc++ or libc++** - the C++ standard library, comes with your compiler.
+- **pkg-config** - helps the build system find Qt headers and libraries.
 
-Dependencies are fetched automatically by the build system:
+Zig fetches the following automatically when you run `zig build`:
 
 - [libqt6zig](https://github.com/rcalixte/libqt6zig) - Zig bindings for Qt6
 - [ziglua](https://github.com/masterQ32/ziglua) - Zig bindings for Lua
 
-## Build
+## Building
 
 ```sh
 zig build
 ```
 
 Binary at `zig-out/bin/zenkai`.
+
+### Installing dependencies
+
+#### Zig
+
+Download the tarball for your architecture from [ziglang.org/download](https://ziglang.org/download/), extract it, and put the `zig` binary somewhere in your `PATH`. Most distro repositories lag behind and 0.16.0 is required.
+
+#### FreeBSD
+
+```sh
+sudo pkg install qt6-base
+```
+
+#### Debian / Ubuntu / Mint
+
+```sh
+sudo apt install gcc libstdc++-14-dev-$(dpkg --print-architecture)-cross qt6-base-dev
+```
+
+#### Fedora
+
+```sh
+sudo dnf install gcc libstdc++-devel qt6-qtbase-devel
+```
+
+#### Arch
+
+```sh
+sudo pacman -S gcc qt6-base
+```
+
+#### openSUSE
+
+```sh
+sudo zypper install qt6-base-devel
+```
 
 ## Using
 
