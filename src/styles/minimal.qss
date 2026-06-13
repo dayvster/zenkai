@@ -21,7 +21,8 @@ QWidget {
 }
 
 #appList::item:selected {
-    background: #222222;
+    background: #3a3a3a;
+    color: #ffffff;
 }
 
 #listFade {
