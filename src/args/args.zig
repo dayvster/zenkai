@@ -19,6 +19,9 @@ pub const help =
     \\  --show-actions            Show item actions
     \\  --actions-bottombar       Show actions in bottom bar
     \\  --list-themes             List all available themes with descriptions
+    \\  --close-on-focus-out     Close the launcher when it loses focus
+    \\  --no-close-on-focus-out  Keep the launcher open when it loses focus
+    \\  --show-backdrop           Show a backdrop to detect clicks outside the launcher
     \\  --help, -h                Show this help and exit
 ;
 
@@ -33,6 +36,8 @@ pub const Config = struct {
     show_actions: bool,
     actions_bottombar: bool,
     list_themes: bool,
+    close_on_focus_out: ?bool,
+    show_backdrop: bool,
     window_width: ?i32,
     window_height: ?i32,
 };
@@ -101,6 +106,8 @@ pub fn parse(args: [][:0]u8) Config {
         .show_actions = false,
         .actions_bottombar = false,
         .list_themes = false,
+        .close_on_focus_out = null,
+        .show_backdrop = false,
         .window_width = null,
         .window_height = null,
     };
@@ -137,6 +144,12 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.show_actions = true;
         } else if (std.mem.eql(u8, arg, "--actions-bottombar")) {
             cfg.actions_bottombar = true;
+        } else if (std.mem.eql(u8, arg, "--close-on-focus-out")) {
+            cfg.close_on_focus_out = true;
+        } else if (std.mem.eql(u8, arg, "--no-close-on-focus-out")) {
+            cfg.close_on_focus_out = false;
+        } else if (std.mem.eql(u8, arg, "--show-backdrop")) {
+            cfg.show_backdrop = true;
         } else if (std.mem.eql(u8, arg, "--list-themes")) {
             cfg.list_themes = true;
         }

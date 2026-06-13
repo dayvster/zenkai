@@ -58,6 +58,7 @@ pub fn build(b: *std.Build) void {
         "qtoolbutton",
         "qlistview",
         "qtimer",
+        "qcursor",
     };
 
     for (libs) |lib| {

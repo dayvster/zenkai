@@ -10,11 +10,15 @@ pub const VisualConfig = struct {
     layout_margin: i32 = 0,
     layout_spacing: i32 = 0,
     icon_size: i32 = 32,
+    close_on_focus_out: bool = false,
+    show_backdrop: bool = false,
 
     pub fn applyOverrides(self: *VisualConfig, cfg: anytype) void {
         if (cfg.window_width) |v| self.window_width = v;
         if (cfg.window_height) |v| self.window_height = v;
         if (cfg.icon_size) |v| self.icon_size = v;
+        if (cfg.close_on_focus_out) |v| self.close_on_focus_out = v;
+        if (cfg.show_backdrop) self.show_backdrop = true;
     }
 };
 
@@ -83,6 +87,8 @@ pub fn loadConfig(allocator: std.mem.Allocator, config_path: []const u8) !Visual
         if (std.mem.eql(u8, key, "layout_margin")) cfg.layout_margin = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "layout_spacing")) cfg.layout_spacing = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "icon_size")) cfg.icon_size = parseInt(val) catch continue;
+        if (std.mem.eql(u8, key, "close_on_focus_out")) cfg.close_on_focus_out = std.mem.eql(u8, val, "true");
+        if (std.mem.eql(u8, key, "show_backdrop")) cfg.show_backdrop = std.mem.eql(u8, val, "true");
     }
 
     return cfg;

@@ -38,6 +38,7 @@ pub fn renderList(
     vis: config.VisualConfig,
     show_bottom_bar: bool,
     no_icons: bool,
+    app: QApp,
 ) void {
-    self.init(allocator, items, vis, !show_bottom_bar, no_icons);
+    self.init(allocator, items, vis, !show_bottom_bar, no_icons, app);
 }
