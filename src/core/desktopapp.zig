@@ -43,7 +43,10 @@ pub const DesktopEntry = struct {
 
     pub fn expandExec(self: *const DesktopEntry, allocator: std.mem.Allocator) ![]const u8 {
         const exec = self.exec orelse return error.NoExec;
+        return expandExecString(exec, self, allocator);
+    }
 
+    pub fn expandExecString(exec: []const u8, entry: *const DesktopEntry, allocator: std.mem.Allocator) ![]const u8 {
         var buf: std.ArrayList(u8) = .empty;
         errdefer buf.deinit(allocator);
 
@@ -54,14 +57,14 @@ pub const DesktopEntry = struct {
                     '%' => try buf.append(allocator, '%'),
                     'f', 'F', 'u', 'U' => {},
                     'i' => {
-                        if (self.icon) |icon| {
+                        if (entry.icon) |icon| {
                             try buf.appendSlice(allocator, "--icon ");
                             try shellQuote(allocator, &buf, icon);
                         }
                     },
-                    'c' => try shellQuote(allocator, &buf, self.name),
+                    'c' => try shellQuote(allocator, &buf, entry.name),
                     'k' => {
-                        if (self.file_path) |fp| try shellQuote(allocator, &buf, fp);
+                        if (entry.file_path) |fp| try shellQuote(allocator, &buf, fp);
                     },
                     else => {
                         try buf.append(allocator, '%');

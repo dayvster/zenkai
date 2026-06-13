@@ -31,7 +31,7 @@ fn parseAndStoreActions(allocator: std.mem.Allocator, da: *const de.DesktopApp, 
         for (parsed) |action| {
             try actions_out.append(allocator, .{
                 .name = try allocator.dupe(u8, action.name),
-                .exec = try allocator.dupe(u8, action.exec),
+                .exec = try de.DesktopEntry.expandExecString(action.exec, da, allocator),
                 .icon = if (action.icon) |ic| try allocator.dupe(u8, ic) else try allocator.dupe(u8, if (da.icon) |ic2| ic2 else ""),
             });
         }
@@ -48,9 +48,13 @@ pub fn freeListItemActions(allocator: std.mem.Allocator, actions: []const ui.Lis
 }
 
 fn makeListItem(allocator: std.mem.Allocator, da: *const de.DesktopApp, actions: []const ui.ListItemAction, app_idx: usize) !ui.ListItem {
+    const cmd = if (da.exec) |e|
+        try de.DesktopEntry.expandExecString(e, da, allocator)
+    else
+        try allocator.dupe(u8, "");
     return .{
         .icon = try allocator.dupe(u8, if (da.icon) |ic| ic else ""),
-        .cmd = try allocator.dupe(u8, if (da.exec) |e| e else ""),
+        .cmd = cmd,
         .name = try allocator.dupe(u8, da.name),
         .actions = actions,
         .desktop_app_idx = app_idx,
