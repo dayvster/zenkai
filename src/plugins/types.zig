@@ -28,10 +28,16 @@ pub const Plugin = struct {
     hooks: std.EnumSet(Hook),
 };
 
+pub const ResultType = enum {
+    NoReturn,
+    ExecCmd,
+};
+
 pub const PluginResult = struct {
     plugin_index: usize,
     id: usize,
     title: []const u8,
     subtitle: []const u8,
     icon: []const u8,
+    result_type: ResultType = .ExecCmd,
 };

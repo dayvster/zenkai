@@ -9,6 +9,7 @@ pub const Manifest = types.Manifest;
 pub const Hook = types.Hook;
 pub const Plugin = types.Plugin;
 pub const PluginResult = types.PluginResult;
+pub const ResultType = types.ResultType;
 pub const setupSandbox = sandbox.setupSandbox;
 pub const callPluginMethod = sandbox.callPluginMethod;
 
@@ -22,7 +23,13 @@ fn apiAddResult(L: *lua.lua_State) callconv(.c) c_int {
     const title = if (lua.lua_tostring(L, 1)) |s| std.mem.sliceTo(s, 0) else "";
     const subtitle = if (lua.lua_tostring(L, 2)) |s| std.mem.sliceTo(s, 0) else "";
     const icon = if (lua.lua_tostring(L, 3)) |s| std.mem.sliceTo(s, 0) else "";
+    const result_type_str = if (lua.lua_tostring(L, 4)) |s| std.mem.sliceTo(s, 0) else "";
     const allocator = g_active_manager.allocator;
+
+    const result_type: types.ResultType = if (std.mem.eql(u8, result_type_str, "NoReturn"))
+        .NoReturn
+    else
+        .ExecCmd;
 
     var tracked = struct {
         title: ?[]u8 = null,
@@ -55,6 +62,7 @@ fn apiAddResult(L: *lua.lua_State) callconv(.c) c_int {
         .title = tracked.title.?,
         .subtitle = tracked.subtitle.?,
         .icon = tracked.icon.?,
+        .result_type = result_type,
     }) catch |err| {
         utils.log.info("plugin add_result OOM (append): {}", .{err});
         return 0;
@@ -127,11 +135,15 @@ pub fn setup(allocator: std.mem.Allocator) PluginManager {
 pub const PluginManager = struct {
     allocator: std.mem.Allocator,
     plugins: std.ArrayList(Plugin),
+    clipboard_cmd: ?[]const u8,
+    url_handler: ?[]const u8,
 
     pub fn init(allocator: std.mem.Allocator) PluginManager {
         return .{
             .allocator = allocator,
             .plugins = std.ArrayList(Plugin).empty,
+            .clipboard_cmd = null,
+            .url_handler = null,
         };
     }
 
@@ -146,6 +158,8 @@ pub const PluginManager = struct {
             if (plugin.manifest.author) |a| self.allocator.free(a);
         }
         self.plugins.deinit(self.allocator);
+        if (self.clipboard_cmd) |c| self.allocator.free(c);
+        if (self.url_handler) |h| self.allocator.free(h);
     }
 
     fn scanPluginDir(self: *PluginManager, io: std.Io, dir_path: []const u8) void {
@@ -305,35 +319,82 @@ pub const PluginManager = struct {
         }
     }
 
-    pub fn handleSelect(self: *PluginManager, plugin_index: usize, result_identifier: usize) void {
-        const plugin = &self.plugins.items[plugin_index];
-        if (!plugin.hooks.contains(.on_open)) return;
+    pub fn handleSelect(self: *PluginManager, result: *const PluginResult) void {
+        switch (result.result_type) {
+            .NoReturn => return,
+            .ExecCmd => {},
+        }
 
-        _ = lua.lua_getglobal(plugin.state, "on_open");
-        lua.lua_pushinteger(plugin.state, @as(i64, @intCast(result_identifier)));
-        sandbox.callPluginMethod(plugin, 1, "open error");
+        const plugin = &self.plugins.items[result.plugin_index];
+        if (plugin.hooks.contains(.on_open)) {
+            _ = lua.lua_getglobal(plugin.state, "on_open");
+            lua.lua_pushinteger(plugin.state, @as(i64, @intCast(result.id)));
+            sandbox.callPluginMethod(plugin, 1, "open error");
+        }
 
         if (g_pending_open_url) |url| {
-            const url_z = self.allocator.dupeZ(u8, url) catch {
-                self.allocator.free(url);
-                g_pending_open_url = null;
-                return;
-            };
-            defer self.allocator.free(url_z);
-            self.allocator.free(url);
+            defer self.allocator.free(url);
             g_pending_open_url = null;
 
-            const xdg_open = @as([*:0]const u8, "xdg-open");
-            const argv = [_:null]?[*:0]u8{
-                @constCast(xdg_open),
-                url_z,
-                null,
-            };
-            const pid = std.os.linux.fork();
-            if (std.os.linux.errno(pid) == .SUCCESS and pid == 0) {
-                _ = std.os.linux.execve("/usr/bin/xdg-open", &argv, utils.environ);
-                _ = std.os.linux.execve("/bin/xdg-open", &argv, utils.environ);
-                std.os.linux.exit(1);
+            if (url.len > 1023) return;
+
+            if (self.clipboard_cmd) |clip_cmd| {
+                var pipefd: [2]i32 = undefined;
+                if (std.os.linux.pipe(&pipefd) != 0) return;
+
+                const pid = std.os.linux.fork();
+                if (std.os.linux.errno(pid) != .SUCCESS) {
+                    _ = std.os.linux.close(pipefd[0]);
+                    _ = std.os.linux.close(pipefd[1]);
+                    return;
+                }
+
+                if (pid == 0) {
+                    _ = std.os.linux.close(pipefd[1]);
+                    _ = std.os.linux.dup2(pipefd[0], 0);
+                    if (pipefd[0] != 0) _ = std.os.linux.close(pipefd[0]);
+
+                    var buf: [1024:0]u8 = undefined;
+                    if (clip_cmd.len >= buf.len) std.process.exit(1);
+                    @memcpy(buf[0..clip_cmd.len], clip_cmd);
+                    buf[clip_cmd.len] = 0;
+                    const sh = @as([*:0]const u8, "sh");
+                    const c = @as([*:0]const u8, "-c");
+                    const argv = [_:null]?[*:0]u8{
+                        @constCast(sh),
+                        @constCast(c),
+                        @as([*:0]u8, @ptrCast(&buf)),
+                        null,
+                    };
+                    _ = std.os.linux.execve("/bin/sh", &argv, utils.environ);
+                    std.os.linux.exit(1);
+                }
+
+                _ = std.os.linux.close(pipefd[0]);
+                _ = std.os.linux.write(pipefd[1], url.ptr, url.len);
+                _ = std.os.linux.close(pipefd[1]);
+            } else {
+                const handler = self.url_handler orelse "xdg-open";
+                var buf: [1024:0]u8 = undefined;
+                const total = handler.len + 1 + url.len;
+                if (total >= buf.len) return;
+                @memcpy(buf[0..handler.len], handler);
+                buf[handler.len] = ' ';
+                @memcpy(buf[handler.len + 1 ..][0..url.len], url);
+                buf[total] = 0;
+                const sh = @as([*:0]const u8, "sh");
+                const c = @as([*:0]const u8, "-c");
+                const argv = [_:null]?[*:0]u8{
+                    @constCast(sh),
+                    @constCast(c),
+                    @as([*:0]u8, @ptrCast(&buf)),
+                    null,
+                };
+                const pid = std.os.linux.fork();
+                if (std.os.linux.errno(pid) == .SUCCESS and pid == 0) {
+                    _ = std.os.linux.execve("/bin/sh", &argv, utils.environ);
+                    std.os.linux.exit(1);
+                }
             }
         }
     }

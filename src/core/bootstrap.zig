@@ -19,6 +19,7 @@ pub const Context = struct {
     start_ns: u64,
 
     pub fn deinit(self: *Context) void {
+        self.visual.deinit(self.allocator);
         self.app.Delete();
         qt.deinit(self.allocator, self.argv);
     }
@@ -35,7 +36,7 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     defer allocator.free(config_path);
 
     var visual = try config.loadConfig(allocator, config_path);
-    visual.applyOverrides(cfg);
+    visual.applyOverrides(allocator, cfg);
 
     const theme_resolved = theme.resolve(allocator, cfg.theme);
     defer if (theme_resolved.allocation) |m| allocator.free(m);
