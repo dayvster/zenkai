@@ -2,6 +2,7 @@ const std = @import("std");
 const fsutils = @import("utils").fsutils;
 
 pub const standard_plugin_dirs = [_][]const u8{
+    "external/plugins",
     "/usr/local/share/zenkai/plugins",
     "/usr/share/zenkai/plugins",
 };

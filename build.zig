@@ -1,9 +1,6 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const check_lua = b.addSystemCommand(&.{ "pkg-config", "--exists", "lua" });
-    check_lua.has_side_effects = false;
-
     const target = b.standardTargetOptions(.{});
 
     const module = b.createModule(.{
@@ -68,25 +65,33 @@ pub fn build(b: *std.Build) void {
         exe.root_module.linkLibrary(artifact);
     }
 
+    const lua_dep = b.dependency("zlua", .{
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    exe.root_module.addImport("zlua", lua_dep.module("zlua"));
+
     if (target.result.os.tag == .macos) {
         const brew_qt = if (target.result.cpu.arch == .aarch64) "/opt/homebrew/opt/qt@6/lib" else "/usr/local/opt/qt@6/lib";
-        const brew_lua = if (target.result.cpu.arch == .aarch64) "/opt/homebrew/opt/lua/lib" else "/usr/local/opt/lua/lib";
         exe.root_module.addLibraryPath(.{ .cwd_relative = brew_qt });
         exe.root_module.addFrameworkPath(.{ .cwd_relative = brew_qt });
         exe.root_module.linkFramework("QtCore", .{});
         exe.root_module.linkFramework("QtGui", .{});
         exe.root_module.linkFramework("QtWidgets", .{});
-        exe.root_module.addLibraryPath(.{ .cwd_relative = brew_lua });
     } else {
         exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
         exe.root_module.linkSystemLibrary("Qt6Core", .{});
         exe.root_module.linkSystemLibrary("Qt6Gui", .{});
         exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
+
         exe.root_module.link_libcpp = false;
-        exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/libstdc++.so" });
-        exe.root_module.addObjectFile(.{ .cwd_relative = "/usr/lib/gcc/x86_64-pc-linux-gnu/16.1.1/libgcc_eh.a" });
+        for ([_][]const u8{ "libstdc++.so.6", "libgcc_eh.a" }) |libname| {
+            const path = std.mem.trim(u8, b.run(&.{ "gcc", b.fmt("--print-file-name={s}", .{libname}) }), &std.ascii.whitespace);
+            if (!std.mem.eql(u8, path, libname)) {
+                exe.root_module.addObjectFile(.{ .cwd_relative = path });
+            }
+        }
     }
-    exe.root_module.linkSystemLibrary("lua", .{});
     exe.root_module.linkSystemLibrary("m", .{});
 
     const lua_capi_module = b.addModule("lua_capi", .{
@@ -138,7 +143,6 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("lua_capi", lua_capi_module);
     exe.root_module.addImport("plugins", plugins_module);
     if (osx_module) |mod| exe.root_module.addImport("osx", mod);
-    exe.step.dependOn(&check_lua.step);
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
@@ -167,7 +171,7 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseFast,
     });
     plugin_test_module.addImport("lua_capi", lua_capi_module);
-    plugin_test_module.linkSystemLibrary("lua", .{});
+    plugin_test_module.addImport("zlua", lua_dep.module("zlua"));
     plugin_test_module.linkSystemLibrary("m", .{});
 
     const plugin_tests = b.addTest(.{
