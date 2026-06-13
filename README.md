@@ -7,7 +7,7 @@
 
 A fast app launcher for Linux. Written in Zig with Qt6.
 
-Scans your .desktop files from the usual places, shows you everything in a searchable list, and lets you filter through it as you type with fuzzy matching.
+Scans your .desktop files from the usual places, shows you everything in a searchable list, and lets you filter through it as you type with fuzzy matching. Built because apparently 50 other launchers weren't enough.
 
 Thanks to [rcalixte](https://github.com/rcalixte) for [libqt6zig](https://github.com/rcalixte/libqt6zig), the Zig bindings this project is built on.
 
@@ -19,9 +19,15 @@ Thanks to [rcalixte](https://github.com/rcalixte) for [libqt6zig](https://github
 ## Requirements
 
 - Zig 0.16.0
-- Qt 6.8.2 (Core, Gui, Widgets)
-- C++ toolchain
-- [libqt6zig](https://github.com/rcalixte/libqt6zig) (fetched automatically by `zig build fetch`)
+- Qt 6.8.2 development libraries (Core, Gui, Widgets)
+- GCC / Clang (for linking C++)
+- libstdc++ (or libc++)
+- pkg-config
+
+Dependencies are fetched automatically by the build system:
+
+- [libqt6zig](https://github.com/rcalixte/libqt6zig) - Zig bindings for Qt6
+- [ziglua](https://github.com/masterQ32/ziglua) - Zig bindings for Lua
 
 ## Build
 
@@ -31,14 +37,196 @@ zig build
 
 Binary at `zig-out/bin/zenkai`.
 
-## Run
+## Using
 
-For optimal results especially if you are using a Nvidia graphics card I've included `zenkai.sh` with some sane defaults that brings the RAM usage of the launcher down to 20-50MB
+Kick it off:
 
-*Your results may vary
+```sh
+./zig-out/bin/zenkai
+```
 
-Flags: `--theme=dark|light`, `--no-icons`, `--no-bottom-bar`, `--show-actions` (parses `[Desktop Action ...]` sections for entries like "New Window", "New Private Window").
+Type to filter through your apps. Enter to launch. That's it.
 
-## Status
+### `--theme=<theme>`
 
-v0.1. Core loop works — scan, search, filter, launch. Flatpak/symlinks supported. Desktop actions behind `--show-actions`.
+```sh
+./zig-out/bin/zenkai --theme=dracula
+./zig-out/bin/zenkai --theme=./my-custom-theme.qss
+```
+
+Name one of the 65 built-in themes or point at a `.qss` file. See [screenshots](screenshots/) to save yourself the trouble of running each individually.
+
+### `--list-themes`
+
+Dumps every theme name and description to the terminal and exits.
+
+### `--size=<pixels>`
+
+Icon size. Default 32.
+
+### `--width=<pixels>`
+
+Window width. Default 600.
+
+### `--height=<pixels>`
+
+Window height. Default 500.
+
+### `--menu=<name>|<cmd>|<icon>`
+
+```sh
+./zig-out/bin/zenkai --menu="Terminal|alacritty|terminal"
+```
+
+Adds a custom entry. Pipe separates name, command, icon. Pass it more than once for more entries. Skips .desktop file scanning entirely.
+
+### `--no-icons`
+
+Hides icons in the list.
+
+### `--no-bottom-bar`
+
+Hides the bottom bar.
+
+### `--show-actions`
+
+Parses `[Desktop Action ...]` entries from .desktop files (e.g. "New Window", "New Private Window").
+
+### `--actions-bottombar`
+
+Shows desktop actions in the bottom bar instead of the list.
+
+### `--close-on-focus-out`
+
+Closes the launcher when it loses focus.
+
+### `--no-close-on-focus-out`
+
+Keeps the launcher open when it loses focus.
+
+### `--show-backdrop`
+
+Shows a transparent fullscreen layer behind the launcher. Clicking it closes the launcher.
+
+### `--clipboard=<cmd>`
+
+Pipes content into a command instead of opening it. Hook this up with `api.open_url()` in plugins.
+
+```sh
+./zig-out/bin/zenkai --clipboard="xclip -selection c"
+./zig-out/bin/zenkai --clipboard="wl-copy"
+```
+
+No more `xdg-open` launching a browser when you just want a URL in your clipboard.
+
+### `--url-handler=<cmd>`
+
+Tells plugins what to run when they want to open a URL. Defaults to `xdg-open`.
+
+```sh
+./zig-out/bin/zenkai --url-handler="firefox --new-tab"
+```
+
+### `--verbose`, `-v`
+
+Makes it talk more.
+
+### `--debug`
+
+Makes it talk more and prints how long everything took to start up.
+
+### `--benchmark-all`
+
+Prints timing for every stage of startup.
+
+### `--theme-reloader`
+
+Watches `.qss` files and applies changes on the fly. Needs `--debug`.
+
+### `--help`, `-h`
+
+Prints everything you can pass and bails out.
+
+## Examples
+
+```sh
+# Everyday launch
+./zig-out/bin/zenkai
+
+# Dracula theme, bigger icons, wider window
+./zig-out/bin/zenkai --theme=dracula --size=48 --width=800
+
+# Launch with a custom menu, skip .desktop scanning
+./zig-out/bin/zenkai --menu="Firefox|firefox|firefox" --menu="Terminal|alacritty|terminal"
+
+# Minimal look, no icons, no bottom bar
+./zig-out/bin/zenkai --no-icons --no-bottom-bar
+
+# Copy URLs to clipboard instead of opening them
+./zig-out/bin/zenkai --clipboard="wl-copy"
+
+# Quit when clicking outside the launcher
+./zig-out/bin/zenkai --close-on-focus-out
+
+# See how fast it starts
+./zig-out/bin/zenkai --debug
+
+# Hot-reload a theme you are working on
+./zig-out/bin/zenkai --debug --theme-reloader --theme=./my-theme.qss
+
+# Low memory mode (Nvidia or otherwise)
+./zenkai.sh
+```
+
+### Lower memory usage
+
+On Nvidia or if you just want a lighter footprint, the included `zenkai.sh` wrapper sets some environment variables that bring RAM down to 20-50MB.
+
+### Plugins
+
+Drop a directory into `external/plugins/` with a `manifest.json` and a `main.lua` and the launcher picks it up automatically. No flags needed.
+
+#### manifest.json
+
+```json
+{
+  "name": "my-plugin",
+  "version": "1.0.0",
+  "main": "main.lua",
+  "description": "What it does",
+  "author": "you"
+}
+```
+
+Hooks are detected automatically from your Lua functions. The available hooks:
+
+- `on_query(query)` - called when the user types, add results with `api.add_result()`
+- `on_open(id)` - called when a result is selected, `id` matches what `add_result` returned
+
+#### API
+
+```lua
+-- Add a result to the list
+-- Returns an id that gets passed to on_open()
+api.add_result(title, subtitle, icon_name, result_type)
+
+-- Open a URL when the result is selected
+api.open_url("https://example.com")
+
+-- Print to the debug log
+api.log("something happened")
+```
+
+`result_type` is optional. Use `"NoReturn"` to keep the launcher open after selecting the result (like a calculator showing an answer). The default `"ExecCmd"` closes the launcher and fires `on_open`.
+
+#### Example
+
+```lua
+function on_query(query)
+  if query == "ping" then
+    api.add_result("Pong!", "it works", "face-smile", "NoReturn")
+  end
+end
+```
+
+See `external/plugins/calculator/` for a full working example.
