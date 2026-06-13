@@ -37,7 +37,7 @@ pub const VisualConfig = struct {
     }
 };
 
-fn configDir(allocator: std.mem.Allocator) ![]u8 {
+pub fn configDir(allocator: std.mem.Allocator) ![]u8 {
     if (std.c.getenv("XDG_CONFIG_HOME")) |xdg| {
         const dir = std.mem.sliceTo(xdg, 0);
         return try std.fs.path.join(allocator, &.{ dir, "zenkai" });

@@ -1,8 +1,9 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
-const de = @import("desktopapp");
-const plugins = @import("plugins");
 const utils = @import("utils");
+const plugins = @import("plugins");
+const de = @import("desktopapp");
+const freq = @import("core_freq");
 const log = @import("utils").log;
 
 const QListView = qt.QListView;
@@ -237,6 +238,29 @@ fn onData(
     return QVariant.New();
 }
 
+const FreqSortContext = struct {
+    store: *freq.FrequencyStore,
+    source: *const DataSource,
+};
+
+fn freqLessThan(ctx: FreqSortContext, a: IndexEntry, b: IndexEntry) bool {
+    const key_a = switch (a) {
+        .item => |i| switch (ctx.source.*) {
+            .desktop_apps => |apps| apps[i].name,
+            .items => |items| items[i].name,
+        },
+        .plugin => return false,
+    };
+    const key_b = switch (b) {
+        .item => |i| switch (ctx.source.*) {
+            .desktop_apps => |apps| apps[i].name,
+            .items => |items| items[i].name,
+        },
+        .plugin => return true,
+    };
+    return ctx.store.getScore(key_a) > ctx.store.getScore(key_b);
+}
+
 pub const List = struct {
     allocator: std.mem.Allocator,
     view: QListView,
@@ -245,6 +269,7 @@ pub const List = struct {
     indices: std.ArrayList(IndexEntry),
     plugin_results: std.ArrayList(plugins.PluginResult),
     plugin_manager: ?*plugins.PluginManager,
+    frequency_store: ?*freq.FrequencyStore,
 
     pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp, icon_size: i32, plugin_manager: ?*plugins.PluginManager) List {
         g_icon_size = icon_size;
@@ -284,6 +309,7 @@ pub const List = struct {
             .indices = std.ArrayList(IndexEntry).empty,
             .plugin_results = std.ArrayList(plugins.PluginResult).empty,
             .plugin_manager = plugin_manager,
+            .frequency_store = null,
         };
         g_list = &result;
         view.SetModel(model);
@@ -362,12 +388,20 @@ pub const List = struct {
             }
         }
 
-        if (self.plugin_manager) |plugin_manager| {
-            if (text.len > 0) {
-                plugin_manager.queryAll(text, &self.plugin_results);
-                for (0..self.plugin_results.items.len) |plugin_index| {
-                    self.indices.append(self.allocator, IndexEntry{ .plugin = plugin_index }) catch |err| log.info("OOM in setFilter: {}", .{err});
-                }
+        const plugin_count = if (self.plugin_manager != null and text.len > 0) blk: {
+            const pm = self.plugin_manager.?;
+            pm.queryAll(text, &self.plugin_results);
+            for (0..self.plugin_results.items.len) |plugin_index| {
+                self.indices.append(self.allocator, IndexEntry{ .plugin = plugin_index }) catch |err| log.info("OOM in setFilter: {}", .{err});
+            }
+            break :blk self.plugin_results.items.len;
+        } else 0;
+
+        if (self.frequency_store) |store| {
+            const item_count = self.indices.items.len - plugin_count;
+            if (item_count > 1) {
+                const ctx = FreqSortContext{ .store = store, .source = &self.source };
+                std.sort.insertion(IndexEntry, self.indices.items[0..item_count], ctx, freqLessThan);
             }
         }
 
@@ -407,6 +441,9 @@ pub const List = struct {
 
         switch (self.indices.items[row]) {
             .item => |item_idx| {
+                if (self.frequency_store) |store| {
+                    store.increment(self.sourceName(item_idx));
+                }
                 switch (self.source) {
                     .desktop_apps => |apps| {
                         const app = &apps[item_idx];

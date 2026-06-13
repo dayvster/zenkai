@@ -120,6 +120,13 @@ pub fn build(b: *std.Build) void {
         .imports = &.{.{ .name = "utils", .module = utils_module }},
     });
 
+    const frequency_module = b.addModule("core_freq", .{
+        .root_source_file = b.path("src/core/frequency.zig"),
+        .imports = &.{
+            .{ .name = "utils", .module = utils_module },
+        },
+    });
+
     const plugins_module = b.addModule("plugins", .{
         .root_source_file = b.path("src/plugins/plugins.zig"),
         .imports = &.{
@@ -143,6 +150,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("config", config_module);
     exe.root_module.addImport("lua_capi", lua_capi_module);
     exe.root_module.addImport("plugins", plugins_module);
+    exe.root_module.addImport("core_freq", frequency_module);
     if (osx_module) |mod| exe.root_module.addImport("osx", mod);
     b.installArtifact(exe);
 
