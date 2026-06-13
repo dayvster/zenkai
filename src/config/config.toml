@@ -13,6 +13,12 @@ icon_size = 32
 # Theme: pass via --theme CLI flag (e.g. --theme=minimal)
 # Built-in themes: dark, light, dracula, ayu-dark, minimal
 
+# Close launcher when it loses focus (e.g. clicking outside)
+close_on_focus_out = false
+
+# Show a transparent backdrop covering the full screen to catch clicks outside
+show_backdrop = false
+
 # -- Bottom bar (action buttons bar) ------------------------------------------
 bottom_bar_margin_top = 4
 bottom_bar_margin_bottom = 4

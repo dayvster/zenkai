@@ -36,7 +36,6 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
 
     var visual = try config.loadConfig(allocator, config_path);
     visual.applyOverrides(cfg);
-    if (cfg.icon_size) |s| visual.icon_size = s;
 
     const theme_resolved = theme.resolve(allocator, cfg.theme);
     defer if (theme_resolved.allocation) |m| allocator.free(m);
