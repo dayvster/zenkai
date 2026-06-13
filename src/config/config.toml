@@ -19,6 +19,12 @@ close_on_focus_out = false
 # Show a transparent backdrop covering the full screen to catch clicks outside
 show_backdrop = false
 
+# Clipboard command for plugin ExecCmd results (e.g. xclip -selection c)
+clipboard = ""
+
+# URL handler command for plugin open_url results (e.g. xdg-open, firefox)
+url_handler = "xdg-open"
+
 # -- Bottom bar (action buttons bar) ------------------------------------------
 bottom_bar_margin_top = 4
 bottom_bar_margin_bottom = 4

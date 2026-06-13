@@ -22,6 +22,8 @@ pub const help =
     \\  --close-on-focus-out     Close the launcher when it loses focus
     \\  --no-close-on-focus-out  Keep the launcher open when it loses focus
     \\  --show-backdrop           Show a backdrop to detect clicks outside the launcher
+    \\  --clipboard=CMD           Clipboard command for ExecCmd plugin results (e.g. xclip -selection c)
+    \\  --url-handler=CMD         URL handler for plugin open_url results (e.g. xdg-open, firefox)
     \\  --help, -h                Show this help and exit
 ;
 
@@ -40,6 +42,8 @@ pub const Config = struct {
     show_backdrop: bool,
     window_width: ?i32,
     window_height: ?i32,
+    clipboard: ?[]const u8,
+    url_handler: ?[]const u8,
 };
 
 pub const MenuEntry = struct {
@@ -110,6 +114,8 @@ pub fn parse(args: [][:0]u8) Config {
         .show_backdrop = false,
         .window_width = null,
         .window_height = null,
+        .clipboard = null,
+        .url_handler = null,
     };
 
     for (args) |arg_slice| {
@@ -150,6 +156,12 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.close_on_focus_out = false;
         } else if (std.mem.eql(u8, arg, "--show-backdrop")) {
             cfg.show_backdrop = true;
+        } else if (std.mem.startsWith(u8, arg, "--clipboard=")) {
+            const val = arg["--clipboard=".len..];
+            cfg.clipboard = if (val.len > 0) val else null;
+        } else if (std.mem.startsWith(u8, arg, "--url-handler=")) {
+            const val = arg["--url-handler=".len..];
+            cfg.url_handler = if (val.len > 0) val else null;
         } else if (std.mem.eql(u8, arg, "--list-themes")) {
             cfg.list_themes = true;
         }

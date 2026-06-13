@@ -40,6 +40,13 @@ pub fn main(init: std.process.Init) !void {
     var pm = plugins.setup(init.gpa);
     defer pm.deinit();
 
+    if (ctx.visual.clipboard) |clip| {
+        pm.clipboard_cmd = init.gpa.dupe(u8, clip) catch null;
+    }
+    if (ctx.visual.url_handler) |handler| {
+        pm.url_handler = init.gpa.dupe(u8, handler) catch null;
+    }
+
     const use_menus = menu_entries.len > 0;
     const items = if (use_menus) blk: {
         var list_items = try std.ArrayList(ui.ListItem).initCapacity(init.gpa, menu_entries.len);

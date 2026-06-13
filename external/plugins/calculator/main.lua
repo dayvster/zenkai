@@ -26,7 +26,7 @@ function on_query(query)
         if rounded then
             display = tostring(rounded)
         end
-        api.add_result(display, expr .. " =", "accessories-calculator")
+        api.add_result(display, expr .. " =", "accessories-calculator", "NoReturn")
     end
 end
 

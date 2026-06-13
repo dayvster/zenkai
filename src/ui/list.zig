@@ -421,7 +421,10 @@ pub const List = struct {
             },
             .plugin => |plugin_result_index| {
                 const plugin_result = &self.plugin_results.items[plugin_result_index];
-                if (self.plugin_manager) |plugin_manager| plugin_manager.handleSelect(plugin_result.plugin_index, plugin_result.id);
+                if (self.plugin_manager) |plugin_manager| {
+                    plugin_manager.handleSelect(plugin_result);
+                    if (plugin_result.result_type == .NoReturn) return;
+                }
             },
         }
         QApp.Quit();
