@@ -195,7 +195,7 @@ pub const Window = struct {
         window.OnCloseEvent(onWindowClose);
         window.OnLeaveEvent(onLeaveWidget);
         app.OnApplicationStateChanged(onAppStateChanged);
-        Keyboard.setup(window, &self.list);
+        Keyboard.setup(window, &self.list, self.search_bar.widget);
     }
 
     pub fn show(self: *Window) void {
