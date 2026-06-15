@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6
+        run: |
+          sudo add-apt-repository -y ppa:okirby/qt6-backports
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev gcc pkg-config
+
+      - name: Install Zig 0.16.0
+        run: |
+          curl -fsSL https://ziglang.org/download/0.16.0/zig-linux-x86_64-0.16.0.tar.xz \
+            | sudo tar xJ -C /usr/local
+          echo "/usr/local/zig-linux-x86_64-0.16.0" >> $GITHUB_PATH
+
+      - name: Build
+        run: zig build
+
+      - name: Prepare AppDir
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications
+          cp zig-out/bin/zenkai AppDir/usr/bin/
+          cp assets/logo.png AppDir/zenkai.png
+          cp zenkai.desktop AppDir/
+          cp zenkai.desktop AppDir/usr/share/applications/
+
+      - name: Download linuxdeploy
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+
+      - name: Bundle AppImage
+        run: |
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export QMAKE=/usr/lib/qt6/bin/qmake6
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt --output appimage
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zenkai-x86_64.AppImage
+          path: Zenkai-*.AppImage
+          if-no-files-found: warn
+
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenkai-linux-x86_64
+          path: zig-out/bin/zenkai
+
+  macos:
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            target: x86_64
+          - os: macos-latest
+            target: aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6
+        run: brew install qt@6
+
+      - name: Install Zig 0.16.0
+        run: |
+          curl -fsSL https://ziglang.org/download/0.16.0/zig-${{ matrix.target }}-macos-0.16.0.tar.xz \
+            | sudo tar xJ -C /usr/local
+          echo "/usr/local/zig-${{ matrix.target }}-macos-0.16.0" >> $GITHUB_PATH
+
+      - name: Build
+        run: zig build
+
+      - name: Upload macOS binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenkai-macos-${{ matrix.target }}
+          path: zig-out/bin/zenkai
+
+  publish:
+    needs: [linux, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Organize assets
+        run: |
+          mkdir -p release-assets
+          find . -type f \
+            \( -name "zenkai-*" -o -name "*.AppImage" \) \
+            ! -path "./release-assets/*" \
+            -exec cp {} release-assets/ \;
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true

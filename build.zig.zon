@@ -1,6 +1,6 @@
 .{
     .name = .zenkai,
-    .version = "0.0.0",
+    .version = "1.0.0",
     .fingerprint = 0x9d5a50d25624ae70,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
@@ -17,8 +17,11 @@
         "build.zig",
         "build.zig.zon",
         "src",
-        // For example...
-        //"LICENSE",
-        //"README.md",
+        "assets",
+        "external",
+        "zenkai.sh",
+        "zenkai.desktop",
+        "LICENCE.md",
+        "README.md",
     },
 }
