@@ -122,6 +122,23 @@ Window height. Default 500.
 
 Adds a custom entry. Pipe separates name, command, icon. Pass it more than once for more entries. Skips .desktop file scanning entirely.
 
+### `--no-dapps`
+
+Skips `.desktop` file scanning. Use this when you only want plugins or `--menu` entries.
+
+### `--no-plugins`
+
+Skips loading plugins.
+
+### `--plugin=<name>`
+
+```sh
+./zig-out/bin/zenkai --plugin=calculator
+./zig-out/bin/zenkai --plugin=calculator --plugin=notes
+```
+
+Only loads plugins with a matching directory name. Repeatable.
+
 ### `--no-icons`
 
 Hides icons in the list.
@@ -218,6 +235,12 @@ Prints everything you can pass and bails out.
 
 # Low memory mode (Nvidia or otherwise)
 ./zenkai.sh
+
+# Plugin-only mode, no desktop apps
+./zig-out/bin/zenkai --no-dapps --plugin=calculator
+
+# Calculator with a theme, no icons
+./zig-out/bin/zenkai --no-dapps --plugin=calculator --theme=dracula --no-icons
 ```
 
 ### Lower memory usage
