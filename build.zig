@@ -87,6 +87,13 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/utils/utils.zig"),
     });
 
+    const args_module = b.addModule("args", .{
+        .root_source_file = b.path("src/args/args.zig"),
+        .imports = &.{
+            .{ .name = "utils", .module = utils_module },
+        },
+    });
+
     const desktopapp_module = b.addModule("desktopapp", .{
         .root_source_file = b.path("src/core/desktopapp.zig"),
     });
@@ -173,7 +180,24 @@ pub fn build(b: *std.Build) !void {
 
     const run_plugin_tests = b.addRunArtifact(plugin_tests);
 
+    const fuzz_test_module = b.createModule(.{
+        .root_source_file = b.path("tests/main.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    fuzz_test_module.addImport("utils", utils_module);
+    fuzz_test_module.addImport("desktopapp", desktopapp_module);
+    fuzz_test_module.addImport("dapp_parser", dapp_parser_module);
+    fuzz_test_module.addImport("args", args_module);
+
+    const fuzz_tests = b.addTest(.{
+        .root_module = fuzz_test_module,
+    });
+
+    const run_fuzz_tests = b.addRunArtifact(fuzz_tests);
+
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_exe_tests.step);
     test_step.dependOn(&run_plugin_tests.step);
+    test_step.dependOn(&run_fuzz_tests.step);
 }

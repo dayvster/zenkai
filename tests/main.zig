@@ -176,7 +176,8 @@ test "dapp_parser: malformed content" {
     };
 
     for (cases) |content| {
-        _ = dapp_parser.DappParser.parseDesktopFile(allocator, content) catch {};
+        var entry = dapp_parser.DappParser.parseDesktopFile(allocator, content) catch continue;
+        defer entry.deinit(allocator);
     }
 }
 
@@ -188,7 +189,8 @@ test "dapp_parser: fuzzed inputs don't crash" {
             const bytes = smithBytes(smith, &buf);
             const content = try allocator.dupe(u8, bytes);
             defer allocator.free(content);
-            _ = dapp_parser.DappParser.parseDesktopFile(allocator, content) catch {};
+            var entry = dapp_parser.DappParser.parseDesktopFile(allocator, content) catch return;
+            defer entry.deinit(allocator);
         }
     }.testOne, .{});
 }
@@ -203,7 +205,8 @@ test "dapp_parser: random short inputs" {
         random.bytes(&buf);
         const content = try allocator.dupe(u8, buf[0..]);
         defer allocator.free(content);
-        _ = dapp_parser.DappParser.parseDesktopFile(allocator, content) catch {};
+        var entry = dapp_parser.DappParser.parseDesktopFile(allocator, content) catch continue;
+        defer entry.deinit(allocator);
     }
 }
 
