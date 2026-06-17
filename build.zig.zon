@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .libqt6zig = .{
-            .url = "git+https://github.com/rcalixte/libqt6zig#5682682b84ddbac22003b09bb65011292b318e35",
-            .hash = "libqt6zig-6.8.2-OSXtXFigyxsY_zbXRSeV7-5jOe7k5yrUjTMj30xIv4JL",
+            .url = "git+https://github.com/rcalixte/libqt6zig#e52f8a7f250e3c94ba503a31b78072740af30f50",
+            .hash = "libqt6zig-6.8.2-OSXtXK1eshtTXdIXX9RKgalbp0G_gXxHHM-2VtQe5Bt3",
         },
         .zlua = .{
             .url = "git+https://github.com/natecraddock/ziglua#d59103e257b25ae892cdede9a671366e8d4f3e51",

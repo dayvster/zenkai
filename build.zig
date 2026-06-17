@@ -1,6 +1,7 @@
 const std = @import("std");
+const configureQtExeRootModule = @import("libqt6zig").configureQtExeRootModule;
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
 
     const module = b.createModule(.{
@@ -72,27 +73,31 @@ pub fn build(b: *std.Build) void {
     });
     exe.root_module.addImport("zlua", lua_dep.module("zlua"));
 
-    if (target.result.os.tag == .macos) {
-        const brew_qt = if (target.result.cpu.arch == .aarch64) "/opt/homebrew/opt/qt@6/lib" else "/usr/local/opt/qt@6/lib";
-        exe.root_module.addLibraryPath(.{ .cwd_relative = brew_qt });
-        exe.root_module.addFrameworkPath(.{ .cwd_relative = brew_qt });
-        exe.root_module.linkFramework("QtCore", .{});
-        exe.root_module.linkFramework("QtGui", .{});
-        exe.root_module.linkFramework("QtWidgets", .{});
-    } else {
-        exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
-        exe.root_module.linkSystemLibrary("Qt6Core", .{});
-        exe.root_module.linkSystemLibrary("Qt6Gui", .{});
-        exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
+    // if (target.result.os.tag == .macos) {
+    //     const brew_qt = if (target.result.cpu.arch == .aarch64) "/opt/homebrew/opt/qt@6/lib" else "/usr/local/opt/qt@6/lib";
+    //     exe.root_module.addLibraryPath(.{ .cwd_relative = brew_qt });
+    //     exe.root_module.addFrameworkPath(.{ .cwd_relative = brew_qt });
+    //     exe.root_module.linkFramework("QtCore", .{});
+    //     exe.root_module.linkFramework("QtGui", .{});
+    //     exe.root_module.linkFramework("QtWidgets", .{});
+    // } else {
+    //     exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+    //     exe.root_module.linkSystemLibrary("Qt6Core", .{});
+    //     exe.root_module.linkSystemLibrary("Qt6Gui", .{});
+    //     exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
+    //
+    //     exe.root_module.link_libcpp = false;
+    //     for ([_][]const u8{ "libstdc++.so.6", "libgcc_eh.a" }) |libname| {
+    //         const path = std.mem.trim(u8, b.run(&.{ "gcc", b.fmt("--print-file-name={s}", .{libname}) }), &std.ascii.whitespace);
+    //         if (!std.mem.eql(u8, path, libname)) {
+    //             exe.root_module.addObjectFile(.{ .cwd_relative = path });
+    //         }
+    //     }
+    // }
+    try configureQtExeRootModule(b, exe, .{
+        .linux_libraries = &.{"libgcc_eh.a"},
+    });
 
-        exe.root_module.link_libcpp = false;
-        for ([_][]const u8{ "libstdc++.so.6", "libgcc_eh.a" }) |libname| {
-            const path = std.mem.trim(u8, b.run(&.{ "gcc", b.fmt("--print-file-name={s}", .{libname}) }), &std.ascii.whitespace);
-            if (!std.mem.eql(u8, path, libname)) {
-                exe.root_module.addObjectFile(.{ .cwd_relative = path });
-            }
-        }
-    }
     exe.root_module.linkSystemLibrary("m", .{});
 
     const lua_capi_module = b.addModule("lua_capi", .{
