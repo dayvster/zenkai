@@ -13,6 +13,10 @@ pub const ResultType = types.ResultType;
 pub const setupSandbox = sandbox.setupSandbox;
 pub const callPluginMethod = sandbox.callPluginMethod;
 
+pub fn setActiveManager(pm: *PluginManager) void {
+    g_active_manager = pm;
+}
+
 var g_active_manager: *PluginManager = undefined;
 var g_active_plugin_index: usize = undefined;
 var g_active_results: *std.ArrayList(PluginResult) = undefined;
@@ -104,9 +108,9 @@ fn setupAPI(L: *lua.lua_State) void {
     lua.lua_setglobal(L, "api");
 }
 
-pub fn setup(allocator: std.mem.Allocator) PluginManager {
+pub fn setup(allocator: std.mem.Allocator, plugin_filter: []const []const u8) PluginManager {
     var pm = PluginManager.init(allocator);
-    pm.discoverAndLoad();
+    pm.discoverAndLoad(plugin_filter);
     if (utils.log.verbose) {
         utils.log.info("loaded {d} plugin(s)", .{pm.plugins.items.len});
         for (pm.plugins.items) |plugin| {
@@ -162,7 +166,7 @@ pub const PluginManager = struct {
         if (self.url_handler) |h| self.allocator.free(h);
     }
 
-    fn scanPluginDir(self: *PluginManager, io: std.Io, dir_path: []const u8) void {
+    fn scanPluginDir(self: *PluginManager, io: std.Io, dir_path: []const u8, plugin_filter: []const []const u8) void {
         var dir = std.Io.Dir.openDir(std.Io.Dir.cwd(), io, dir_path, .{ .iterate = true }) catch return;
         defer dir.close(io);
 
@@ -170,11 +174,22 @@ pub const PluginManager = struct {
         while (true) {
             const entry = iter.next(io) catch break orelse break;
             if (entry.kind != .directory) continue;
+            const filtered = if (plugin_filter.len > 0) blk: {
+                var matched = false;
+                for (plugin_filter) |name| {
+                    if (std.mem.eql(u8, entry.name, name)) {
+                        matched = true;
+                        break;
+                    }
+                }
+                break :blk !matched;
+            } else false;
+            if (filtered) continue;
             self.loadPlugin(dir_path, entry.name);
         }
     }
 
-    pub fn discoverAndLoad(self: *PluginManager) void {
+    pub fn discoverAndLoad(self: *PluginManager, plugin_filter: []const []const u8) void {
         g_active_manager = self;
         const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
 
@@ -182,16 +197,16 @@ pub const PluginManager = struct {
             const home_slice = std.mem.sliceTo(home, 0);
             if (std.fs.path.join(self.allocator, &.{ home_slice, ".local", "share", "zenkai", "plugins" })) |dir_path| {
                 defer self.allocator.free(dir_path);
-                scanPluginDir(self, io, dir_path);
+                scanPluginDir(self, io, dir_path, plugin_filter);
             } else |_| {}
             if (std.fs.path.join(self.allocator, &.{ home_slice, ".config", "zenkai", "plugins" })) |dir_path| {
                 defer self.allocator.free(dir_path);
-                scanPluginDir(self, io, dir_path);
+                scanPluginDir(self, io, dir_path, plugin_filter);
             } else |_| {}
         }
 
         for (loader.standard_plugin_dirs) |dir_path| {
-            scanPluginDir(self, io, dir_path);
+            scanPluginDir(self, io, dir_path, plugin_filter);
         }
     }
 
@@ -251,6 +266,12 @@ pub const PluginManager = struct {
         tracked.description = if (parsed_manifest.description) |d| self.allocator.dupe(u8, d) catch null else null;
         tracked.author = if (parsed_manifest.author) |a| self.allocator.dupe(u8, a) catch null else null;
         parsed.deinit();
+
+        for (self.plugins.items) |existing| {
+            if (std.mem.eql(u8, existing.manifest.name, plugin_name)) {
+                return;
+            }
+        }
 
         const main_path = std.fs.path.join(self.allocator, &.{ plugins_base_dir, dir_name, plugin_main }) catch return;
         defer self.allocator.free(main_path);

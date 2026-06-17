@@ -24,6 +24,9 @@ pub const help =
     \\  --show-backdrop           Show a backdrop to detect clicks outside the launcher
     \\  --clipboard=CMD           Clipboard command for ExecCmd plugin results (e.g. xclip -selection c)
     \\  --url-handler=CMD         URL handler for plugin open_url results (e.g. xdg-open, firefox)
+    \\  --no-dapps                Skip scanning desktop applications (useful for plugin-only usage)
+    \\  --no-plugins              Skip loading plugins
+    \\  --plugin=NAME             Only load the specified plugin (may be repeated)
     \\  --help, -h                Show this help and exit
 ;
 
@@ -44,6 +47,8 @@ pub const Config = struct {
     window_height: ?i32,
     clipboard: ?[]const u8,
     url_handler: ?[]const u8,
+    no_dapps: bool,
+    no_plugins: bool,
 };
 
 pub const MenuEntry = struct {
@@ -98,6 +103,30 @@ pub fn deinitMenuEntries(allocator: std.mem.Allocator, entries: []MenuEntry) voi
     allocator.free(entries);
 }
 
+pub fn parsePluginNames(allocator: std.mem.Allocator, args: [][:0]u8) ![][]const u8 {
+    var names = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (names.items) |n| allocator.free(n);
+        names.deinit(allocator);
+    }
+
+    for (args) |arg_slice| {
+        const arg: []const u8 = arg_slice;
+        if (std.mem.startsWith(u8, arg, "--plugin=")) {
+            const val = arg["--plugin=".len..];
+            if (val.len == 0) continue;
+            try names.append(allocator, try allocator.dupe(u8, val));
+        }
+    }
+
+    return try names.toOwnedSlice(allocator);
+}
+
+pub fn deinitPluginNames(allocator: std.mem.Allocator, names: [][]const u8) void {
+    for (names) |n| allocator.free(n);
+    allocator.free(names);
+}
+
 pub fn parse(args: [][:0]u8) Config {
     var cfg: Config = .{
         .icon_size = null,
@@ -116,6 +145,8 @@ pub fn parse(args: [][:0]u8) Config {
         .window_height = null,
         .clipboard = null,
         .url_handler = null,
+        .no_dapps = false,
+        .no_plugins = false,
     };
 
     for (args) |arg_slice| {
@@ -162,6 +193,10 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.startsWith(u8, arg, "--url-handler=")) {
             const val = arg["--url-handler=".len..];
             cfg.url_handler = if (val.len > 0) val else null;
+        } else if (std.mem.eql(u8, arg, "--no-dapps")) {
+            cfg.no_dapps = true;
+        } else if (std.mem.eql(u8, arg, "--no-plugins")) {
+            cfg.no_plugins = true;
         } else if (std.mem.eql(u8, arg, "--list-themes")) {
             cfg.list_themes = true;
         }

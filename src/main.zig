@@ -43,41 +43,51 @@ pub fn main(init: std.process.Init) !void {
     const menu_entries = try args.parseMenus(init.gpa, ctx.argv);
     defer args.deinitMenuEntries(init.gpa, menu_entries);
 
-    var pm = plugins.setup(init.gpa);
-    defer pm.deinit();
+    const plugin_names = try args.parsePluginNames(init.gpa, ctx.argv);
+    defer args.deinitPluginNames(init.gpa, plugin_names);
 
-    if (ctx.visual.clipboard) |clip| {
-        pm.clipboard_cmd = init.gpa.dupe(u8, clip) catch null;
-    }
-    if (ctx.visual.url_handler) |handler| {
-        pm.url_handler = init.gpa.dupe(u8, handler) catch null;
+    var pm: ?plugins.PluginManager = if (ctx.cfg.no_plugins) null else plugins.setup(init.gpa, plugin_names);
+    defer if (pm) |*p| p.deinit();
+
+    if (pm) |*p| {
+        plugins.setActiveManager(p);
+        if (ctx.visual.clipboard) |clip| {
+            p.clipboard_cmd = init.gpa.dupe(u8, clip) catch null;
+        }
+        if (ctx.visual.url_handler) |handler| {
+            p.url_handler = init.gpa.dupe(u8, handler) catch null;
+        }
     }
 
     const use_menus = menu_entries.len > 0;
-    const items = if (use_menus) blk: {
-        var list_items = try std.ArrayList(ui.ListItem).initCapacity(init.gpa, menu_entries.len);
-        errdefer {
-            for (list_items.items) |item| {
-                init.gpa.free(item.icon);
-                init.gpa.free(item.cmd);
-                init.gpa.free(item.name);
+    const skip_desktop = use_menus or ctx.cfg.no_dapps;
+    const items = if (skip_desktop) blk: {
+        if (use_menus) {
+            var list_items = try std.ArrayList(ui.ListItem).initCapacity(init.gpa, menu_entries.len);
+            errdefer {
+                for (list_items.items) |item| {
+                    init.gpa.free(item.icon);
+                    init.gpa.free(item.cmd);
+                    init.gpa.free(item.name);
+                }
+                list_items.deinit(init.gpa);
             }
-            list_items.deinit(init.gpa);
+            for (menu_entries) |me| {
+                const icon = try init.gpa.dupe(u8, me.icon);
+                errdefer init.gpa.free(icon);
+                const cmd = try init.gpa.dupe(u8, me.cmd);
+                errdefer init.gpa.free(cmd);
+                const name = try init.gpa.dupe(u8, me.name);
+                errdefer init.gpa.free(name);
+                list_items.appendAssumeCapacity(.{
+                    .icon = icon,
+                    .cmd = cmd,
+                    .name = name,
+                });
+            }
+            break :blk try list_items.toOwnedSlice(init.gpa);
         }
-        for (menu_entries) |me| {
-            const icon = try init.gpa.dupe(u8, me.icon);
-            errdefer init.gpa.free(icon);
-            const cmd = try init.gpa.dupe(u8, me.cmd);
-            errdefer init.gpa.free(cmd);
-            const name = try init.gpa.dupe(u8, me.name);
-            errdefer init.gpa.free(name);
-            list_items.appendAssumeCapacity(.{
-                .icon = icon,
-                .cmd = cmd,
-                .name = name,
-            });
-        }
-        break :blk try list_items.toOwnedSlice(init.gpa);
+        break :blk try init.gpa.alloc(ui.ListItem, 0);
     } else try desktop_loader.load(init.gpa, ctx.cfg.benchmark_all, ctx.cfg.show_actions, ctx.cfg.actions_bottombar);
 
     defer {
@@ -87,6 +97,8 @@ pub fn main(init: std.process.Init) !void {
                 init.gpa.free(item.cmd);
                 init.gpa.free(item.name);
             }
+            init.gpa.free(items);
+        } else if (ctx.cfg.no_dapps) {
             init.gpa.free(items);
         } else {
             for (items) |item| {
@@ -103,7 +115,7 @@ pub fn main(init: std.process.Init) !void {
     if (ctx.cfg.benchmark_all) debug.mark("window setup");
     var window: ui.Window = undefined;
     ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons, ctx.app);
-    window.list.plugin_manager = &pm;
+    window.list.plugin_manager = if (pm) |*p| p else null;
     defer window.deinit();
 
     var freq_store = core_freq.FrequencyStore.init(init.gpa);
