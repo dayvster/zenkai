@@ -8,6 +8,7 @@ const LINE_FEED = '\n';
 pub const DappParser = struct {
     pub fn parseDesktopFile(allocator: std.mem.Allocator, content: []const u8) !de.DesktopApp {
         var app = initDefaultDapp(allocator);
+        errdefer app.deinit(allocator);
         var no_display = false;
 
         var entry_iter = desktopEntryIterator(content);

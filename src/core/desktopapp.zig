@@ -35,6 +35,17 @@ pub const DesktopEntry = struct {
 
     extra: std.StringHashMap([]const u8),
 
+    pub fn deinit(self: *DesktopEntry, allocator: std.mem.Allocator) void {
+        if (self.categories.len > 0) allocator.free(self.categories);
+        if (self.mime_type.len > 0) allocator.free(self.mime_type);
+        if (self.keywords.len > 0) allocator.free(self.keywords);
+        if (self.only_show_in.len > 0) allocator.free(self.only_show_in);
+        if (self.not_show_in.len > 0) allocator.free(self.not_show_in);
+        if (self.actions.len > 0) allocator.free(self.actions);
+        if (self.implements.len > 0) allocator.free(self.implements);
+        self.extra.deinit();
+    }
+
     pub const Type = enum {
         Application,
         Link,
