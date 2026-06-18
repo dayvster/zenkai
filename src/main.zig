@@ -11,6 +11,7 @@ const plugins = @import("plugins");
 const styles_watcher = @import("ui/styles_watcher.zig");
 const config = @import("config");
 const core_freq = @import("core_freq");
+const lang = @import("lang");
 
 extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
 extern var __stderrp: *anyopaque;
@@ -25,7 +26,7 @@ pub fn main(init: std.process.Init) !void {
         var args_iter = init.minimal.args.iterate();
         while (args_iter.next()) |arg| {
             if (std.mem.eql(u8, arg, "--list-themes")) {
-                std.debug.print("Available themes:\n", .{});
+                std.debug.print("{s}", .{lang.get().available_themes});
                 for (theme.theme_entries) |entry| {
                     std.debug.print("  {s:<26} {s}\n", .{ entry.name, entry.desc });
                 }
@@ -132,7 +133,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (debug_freq) {
-        std.debug.print("Frequency store contents:\n", .{});
+        std.debug.print("{s}", .{lang.get().freq_contents});
         var it = freq_store.scores.iterator();
         while (it.next()) |entry| {
             std.debug.print("  {s} = {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });

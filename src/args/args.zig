@@ -27,6 +27,7 @@ pub const help =
     \\  --no-dapps                Skip scanning desktop applications (useful for plugin-only usage)
     \\  --no-plugins              Skip loading plugins
     \\  --plugin=NAME             Only load the specified plugin (may be repeated)
+    \\  --language=CODE           Translation language code (e.g. fr, de)
     \\  --help, -h                Show this help and exit
 ;
 
@@ -49,6 +50,7 @@ pub const Config = struct {
     url_handler: ?[]const u8,
     no_dapps: bool,
     no_plugins: bool,
+    language: ?[]const u8,
 };
 
 pub const MenuEntry = struct {
@@ -147,6 +149,7 @@ pub fn parse(args: [][:0]u8) Config {
         .url_handler = null,
         .no_dapps = false,
         .no_plugins = false,
+        .language = null,
     };
 
     for (args) |arg_slice| {
@@ -197,6 +200,9 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.no_dapps = true;
         } else if (std.mem.eql(u8, arg, "--no-plugins")) {
             cfg.no_plugins = true;
+        } else if (std.mem.startsWith(u8, arg, "--language=")) {
+            const val = arg["--language=".len..];
+            cfg.language = if (val.len > 0) val else null;
         } else if (std.mem.eql(u8, arg, "--list-themes")) {
             cfg.list_themes = true;
         }

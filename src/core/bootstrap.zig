@@ -6,6 +6,7 @@ const log = @import("utils").log;
 const theme = @import("../theme/theme.zig");
 const debug = @import("../debug/debug.zig");
 const args = @import("../args/args.zig");
+const lang = @import("lang");
 
 const QApp = qt.QApplication;
 const QIcon = qt.QIcon;
@@ -20,6 +21,7 @@ pub const Context = struct {
 
     pub fn deinit(self: *Context) void {
         self.visual.deinit(self.allocator);
+        lang.deinit();
         self.app.Delete();
         qt.deinit(self.allocator, self.argv);
     }
@@ -30,6 +32,8 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     errdefer qt.deinit(allocator, argv);
 
     const cfg = args.parse(argv);
+
+    lang.init(allocator, cfg.language);
 
     const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
     const config_path = try config.deploy(io, allocator);

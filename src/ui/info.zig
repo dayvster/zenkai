@@ -4,6 +4,7 @@ const applist = @import("list.zig");
 const de = @import("desktopapp");
 const desktop_loader = @import("../core/desktop_loader.zig");
 const utils = @import("utils");
+const lang = @import("lang");
 
 const QAction = qt.QAction;
 const QMessageBox = qt.QMessageBox;
@@ -86,7 +87,7 @@ const Html = struct {
     }
 
     fn boolField(self: *Html, label: []const u8, value: bool) void {
-        self.field(label, if (value) "✓" else "—");
+        self.field(label, if (value) lang.get().checkmark else lang.get().em_dash);
     }
 
     fn nullableBoolField(self: *Html, label: []const u8, value: ?bool) void {
@@ -135,46 +136,46 @@ pub fn showInfoPanel() void {
         html.append("</h2><table style='border-collapse: collapse; width: 100%;'>");
     }
 
-    html.field("Type", @tagName(app.type));
-    html.field("Name", app.name);
-    html.optField("Generic Name", app.generic_name);
-    html.optField("Comment", app.comment);
-    html.optField("Version", app.version);
+    html.field(lang.get().info_type, @tagName(app.type));
+    html.field(lang.get().info_name, app.name);
+    html.optField(lang.get().info_generic_name, app.generic_name);
+    html.optField(lang.get().info_comment, app.comment);
+    html.optField(lang.get().info_version, app.version);
 
     html.rowBreak();
-    html.rowHeader("Execution");
+    html.rowHeader(lang.get().info_execution);
 
-    html.optField("Exec", app.exec);
-    html.optField("Try Exec", app.try_exec);
-    html.optField("Working Dir", app.path);
-    html.boolField("Run in Terminal", app.terminal);
-
-    html.rowBreak();
-    html.rowHeader("Desktop");
-
-    html.optField("File Path", app.file_path);
-    html.optField("Icon", app.icon);
-    html.optField("Startup WM Class", app.startup_wm_class);
-    html.optField("URL", app.url);
+    html.optField(lang.get().info_exec, app.exec);
+    html.optField(lang.get().info_try_exec, app.try_exec);
+    html.optField(lang.get().info_working_dir, app.path);
+    html.boolField(lang.get().info_run_in_terminal, app.terminal);
 
     html.rowBreak();
-    html.rowHeader("Flags");
+    html.rowHeader(lang.get().info_desktop);
 
-    html.boolField("No Display", app.no_display);
-    html.boolField("Hidden", app.hidden);
-    html.boolField("D-Bus Activatable", app.dbus_activatable);
-    html.nullableBoolField("Startup Notify", app.startup_notify);
-    html.boolField("Prefers Non-GPU", app.prefers_non_default_gpu);
-    html.boolField("Single Window", app.single_main_window);
+    html.optField(lang.get().info_file_path, app.file_path);
+    html.optField(lang.get().info_icon, app.icon);
+    html.optField(lang.get().info_startup_wm_class, app.startup_wm_class);
+    html.optField(lang.get().info_url, app.url);
 
     html.rowBreak();
-    html.rowHeader("Categories");
+    html.rowHeader(lang.get().info_flags);
 
-    html.arrField("Categories", app.categories);
-    html.arrField("Keywords", app.keywords);
-    html.arrField("MIME Types", app.mime_type);
-    html.arrField("Only Show In", app.only_show_in);
-    html.arrField("Not Show In", app.not_show_in);
+    html.boolField(lang.get().info_no_display, app.no_display);
+    html.boolField(lang.get().info_hidden, app.hidden);
+    html.boolField(lang.get().info_dbus_activatable, app.dbus_activatable);
+    html.nullableBoolField(lang.get().info_startup_notify, app.startup_notify);
+    html.boolField(lang.get().info_prefers_non_gpu, app.prefers_non_default_gpu);
+    html.boolField(lang.get().info_single_window, app.single_main_window);
+
+    html.rowBreak();
+    html.rowHeader(lang.get().info_categories);
+
+    html.arrField(lang.get().info_categories, app.categories);
+    html.arrField(lang.get().info_keywords, app.keywords);
+    html.arrField(lang.get().info_mime_types, app.mime_type);
+    html.arrField(lang.get().info_only_show_in, app.only_show_in);
+    html.arrField(lang.get().info_not_show_in, app.not_show_in);
 
     html.append("</table></body></html>");
 
