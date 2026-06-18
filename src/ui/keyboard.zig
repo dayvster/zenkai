@@ -8,6 +8,7 @@ const QKeySequence = qt.QKeySequence;
 const QWidget = qt.QWidget;
 const QApp = qt.QApplication;
 const QLineEdit = qt.QLineEdit;
+const QKeyEvent = qt.QKeyEvent;
 
 var L: *List = undefined;
 var search_widget: QLineEdit = undefined;
@@ -61,8 +62,54 @@ fn bind(window: QWidget, key: []const u8, handler: *const fn (QShortcut) callcon
     s.OnActivated(handler);
 }
 
+fn scrollToTop() void {
+    if (L.indices.items.len > 0) L.selectRow(0);
+}
+
+fn scrollToEnd() void {
+    if (L.indices.items.len > 0) L.selectRow(@intCast(L.indices.items.len - 1));
+}
+
+fn onSearchKeyPress(edit: QLineEdit, event: QKeyEvent) callconv(.c) void {
+    switch (event.Key()) {
+        qt.qnamespace_enums.Key.Key_Home => scrollToTop(),
+        qt.qnamespace_enums.Key.Key_End => scrollToEnd(),
+        else => edit.SuperKeyPressEvent(event),
+    }
+}
+
 fn onEscape(_: QShortcut) callconv(.c) void {
     QApp.Quit();
+}
+
+fn onPageUp(_: QShortcut) callconv(.c) void {
+    const row = currentRow() orelse {
+        if (L.indices.items.len > 0) L.selectRow(@intCast(L.indices.items.len - 1));
+        return;
+    };
+    const target = @max(row - 10, 0);
+    L.selectRow(target);
+}
+
+fn onPageDown(_: QShortcut) callconv(.c) void {
+    const row = currentRow() orelse {
+        if (L.indices.items.len > 0) L.selectRow(0);
+        return;
+    };
+    const max_row = @as(i32, @intCast(@max(L.indices.items.len, 1) - 1));
+    const target = @min(row + 10, max_row);
+    L.selectRow(target);
+}
+
+fn onTab(_: QShortcut) callconv(.c) void {
+    if (L.indices.items.len > 0) {
+        if (currentRow() == null) L.selectRow(0);
+    }
+    L.view.SetFocus();
+}
+
+fn onShiftTab(_: QShortcut) callconv(.c) void {
+    focusSearch();
 }
 
 fn makeActionHandler(comptime n: usize) *const fn (QShortcut) callconv(.c) void {
@@ -83,9 +130,15 @@ pub const Keyboard = struct {
         L = list;
         search_widget = search;
         bind(window, "Return", onEnter);
+        bind(window, "Enter", onEnter);
         bind(window, "Up", onUp);
         bind(window, "Down", onDown);
         bind(window, "Escape", onEscape);
+        bind(window, "PgUp", onPageUp);
+        bind(window, "PgDown", onPageDown);
+        search.OnKeyPressEvent(onSearchKeyPress);
+        bind(window, "Tab", onTab);
+        bind(window, "Shift+Tab", onShiftTab);
         inline for (0..10) |i| {
             var key_buf: [6]u8 = .{ 'C', 't', 'r', 'l', '+', if (i < 9) '1' + @as(u8, @intCast(i)) else '0' };
             bind(window, &key_buf, makeActionHandler(i));

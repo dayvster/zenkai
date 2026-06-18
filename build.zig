@@ -60,6 +60,8 @@ pub fn build(b: *std.Build) !void {
         "qlistview",
         "qtimer",
         "qcursor",
+        "qcoreevent",
+        "qevent",
     };
 
     for (libs) |lib| {

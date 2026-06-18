@@ -165,6 +165,10 @@ var g_list: *List = undefined;
 var g_on_item_focused: ?*const fn (item_index: usize, actions: []const ListItemAction) void = null;
 var g_current_item_actions: []const ListItemAction = &.{};
 
+fn onDoubleClicked(_: QListView, _: QModelIndex) callconv(.c) void {
+    g_list.launchSelected();
+}
+
 fn onCurrentChanged(_: QListView, current: QModelIndex, _: QModelIndex) callconv(.c) void {
     const row = current.Row();
     if (row < 0) return;
@@ -314,6 +318,7 @@ pub const List = struct {
         g_list = &result;
         view.SetModel(model);
         view.OnCurrentChanged(onCurrentChanged);
+        view.OnDoubleClicked(onDoubleClicked);
 
         return result;
     }
@@ -430,12 +435,14 @@ pub const List = struct {
     }
 
     pub fn launchSelected(self: *List) void {
+        if (!self.view.CurrentIndex().IsValid()) {
+            self.selectFirst();
+        }
+
         var idx = self.view.CurrentIndex();
         defer idx.Delete();
-        if (!idx.IsValid()) {
-            self.selectFirst();
-            return;
-        }
+        if (!idx.IsValid()) return;
+
         const row = @as(usize, @intCast(idx.Row()));
         if (row >= self.indices.items.len) return;
 
