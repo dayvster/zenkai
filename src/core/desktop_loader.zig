@@ -5,6 +5,7 @@ const ui = @import("../ui/ui.zig");
 const debug = @import("../debug/debug.zig");
 const actions_mod = @import("actions.zig");
 const fsutils = @import("utils").fsutils;
+const lang = @import("lang");
 
 pub const Error = error{ LoadFailed, ScanFailed };
 
@@ -67,13 +68,13 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
 
     var reader = platform.AppReader.init(allocator);
     reader.load() catch {
-        ui.showError("Error loading desktop files");
+        ui.showError(lang.get().error_loading_desktop);
         return Error.LoadFailed;
     };
 
     if (benchmark) debug.mark("reader scan");
     reader.scan() catch {
-        ui.showError("Error parsing desktop files");
+        ui.showError(lang.get().error_parsing_desktop);
         return Error.ScanFailed;
     };
 

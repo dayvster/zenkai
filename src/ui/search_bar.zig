@@ -1,5 +1,6 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
+const lang = @import("lang");
 
 const QLineEdit = qt.QLineEdit;
 const QTimer = qt.QTimer;
@@ -35,7 +36,14 @@ pub const SearchBar = struct {
     pub fn init(parent: QWidget, debounce_ms: i32) SearchBar {
         var sb = QLineEdit.New2();
         sb.SetObjectName("searchbarInput");
-        sb.SetPlaceholderText("Search apps...");
+        {
+            var buf: [256]u8 = undefined;
+            const text = lang.get().search_placeholder;
+            const len = @min(text.len, buf.len - 1);
+            @memcpy(buf[0..len], text[0..len]);
+            buf[len] = 0;
+            sb.SetPlaceholderText(buf[0..len]);
+        }
         sb.SetClearButtonEnabled(false);
 
         var timer = QTimer.New2(parent);
@@ -79,7 +87,7 @@ pub const SearchBar = struct {
         const len = @min(placeholder.len, buf.len - 1);
         @memcpy(buf[0..len], placeholder[0..len]);
         buf[len] = 0;
-        self.widget.SetPlaceholderText(@ptrCast(&buf[0]));
+        self.widget.SetPlaceholderText(buf[0..len]);
     }
 
     pub fn focus(self: *SearchBar) void {

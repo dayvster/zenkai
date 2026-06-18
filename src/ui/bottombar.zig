@@ -4,6 +4,7 @@ const config = @import("config");
 const applist = @import("list.zig");
 const ListItemAction = @import("list.zig").ListItemAction;
 const info = @import("info.zig");
+const lang = @import("lang");
 
 const HBoxLayout = qt.QHBoxLayout;
 const QAction = qt.QAction;
@@ -201,14 +202,14 @@ pub const BottomBar = struct {
             {
                 const icon = QIcon.FromTheme("document-open");
                 defer icon.Delete();
-                self.actions[0] = self.buildAction(icon, "Open", "", onOpen);
-                self.items[0] = self.buildItem(self.actions[0], "Return");
+                self.actions[0] = self.buildAction(icon, lang.get().bottom_bar_open, "", onOpen);
+                self.items[0] = self.buildItem(self.actions[0], lang.get().bottom_bar_return);
             }
             {
                 const icon = QIcon.FromTheme("dialog-information");
                 defer icon.Delete();
-                self.actions[1] = self.buildAction(icon, "Info", "", info.onInfo);
-                self.items[1] = self.buildItem(self.actions[1], "Ctrl+I");
+                self.actions[1] = self.buildAction(icon, lang.get().bottom_bar_info, "", info.onInfo);
+                self.items[1] = self.buildItem(self.actions[1], lang.get().bottom_bar_ctrl_i);
             }
         }
 

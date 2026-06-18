@@ -1,6 +1,7 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const config = @import("config");
+const lang = @import("lang");
 
 const List = @import("list.zig").List;
 const ListItem = @import("list.zig").ListItem;
@@ -101,7 +102,14 @@ pub const Window = struct {
 
         if (vis.show_backdrop) {
             const bd = QWidget.New2();
-            bd.SetWindowTitle("zenkai-backdrop");
+            {
+                var buf: [256]u8 = undefined;
+                const title = lang.get().backdrop_title;
+                const len = @min(title.len, buf.len - 1);
+                @memcpy(buf[0..len], title[0..len]);
+                buf[len] = 0;
+                bd.SetWindowTitle(buf[0..len]);
+            }
             bd.SetWindowFlags(
                 wt.Tool |
                     wt.FramelessWindowHint |
@@ -123,7 +131,14 @@ pub const Window = struct {
         }
 
         var window = QWidget.New2();
-        window.SetWindowTitle("zenkai");
+        {
+            var buf: [256]u8 = undefined;
+            const title = lang.get().window_title;
+            const len = @min(title.len, buf.len - 1);
+            @memcpy(buf[0..len], title[0..len]);
+            buf[len] = 0;
+            window.SetWindowTitle(buf[0..len]);
+        }
         window.SetWindowFlags(
             wt.Tool |
                 wt.FramelessWindowHint |
