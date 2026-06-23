@@ -98,6 +98,38 @@ Type to filter through your apps. Enter to launch. That's it.
 
 Name one of the 65 built-in themes or point at a `.qss` file. See [screenshots](screenshots/) to save yourself the trouble of running each individually.
 
+Uses an icon grid with a pill-shaped search bar:
+
+<p align="center">
+<img width="450" alt="launchpad" src="screenshots/launchpad-cropped.png" />
+</p>
+
+### `--fullscreen`
+
+Opens the launcher in fullscreen mode on the selected monitor (or the cursor's monitor). Uses `ShowFullScreen()` internally. On Wayland, this auto-switches to XWayland when combined with `--monitor=N` since Wayland compositors ignore output assignment requests.
+
+```sh
+./zig-out/bin/zenkai --theme=launchpad --fullscreen
+./zig-out/bin/zenkai --theme=launchpad --fullscreen --monitor=1
+```
+
+### `--monitor=N`
+
+Select monitor by index (0-based). Defaults to the monitor the cursor is on. Use `--list-monitors` to see available indices.
+
+```sh
+./zig-out/bin/zenkai --monitor=0
+./zig-out/bin/zenkai --fullscreen --monitor=1
+```
+
+### `--list-monitors`
+
+Prints all available monitors with their index, name, geometry, and whether each is the primary display.
+
+```sh
+./zig-out/bin/zenkai --list-monitors
+```
+
 ### `--list-themes`
 
 Dumps every theme name and description to the terminal and exits.

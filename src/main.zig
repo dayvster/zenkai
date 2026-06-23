@@ -1,5 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const qt = @import("libqt6zig");
+const QApp = qt.QApplication;
 const ui = @import("ui/ui.zig");
 const log = @import("utils").log;
 const debug = @import("debug/debug.zig");
@@ -14,6 +16,7 @@ const core_freq = @import("core_freq");
 const lang = @import("lang");
 
 extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
+extern fn setenv([*:0]const u8, [*:0]const u8, i32) i32;
 extern var __stderrp: *anyopaque;
 
 pub fn main(init: std.process.Init) !void {
@@ -23,8 +26,22 @@ pub fn main(init: std.process.Init) !void {
 
     var debug_freq = false;
     {
+        var fullscreen = false;
+        var use_monitor = false;
         var args_iter = init.minimal.args.iterate();
         while (args_iter.next()) |arg| {
+            if (std.mem.eql(u8, arg, "--fullscreen")) fullscreen = true;
+            if (std.mem.startsWith(u8, arg, "--monitor=")) use_monitor = true;
+        }
+        if (fullscreen and use_monitor) {
+            if (std.c.getenv("WAYLAND_DISPLAY")) |_| {
+                _ = setenv("QT_QPA_PLATFORM", "xcb", 1);
+            }
+        }
+    }
+    {
+        var args_iter2 = init.minimal.args.iterate();
+        while (args_iter2.next()) |arg| {
             if (std.mem.eql(u8, arg, "--list-themes")) {
                 std.debug.print("{s}", .{lang.get().available_themes});
                 for (theme.theme_entries) |entry| {
@@ -40,6 +57,31 @@ pub fn main(init: std.process.Init) !void {
 
     var ctx = try bootstrap.init(init.gpa, init.minimal.args);
     defer ctx.deinit();
+
+    {
+        var args_iter = init.minimal.args.iterate();
+        while (args_iter.next()) |arg| {
+            if (std.mem.eql(u8, arg, "--list-monitors")) {
+                const screens = QApp.Screens(init.gpa);
+                defer init.gpa.free(screens);
+                std.debug.print("Available monitors:\n", .{});
+                for (screens, 0..) |screen, i| {
+                    const geo = screen.Geometry();
+                    const name = screen.Name(init.gpa);
+                    defer init.gpa.free(name);
+                    const manu = screen.Manufacturer(init.gpa);
+                    defer init.gpa.free(manu);
+                    const model = screen.Model(init.gpa);
+                    defer init.gpa.free(model);
+                    std.debug.print("  {d}: {s} {s} ({s}) — {d}x{d}+{d}+{d}\n", .{
+                        i,           manu,         model,   name,
+                        geo.Width(), geo.Height(), geo.X(), geo.Y(),
+                    });
+                }
+                std.process.exit(0);
+            }
+        }
+    }
 
     const menu_entries = try args.parseMenus(init.gpa, ctx.argv);
     defer args.deinitMenuEntries(init.gpa, menu_entries);

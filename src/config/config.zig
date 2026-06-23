@@ -12,10 +12,14 @@ pub const VisualConfig = struct {
     icon_size: i32 = 32,
     close_on_focus_out: bool = false,
     show_backdrop: bool = false,
+    fullscreen: bool = false,
+    monitor: ?i32 = null,
+    theme: ?[]const u8 = null,
     clipboard: ?[]const u8 = null,
     url_handler: ?[]const u8 = null,
 
     pub fn deinit(self: *VisualConfig, allocator: std.mem.Allocator) void {
+        if (self.theme) |v| allocator.free(v);
         if (self.clipboard) |v| allocator.free(v);
         if (self.url_handler) |v| allocator.free(v);
     }
@@ -26,6 +30,12 @@ pub const VisualConfig = struct {
         if (cfg.icon_size) |v| self.icon_size = v;
         if (cfg.close_on_focus_out) |v| self.close_on_focus_out = v;
         if (cfg.show_backdrop) self.show_backdrop = true;
+        if (cfg.fullscreen) self.fullscreen = true;
+        if (cfg.monitor) |v| self.monitor = v;
+        if (cfg.theme) |v| {
+            if (self.theme) |old| allocator.free(old);
+            self.theme = allocator.dupe(u8, v) catch null;
+        }
         if (cfg.clipboard) |v| {
             if (self.clipboard) |old| allocator.free(old);
             self.clipboard = if (v.len > 0) allocator.dupe(u8, v) catch null else null;
@@ -104,6 +114,11 @@ pub fn loadConfig(allocator: std.mem.Allocator, config_path: []const u8) !Visual
         if (std.mem.eql(u8, key, "icon_size")) cfg.icon_size = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "close_on_focus_out")) cfg.close_on_focus_out = std.mem.eql(u8, val, "true");
         if (std.mem.eql(u8, key, "show_backdrop")) cfg.show_backdrop = std.mem.eql(u8, val, "true");
+        if (std.mem.eql(u8, key, "fullscreen")) cfg.fullscreen = std.mem.eql(u8, val, "true");
+        if (std.mem.eql(u8, key, "monitor")) cfg.monitor = parseInt(val) catch continue;
+        if (std.mem.eql(u8, key, "theme")) {
+            if (val.len > 0) cfg.theme = allocator.dupe(u8, val) catch null;
+        }
         if (std.mem.eql(u8, key, "clipboard")) {
             if (val.len > 0) cfg.clipboard = allocator.dupe(u8, val) catch null;
         }

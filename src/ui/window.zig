@@ -16,6 +16,8 @@ const QCloseEvent = qt.QCloseEvent;
 
 var g_window: *Window = undefined;
 var g_close_on_focus_out: bool = false;
+var g_fullscreen: bool = false;
+var g_monitor: ?i32 = null;
 var g_blur_timer: qt.QTimer = undefined;
 var g_mouse_left_at: i64 = 0;
 var g_backdrop: ?QWidget = null;
@@ -96,7 +98,16 @@ pub const Window = struct {
         const wt = qt.qnamespace_enums.WindowType;
 
         const cursor_pos = qt.QCursor.Pos();
-        const screen_rect = QApp.ScreenAt(cursor_pos).Geometry();
+        const cursor_screen = QApp.ScreenAt(cursor_pos);
+
+        const target_screen = if (vis.monitor) |idx| blk: {
+            const screens = QApp.Screens(allocator);
+            defer allocator.free(screens);
+            const i = @min(@max(@as(usize, @intCast(idx)), 0), screens.len - 1);
+            break :blk screens[i];
+        } else cursor_screen;
+
+        const screen_rect = target_screen.Geometry();
         const screen_w = screen_rect.Width();
         const screen_h = screen_rect.Height();
 
@@ -130,7 +141,15 @@ pub const Window = struct {
             bd.Show();
         }
 
+        const is_launchpad = if (vis.theme) |t| std.mem.eql(u8, t, "launchpad") else false;
+
+        if (vis.fullscreen) {
+            const cp = target_screen.Geometry();
+            qt.QCursor.SetPos(cp.X() + @divTrunc(cp.Width(), 2), cp.Y() + @divTrunc(cp.Height(), 2));
+        }
+
         var window = QWidget.New2();
+        window.SetObjectName("mainWindow");
         {
             var buf: [256]u8 = undefined;
             const title = lang.get().window_title;
@@ -139,12 +158,12 @@ pub const Window = struct {
             buf[len] = 0;
             window.SetWindowTitle(buf[0..len]);
         }
-        window.SetWindowFlags(
-            wt.Tool |
-                wt.FramelessWindowHint |
-                wt.WindowStaysOnTopHint |
-                wt.NoDropShadowWindowHint,
-        );
+
+        window.SetWindowFlags(blk: {
+            var flags: i32 = wt.FramelessWindowHint | wt.WindowStaysOnTopHint | wt.NoDropShadowWindowHint;
+            if (!vis.fullscreen) flags |= wt.Tool;
+            break :blk flags;
+        });
 
         const main_layout = QVBoxLayout.New(window);
         main_layout.SetContentsMargins(vis.layout_margin, vis.layout_margin, vis.layout_margin, vis.layout_margin);
@@ -153,11 +172,17 @@ pub const Window = struct {
         var search_bar = SearchBar.init(window, 150);
         search_bar.on_debounced = onSearchDebounced;
 
+        if (is_launchpad) {
+            search_bar.widget.SetMaximumWidth(470);
+            main_layout.AddWidget3(search_bar.widget, 0, qt.qnamespace_enums.AlignmentFlag.AlignHCenter);
+        } else {
+            main_layout.AddWidget(search_bar.widget);
+        }
+
         var list = List.fromItems(allocator, items, vis.icon_size);
         list.adoptGList();
         list.setFilter("");
 
-        main_layout.AddWidget(search_bar.widget);
         main_layout.AddWidget(list.view);
 
         self.* = .{
@@ -182,8 +207,8 @@ pub const Window = struct {
         window.SetMaximumSize2(win_w, win_h);
 
         window.SetGeometry(
-            @divTrunc(screen_w - win_w, 2),
-            @divTrunc(screen_h - win_h, 2),
+            screen_rect.X() + @divTrunc(screen_w - win_w, 2),
+            screen_rect.Y() + @divTrunc(screen_h - win_h, 2),
             win_w,
             win_h,
         );
@@ -203,6 +228,8 @@ pub const Window = struct {
 
         g_window = self;
         g_close_on_focus_out = vis.close_on_focus_out;
+        g_fullscreen = vis.fullscreen;
+        g_monitor = vis.monitor;
         g_mouse_left_at = nanoTimestamp();
         g_blur_timer = qt.QTimer.New();
         g_blur_timer.OnTimeout(onBlurTimerTimeout);
@@ -214,7 +241,19 @@ pub const Window = struct {
     }
 
     pub fn show(self: *Window) void {
-        self.widget.Show();
+        if (g_fullscreen) {
+            if (g_monitor) |idx| {
+                const screens = QApp.Screens(self.allocator);
+                defer self.allocator.free(screens);
+                const i = @min(@max(@as(usize, @intCast(idx)), 0), screens.len - 1);
+                const geo = screens[i].Geometry();
+                qt.QCursor.SetPos(geo.X() + @divTrunc(geo.Width(), 2), geo.Y() + @divTrunc(geo.Height(), 2));
+                self.widget.SetGeometry(geo.X(), geo.Y(), geo.Width(), geo.Height());
+            }
+            self.widget.ShowFullScreen();
+        } else {
+            self.widget.Show();
+        }
         self.widget.Raise();
     }
 

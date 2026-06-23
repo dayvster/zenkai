@@ -66,6 +66,7 @@ pub const bulma_qss = @embedFile("../styles/bulma.qss");
 pub const trunks_qss = @embedFile("../styles/trunks.qss");
 pub const tien_qss = @embedFile("../styles/tien.qss");
 pub const spacegray_qss = @embedFile("../styles/spacegray.qss");
+pub const launchpad_qss = @embedFile("../styles/launchpad.qss");
 pub const main_qss = @embedFile("../styles/main.qss");
 
 pub var g_theme_qss_filename: []const u8 = "dark.theme.qss";
@@ -229,6 +230,8 @@ pub fn resolve(allocator: std.mem.Allocator, theme_arg: ?[]const u8) ThemeResult
             return resolveWithDisk(allocator, "tien.qss", tien_qss);
         } else if (std.mem.eql(u8, name, "spacegray")) {
             return resolveWithDisk(allocator, "spacegray.qss", spacegray_qss);
+        } else if (std.mem.eql(u8, name, "launchpad")) {
+            return resolveWithDisk(allocator, "launchpad.qss", launchpad_qss);
         } else if (std.mem.eql(u8, name, "main")) {
             return resolveWithDisk(allocator, "main.qss", main_qss);
         } else if (!std.mem.eql(u8, name, "dark")) {
@@ -280,6 +283,7 @@ pub const theme_entries = [_]ThemeEntry{
     .{ .name = "kanagawa", .desc = "Calm dark cyan wave" },
     .{ .name = "kanagawa-dragon", .desc = "Earthy muted kanagawa" },
     .{ .name = "kanagawa-lotus", .desc = "Warm cream kanagawa light" },
+    .{ .name = "launchpad", .desc = "Dark macOS-style launcher" },
     .{ .name = "light", .desc = "Catppuccin Latte light" },
     .{ .name = "material", .desc = "Material Design teal/purple" },
     .{ .name = "matrix", .desc = "Green matrix rain" },
