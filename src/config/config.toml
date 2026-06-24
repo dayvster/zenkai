@@ -25,6 +25,13 @@ clipboard = ""
 # URL handler command for plugin open_url results (e.g. xdg-open, firefox)
 url_handler = "xdg-open"
 
+# Animations
+no_animations = false
+animation_interval = 200
+# Easing: linear, in-quad, out-quad, in-out-quad, in-cubic, out-cubic,
+#         in-out-cubic, out-back, in-out-back
+animation_easing = "out-cubic"
+
 # -- Bottom bar (action buttons bar) ------------------------------------------
 bottom_bar_margin_top = 4
 bottom_bar_margin_bottom = 4

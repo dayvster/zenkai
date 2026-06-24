@@ -18,6 +18,7 @@ const QColor = qt.QColor;
 const QRect = qt.QRect;
 const QFont = qt.QFont;
 const QApp = qt.QApplication;
+const animation = @import("animation.zig");
 
 pub const ListItemAction = struct {
     name: []const u8,
@@ -471,7 +472,7 @@ pub const List = struct {
                 }
             },
         }
-        QApp.Quit();
+        animation.animateFadeOutAndQuit();
     }
 
     pub fn setNoIcons(v: bool) void {

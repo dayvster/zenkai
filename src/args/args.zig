@@ -9,6 +9,8 @@ pub const help =
     \\  --size=N                  Icon size in pixels
     \\  --width=N                 Window width in pixels
     \\  --height=N                Window height in pixels
+    \\  --fullscreen              Start in fullscreen mode
+    \\  --monitor=N               Monitor number to open on (0-based, default: cursor's monitor)
     \\  --theme=NAME              Theme (dark, light, dracula, ayu-dark, minimal, or path)
     \\  --debug                   Start debug timer
     \\  --theme-reloader          Enable live QSS reloading (requires --debug)
@@ -19,6 +21,7 @@ pub const help =
     \\  --show-actions            Show item actions
     \\  --actions-bottombar       Show actions in bottom bar
     \\  --list-themes             List all available themes with descriptions
+    \\  --list-monitors           List all available monitors with indices
     \\  --close-on-focus-out     Close the launcher when it loses focus
     \\  --no-close-on-focus-out  Keep the launcher open when it loses focus
     \\  --show-backdrop           Show a backdrop to detect clicks outside the launcher
@@ -28,6 +31,9 @@ pub const help =
     \\  --no-plugins              Skip loading plugins
     \\  --plugin=NAME             Only load the specified plugin (may be repeated)
     \\  --language=CODE           Translation language code (e.g. fr, de)
+    \\  --no-animations           Disable window animations
+    \\  --animation-interval=MS   Animation duration in milliseconds (default: 200)
+    \\  --animation-easing=TYPE   Easing curve (linear, out-cubic, out-back, etc.)
     \\  --help, -h                Show this help and exit
 ;
 
@@ -42,15 +48,21 @@ pub const Config = struct {
     show_actions: bool,
     actions_bottombar: bool,
     list_themes: bool,
+    list_monitors: bool,
     close_on_focus_out: ?bool,
     show_backdrop: bool,
     window_width: ?i32,
     window_height: ?i32,
+    fullscreen: bool,
+    monitor: ?i32,
     clipboard: ?[]const u8,
     url_handler: ?[]const u8,
     no_dapps: bool,
     no_plugins: bool,
     language: ?[]const u8,
+    no_animations: bool,
+    animation_interval: ?i32,
+    animation_easing: ?[]const u8,
 };
 
 pub const MenuEntry = struct {
@@ -141,15 +153,21 @@ pub fn parse(args: [][:0]u8) Config {
         .show_actions = false,
         .actions_bottombar = false,
         .list_themes = false,
+        .list_monitors = false,
         .close_on_focus_out = null,
         .show_backdrop = false,
         .window_width = null,
         .window_height = null,
+        .fullscreen = false,
+        .monitor = null,
         .clipboard = null,
         .url_handler = null,
         .no_dapps = false,
         .no_plugins = false,
         .language = null,
+        .no_animations = false,
+        .animation_interval = null,
+        .animation_easing = null,
     };
 
     for (args) |arg_slice| {
@@ -190,6 +208,10 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.close_on_focus_out = false;
         } else if (std.mem.eql(u8, arg, "--show-backdrop")) {
             cfg.show_backdrop = true;
+        } else if (std.mem.eql(u8, arg, "--fullscreen")) {
+            cfg.fullscreen = true;
+        } else if (std.mem.startsWith(u8, arg, "--monitor=")) {
+            cfg.monitor = std.fmt.parseInt(i32, arg["--monitor=".len..], 10) catch null;
         } else if (std.mem.startsWith(u8, arg, "--clipboard=")) {
             const val = arg["--clipboard=".len..];
             cfg.clipboard = if (val.len > 0) val else null;
@@ -203,8 +225,17 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.startsWith(u8, arg, "--language=")) {
             const val = arg["--language=".len..];
             cfg.language = if (val.len > 0) val else null;
+        } else if (std.mem.eql(u8, arg, "--no-animations")) {
+            cfg.no_animations = true;
+        } else if (std.mem.startsWith(u8, arg, "--animation-interval=")) {
+            cfg.animation_interval = std.fmt.parseInt(i32, arg["--animation-interval=".len..], 10) catch null;
+        } else if (std.mem.startsWith(u8, arg, "--animation-easing=")) {
+            const val = arg["--animation-easing=".len..];
+            cfg.animation_easing = if (val.len > 0) val else null;
         } else if (std.mem.eql(u8, arg, "--list-themes")) {
             cfg.list_themes = true;
+        } else if (std.mem.eql(u8, arg, "--list-monitors")) {
+            cfg.list_monitors = true;
         }
     }
 
