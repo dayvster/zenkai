@@ -167,7 +167,9 @@ pub fn main(init: std.process.Init) !void {
     if (config.configDir(init.gpa)) |cfg_dir| {
         freq_store.load(cfg_dir);
         window.list.frequency_store = &freq_store;
-        window.list.setFilter("");
+        if (!window.population_delayed) {
+            window.list.setFilter("");
+        }
         cfg_dir_opt = cfg_dir;
     } else |_| {}
     defer {

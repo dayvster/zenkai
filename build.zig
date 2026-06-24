@@ -62,6 +62,10 @@ pub fn build(b: *std.Build) !void {
         "qcursor",
         "qcoreevent",
         "qevent",
+        "qabstractanimation",
+        "qvariantanimation",
+        "qpropertyanimation",
+        "qeasingcurve",
     };
 
     for (libs) |lib| {

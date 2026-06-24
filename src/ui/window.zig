@@ -8,6 +8,7 @@ const ListItem = @import("list.zig").ListItem;
 const Keyboard = @import("keyboard.zig").Keyboard;
 const BottomBar = @import("bottombar.zig").BottomBar;
 const SearchBar = @import("search_bar.zig").SearchBar;
+const animation = @import("animation.zig");
 
 const QApp = qt.QApplication;
 const QWidget = qt.QWidget;
@@ -20,6 +21,7 @@ var g_fullscreen: bool = false;
 var g_monitor: ?i32 = null;
 var g_blur_timer: qt.QTimer = undefined;
 var g_mouse_left_at: i64 = 0;
+var g_populate_timer: qt.QTimer = undefined;
 var g_backdrop: ?QWidget = null;
 var g_backdrop_geo: [4]i32 = .{ 0, 0, 0, 0 };
 
@@ -47,6 +49,10 @@ fn onLeaveWidget(_: QWidget, _: qt.QEvent) callconv(.c) void {
 
 fn onBlurTimerTimeout(_: qt.QTimer) callconv(.c) void {
     QApp.Quit();
+}
+
+fn onPopulateTimerTimeout(_: qt.QTimer) callconv(.c) void {
+    g_window.list.setFilter("");
 }
 
 fn onBackdropClick(_: qt.QWidget, _: qt.QMouseEvent) callconv(.c) void {
@@ -80,6 +86,7 @@ pub const Window = struct {
     search_bar: SearchBar,
     list: List,
     bottom_bar: ?BottomBar,
+    population_delayed: bool,
 
     pub fn init(
         self: *Window,
@@ -142,6 +149,7 @@ pub const Window = struct {
         }
 
         const is_launchpad = if (vis.theme) |t| std.mem.eql(u8, t, "launchpad") else false;
+        const population_delayed = is_launchpad;
 
         if (vis.fullscreen) {
             const cp = target_screen.Geometry();
@@ -181,7 +189,9 @@ pub const Window = struct {
 
         var list = List.fromItems(allocator, items, vis.icon_size);
         list.adoptGList();
-        list.setFilter("");
+        if (!population_delayed) {
+            list.setFilter("");
+        }
 
         main_layout.AddWidget(list.view);
 
@@ -191,6 +201,7 @@ pub const Window = struct {
             .search_bar = search_bar,
             .list = list,
             .bottom_bar = null,
+            .population_delayed = population_delayed,
         };
 
         self.list.adoptGList();
@@ -234,6 +245,18 @@ pub const Window = struct {
         g_blur_timer = qt.QTimer.New();
         g_blur_timer.OnTimeout(onBlurTimerTimeout);
 
+        {
+            var anim_cfg = animation.AnimationConfig{
+                .enabled = !vis.no_animations,
+                .interval_ms = vis.animation_interval,
+            };
+            if (vis.animation_easing) |easing_name| {
+                anim_cfg.easing = animation.EasingType.fromName(easing_name);
+            }
+            animation.setConfig(anim_cfg);
+            animation.setWindowWidget(window);
+        }
+
         window.OnCloseEvent(onWindowClose);
         window.OnLeaveEvent(onLeaveWidget);
         app.OnApplicationStateChanged(onAppStateChanged);
@@ -241,6 +264,9 @@ pub const Window = struct {
     }
 
     pub fn show(self: *Window) void {
+        if (animation.config().enabled) {
+            self.widget.SetWindowOpacity(0.0);
+        }
         if (g_fullscreen) {
             if (g_monitor) |idx| {
                 const screens = QApp.Screens(self.allocator);
@@ -255,6 +281,13 @@ pub const Window = struct {
             self.widget.Show();
         }
         self.widget.Raise();
+        g_populate_timer = qt.QTimer.New();
+        g_populate_timer.SetSingleShot(true);
+        g_populate_timer.OnTimeout(onPopulateTimerTimeout);
+        if (self.population_delayed) {
+            g_populate_timer.Start(200);
+        }
+        animation.animateFadeIn(self.widget);
     }
 
     pub fn exec() void {
@@ -264,6 +297,8 @@ pub const Window = struct {
     pub fn deinit(self: *Window) void {
         g_blur_timer.Stop();
         g_blur_timer.Delete();
+        g_populate_timer.Stop();
+        g_populate_timer.Delete();
         closeBackdrop();
         self.search_bar.deinit();
         self.list.deinit();

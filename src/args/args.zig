@@ -31,6 +31,9 @@ pub const help =
     \\  --no-plugins              Skip loading plugins
     \\  --plugin=NAME             Only load the specified plugin (may be repeated)
     \\  --language=CODE           Translation language code (e.g. fr, de)
+    \\  --no-animations           Disable window animations
+    \\  --animation-interval=MS   Animation duration in milliseconds (default: 200)
+    \\  --animation-easing=TYPE   Easing curve (linear, out-cubic, out-back, etc.)
     \\  --help, -h                Show this help and exit
 ;
 
@@ -57,6 +60,9 @@ pub const Config = struct {
     no_dapps: bool,
     no_plugins: bool,
     language: ?[]const u8,
+    no_animations: bool,
+    animation_interval: ?i32,
+    animation_easing: ?[]const u8,
 };
 
 pub const MenuEntry = struct {
@@ -159,6 +165,9 @@ pub fn parse(args: [][:0]u8) Config {
         .no_dapps = false,
         .no_plugins = false,
         .language = null,
+        .no_animations = false,
+        .animation_interval = null,
+        .animation_easing = null,
     };
 
     for (args) |arg_slice| {
@@ -216,6 +225,13 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.startsWith(u8, arg, "--language=")) {
             const val = arg["--language=".len..];
             cfg.language = if (val.len > 0) val else null;
+        } else if (std.mem.eql(u8, arg, "--no-animations")) {
+            cfg.no_animations = true;
+        } else if (std.mem.startsWith(u8, arg, "--animation-interval=")) {
+            cfg.animation_interval = std.fmt.parseInt(i32, arg["--animation-interval=".len..], 10) catch null;
+        } else if (std.mem.startsWith(u8, arg, "--animation-easing=")) {
+            const val = arg["--animation-easing=".len..];
+            cfg.animation_easing = if (val.len > 0) val else null;
         } else if (std.mem.eql(u8, arg, "--list-themes")) {
             cfg.list_themes = true;
         } else if (std.mem.eql(u8, arg, "--list-monitors")) {
