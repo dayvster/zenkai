@@ -182,17 +182,17 @@ pub fn main(init: std.process.Init) !void {
     if (ctx.cfg.benchmark_all) debug.mark("show window");
     window.show();
 
-    if (ctx.cfg.start_timer) {
-        const elapsed = @as(f64, @floatFromInt(debug.monotonicNs() - ctx.start_ns)) / std.time.ns_per_ms;
-        log.info("appeared on screen in {d:.2}ms", .{elapsed});
-    }
-
     if (!skip_desktop) {
         const loaded = desktop_loader.load(init.gpa, ctx.cfg.benchmark_all, ctx.cfg.show_actions, ctx.cfg.actions_bottombar) catch |err| blk: {
             log.info("desktop load failed: {}", .{err});
             break :blk try init.gpa.alloc(ui.ListItem, 0);
         };
         window.setOwnedItems(loaded);
+    }
+
+    if (ctx.cfg.start_timer) {
+        const elapsed = @as(f64, @floatFromInt(debug.monotonicNs() - ctx.start_ns)) / std.time.ns_per_ms;
+        log.info("appeared on screen in {d:.2}ms", .{elapsed});
     }
 
     if (ctx.cfg.benchmark_all) debug.printBenchmarks();
