@@ -1,6 +1,7 @@
 const std = @import("std");
 pub const log = @import("log.zig");
 pub const fsutils = @import("fsutils.zig");
+pub const simd = @import("simd.zig");
 
 pub fn esc(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
     var buf2: std.ArrayList(u8) = .empty;

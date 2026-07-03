@@ -144,12 +144,11 @@ pub const LineIterator = struct {
 
         const start = self.index;
 
-        while (self.index < self.source.len) {
-            const c = self.source[self.index];
-            if (c == CARRIAGE_RETURN or c == LINE_FEED) {
-                break;
-            }
-            self.index += 1;
+        if (utils.simd.memchrCrOrLf(self.source[self.index..])) |pos| {
+            self.index += pos;
+        } else {
+            self.index = self.source.len;
+            return self.source[start..self.index];
         }
         const line = self.source[start..self.index];
 
