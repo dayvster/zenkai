@@ -21,7 +21,6 @@ var g_fullscreen: bool = false;
 var g_monitor: ?i32 = null;
 var g_blur_timer: qt.QTimer = undefined;
 var g_mouse_left_at: i64 = 0;
-var g_populate_timer: qt.QTimer = undefined;
 var g_backdrop: ?QWidget = null;
 var g_backdrop_geo: [4]i32 = .{ 0, 0, 0, 0 };
 
@@ -49,10 +48,6 @@ fn onLeaveWidget(_: QWidget, _: qt.QEvent) callconv(.c) void {
 
 fn onBlurTimerTimeout(_: qt.QTimer) callconv(.c) void {
     QApp.Quit();
-}
-
-fn onPopulateTimerTimeout(_: qt.QTimer) callconv(.c) void {
-    g_window.list.setFilter("");
 }
 
 fn onBackdropClick(_: qt.QWidget, _: qt.QMouseEvent) callconv(.c) void {
@@ -86,7 +81,7 @@ pub const Window = struct {
     search_bar: SearchBar,
     list: List,
     bottom_bar: ?BottomBar,
-    population_delayed: bool,
+    owned_items: ?[]ListItem = null,
 
     pub fn init(
         self: *Window,
@@ -149,7 +144,6 @@ pub const Window = struct {
         }
 
         const is_launchpad = if (vis.theme) |t| std.mem.eql(u8, t, "launchpad") else false;
-        const population_delayed = is_launchpad;
 
         if (vis.fullscreen) {
             const cp = target_screen.Geometry();
@@ -189,9 +183,6 @@ pub const Window = struct {
 
         var list = List.fromItems(allocator, items, vis.icon_size);
         list.adoptGList();
-        if (!population_delayed) {
-            list.setFilter("");
-        }
 
         main_layout.AddWidget(list.view);
 
@@ -201,7 +192,6 @@ pub const Window = struct {
             .search_bar = search_bar,
             .list = list,
             .bottom_bar = null,
-            .population_delayed = population_delayed,
         };
 
         self.list.adoptGList();
@@ -263,6 +253,12 @@ pub const Window = struct {
         Keyboard.setup(window, &self.list, self.search_bar.widget);
     }
 
+    pub fn setOwnedItems(self: *Window, items: []ListItem) void {
+        self.owned_items = items;
+        self.list.source = .{ .items = items };
+        self.list.setFilter("");
+    }
+
     pub fn show(self: *Window) void {
         if (animation.config().enabled) {
             self.widget.SetWindowOpacity(0.0);
@@ -281,12 +277,6 @@ pub const Window = struct {
             self.widget.Show();
         }
         self.widget.Raise();
-        g_populate_timer = qt.QTimer.New();
-        g_populate_timer.SetSingleShot(true);
-        g_populate_timer.OnTimeout(onPopulateTimerTimeout);
-        if (self.population_delayed) {
-            g_populate_timer.Start(200);
-        }
         animation.animateFadeIn(self.widget);
     }
 
@@ -297,12 +287,26 @@ pub const Window = struct {
     pub fn deinit(self: *Window) void {
         g_blur_timer.Stop();
         g_blur_timer.Delete();
-        g_populate_timer.Stop();
-        g_populate_timer.Delete();
         closeBackdrop();
         self.search_bar.deinit();
         self.list.deinit();
         if (self.bottom_bar) |*bar| bar.deinit();
+        if (self.owned_items) |items| {
+            for (items) |item| {
+                self.allocator.free(item.icon);
+                self.allocator.free(item.cmd);
+                self.allocator.free(item.name);
+                if (item.actions.len > 0) {
+                    for (item.actions) |a| {
+                        self.allocator.free(a.name);
+                        self.allocator.free(a.exec);
+                        self.allocator.free(a.icon);
+                    }
+                    self.allocator.free(item.actions);
+                }
+            }
+            self.allocator.free(items);
+        }
         self.widget.Delete();
     }
 };

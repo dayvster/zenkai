@@ -104,34 +104,35 @@ pub fn main(init: std.process.Init) !void {
 
     const use_menus = menu_entries.len > 0;
     const skip_desktop = use_menus or ctx.cfg.no_dapps;
-    const items = if (skip_desktop) blk: {
-        if (use_menus) {
-            var list_items = try std.ArrayList(ui.ListItem).initCapacity(init.gpa, menu_entries.len);
-            errdefer {
-                for (list_items.items) |item| {
-                    init.gpa.free(item.icon);
-                    init.gpa.free(item.cmd);
-                    init.gpa.free(item.name);
-                }
-                list_items.deinit(init.gpa);
+
+    var items: []ui.ListItem = undefined;
+    if (use_menus) {
+        var list_items = try std.ArrayList(ui.ListItem).initCapacity(init.gpa, menu_entries.len);
+        errdefer {
+            for (list_items.items) |item| {
+                init.gpa.free(item.icon);
+                init.gpa.free(item.cmd);
+                init.gpa.free(item.name);
             }
-            for (menu_entries) |me| {
-                const icon = try init.gpa.dupe(u8, me.icon);
-                errdefer init.gpa.free(icon);
-                const cmd = try init.gpa.dupe(u8, me.cmd);
-                errdefer init.gpa.free(cmd);
-                const name = try init.gpa.dupe(u8, me.name);
-                errdefer init.gpa.free(name);
-                list_items.appendAssumeCapacity(.{
-                    .icon = icon,
-                    .cmd = cmd,
-                    .name = name,
-                });
-            }
-            break :blk try list_items.toOwnedSlice(init.gpa);
+            list_items.deinit(init.gpa);
         }
-        break :blk try init.gpa.alloc(ui.ListItem, 0);
-    } else try desktop_loader.load(init.gpa, ctx.cfg.benchmark_all, ctx.cfg.show_actions, ctx.cfg.actions_bottombar);
+        for (menu_entries) |me| {
+            const icon = try init.gpa.dupe(u8, me.icon);
+            errdefer init.gpa.free(icon);
+            const cmd = try init.gpa.dupe(u8, me.cmd);
+            errdefer init.gpa.free(cmd);
+            const name = try init.gpa.dupe(u8, me.name);
+            errdefer init.gpa.free(name);
+            list_items.appendAssumeCapacity(.{
+                .icon = icon,
+                .cmd = cmd,
+                .name = name,
+            });
+        }
+        items = try list_items.toOwnedSlice(init.gpa);
+    } else {
+        items = try init.gpa.alloc(ui.ListItem, 0);
+    }
 
     defer {
         if (use_menus) {
@@ -141,17 +142,9 @@ pub fn main(init: std.process.Init) !void {
                 init.gpa.free(item.name);
             }
             init.gpa.free(items);
-        } else if (ctx.cfg.no_dapps) {
-            init.gpa.free(items);
         } else {
-            for (items) |item| {
-                init.gpa.free(item.icon);
-                init.gpa.free(item.cmd);
-                init.gpa.free(item.name);
-                if (item.actions.len > 0) desktop_loader.freeListItemActions(init.gpa, item.actions);
-            }
             init.gpa.free(items);
-            desktop_loader.freeDesktopApps();
+            if (!skip_desktop) desktop_loader.freeDesktopApps();
         }
     }
 
@@ -167,9 +160,6 @@ pub fn main(init: std.process.Init) !void {
     if (config.configDir(init.gpa)) |cfg_dir| {
         freq_store.load(cfg_dir);
         window.list.frequency_store = &freq_store;
-        if (!window.population_delayed) {
-            window.list.setFilter("");
-        }
         cfg_dir_opt = cfg_dir;
     } else |_| {}
     defer {
@@ -185,13 +175,26 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("  (dirty: {any})\n", .{freq_store.dirty});
     }
 
+    if (skip_desktop) {
+        window.list.setFilter("");
+    }
+
     if (ctx.cfg.benchmark_all) debug.mark("show window");
     window.show();
+
+    if (!skip_desktop) {
+        const loaded = desktop_loader.load(init.gpa, ctx.cfg.benchmark_all, ctx.cfg.show_actions, ctx.cfg.actions_bottombar) catch |err| blk: {
+            log.info("desktop load failed: {}", .{err});
+            break :blk try init.gpa.alloc(ui.ListItem, 0);
+        };
+        window.setOwnedItems(loaded);
+    }
 
     if (ctx.cfg.start_timer) {
         const elapsed = @as(f64, @floatFromInt(debug.monotonicNs() - ctx.start_ns)) / std.time.ns_per_ms;
         log.info("appeared on screen in {d:.2}ms", .{elapsed});
     }
+
     if (ctx.cfg.benchmark_all) debug.printBenchmarks();
 
     if (ctx.cfg.start_timer and ctx.cfg.theme_reloader) styles_watcher.start(init.gpa);
