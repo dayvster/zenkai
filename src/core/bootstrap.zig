@@ -22,7 +22,7 @@ pub const Context = struct {
     pub fn deinit(self: *Context) void {
         self.visual.deinit(self.allocator);
         lang.deinit();
-        self.app.Delete();
+        self.app.delete();
         qt.deinit(self.allocator, self.argv);
     }
 };
@@ -49,8 +49,8 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     const start_ns = if (cfg.start_timer) debug.monotonicNs() else 0;
 
     var argc: i32 = @intCast(argv.len);
-    const app = QApp.New(std.heap.page_allocator, &argc, argv);
-    errdefer app.Delete();
+    const app = QApp.new(std.heap.page_allocator, &argc, argv);
+    errdefer app.delete();
     ui.theme.setApp(app);
 
     if (cfg.benchmark_all) debug.mark("theme apply");
@@ -62,7 +62,7 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     if (cfg.benchmark_all) debug.mark("icon theme");
     if (config.detectIconTheme(allocator)) |icon_theme| {
         log.info("icon theme: {s}", .{icon_theme});
-        QIcon.SetThemeName(icon_theme);
+        QIcon.setThemeName(icon_theme);
         allocator.free(icon_theme);
     } else {
         log.info("icon theme: default (Qt resolved)", .{});

@@ -62,20 +62,20 @@ pub fn main(init: std.process.Init) !void {
         var args_iter = init.minimal.args.iterate();
         while (args_iter.next()) |arg| {
             if (std.mem.eql(u8, arg, "--list-monitors")) {
-                const screens = QApp.Screens(init.gpa);
+                const screens = QApp.screens(init.gpa);
                 defer init.gpa.free(screens);
                 std.debug.print("Available monitors:\n", .{});
                 for (screens, 0..) |screen, i| {
-                    const geo = screen.Geometry();
-                    const name = screen.Name(init.gpa);
+                    const geo = screen.geometry();
+                    const name = screen.name(init.gpa);
                     defer init.gpa.free(name);
-                    const manu = screen.Manufacturer(init.gpa);
+                    const manu = screen.manufacturer(init.gpa);
                     defer init.gpa.free(manu);
-                    const model = screen.Model(init.gpa);
+                    const model = screen.model(init.gpa);
                     defer init.gpa.free(model);
                     std.debug.print("  {d}: {s} {s} ({s}) — {d}x{d}+{d}+{d}\n", .{
                         i,           manu,         model,   name,
-                        geo.Width(), geo.Height(), geo.X(), geo.Y(),
+                        geo.width(), geo.height(), geo.x(), geo.y(),
                     });
                 }
                 std.process.exit(0);

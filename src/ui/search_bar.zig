@@ -16,8 +16,8 @@ fn onTextChanged(_: QLineEdit, text_cstr: [*:0]const u8) callconv(.c) void {
     @memcpy(g_buffer[0..len], text[0..len]);
     g_buffer_len = len;
     if (g_self.debounce_timer) |timer| {
-        timer.Stop();
-        timer.Start(@intCast(g_self.debounce_ms));
+        timer.stop();
+        timer.start(@intCast(g_self.debounce_ms));
     }
 }
 
@@ -34,20 +34,20 @@ pub const SearchBar = struct {
     on_debounced: ?*const fn (text: []const u8) void,
 
     pub fn init(parent: QWidget, debounce_ms: i32) SearchBar {
-        var sb = QLineEdit.New2();
-        sb.SetObjectName("searchbarInput");
+        var sb = QLineEdit.new2();
+        sb.setObjectName("searchbarInput");
         {
             var buf: [256]u8 = undefined;
             const text = lang.get().search_placeholder;
             const len = @min(text.len, buf.len - 1);
             @memcpy(buf[0..len], text[0..len]);
             buf[len] = 0;
-            sb.SetPlaceholderText(buf[0..len]);
+            sb.setPlaceholderText(buf[0..len]);
         }
-        sb.SetClearButtonEnabled(false);
+        sb.setClearButtonEnabled(false);
 
-        var timer = QTimer.New2(parent);
-        timer.SetSingleShot(true);
+        var timer = QTimer.new2(parent);
+        timer.setSingleShot(true);
 
         return .{
             .widget = sb,
@@ -59,15 +59,15 @@ pub const SearchBar = struct {
 
     pub fn setup(self: *SearchBar) void {
         g_self = self;
-        self.widget.OnTextChanged(onTextChanged);
+        self.widget.onTextChanged(onTextChanged);
         if (self.debounce_timer) |timer| {
-            timer.OnTimeout(onDebounceTimeout);
+            timer.onTimeout(onDebounceTimeout);
         }
     }
 
     pub fn deinit(self: *SearchBar) void {
-        if (self.debounce_timer) |timer| timer.Delete();
-        self.widget.Delete();
+        if (self.debounce_timer) |timer| timer.delete();
+        self.widget.delete();
     }
 
     pub fn getText(_: *SearchBar) []const u8 {
@@ -79,7 +79,7 @@ pub const SearchBar = struct {
         @memcpy(g_buffer[0..len], text[0..len]);
         g_buffer[len] = 0;
         g_buffer_len = len;
-        self.widget.SetText(@ptrCast(&g_buffer[0]));
+        self.widget.setText(@ptrCast(&g_buffer[0]));
     }
 
     pub fn setPlaceholder(self: *SearchBar, placeholder: []const u8) void {
@@ -87,10 +87,10 @@ pub const SearchBar = struct {
         const len = @min(placeholder.len, buf.len - 1);
         @memcpy(buf[0..len], placeholder[0..len]);
         buf[len] = 0;
-        self.widget.SetPlaceholderText(buf[0..len]);
+        self.widget.setPlaceholderText(buf[0..len]);
     }
 
     pub fn focus(self: *SearchBar) void {
-        self.widget.SetFocus();
+        self.widget.setFocus();
     }
 };

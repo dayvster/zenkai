@@ -20,10 +20,10 @@ pub fn setup(list: *applist.List, parent: qt.QWidget) void {
 }
 
 fn currentApp() ?*const de.DesktopApp {
-    var idx = g_list.view.CurrentIndex();
-    defer idx.Delete();
-    if (!idx.IsValid()) return null;
-    const row = @as(usize, @intCast(idx.Row()));
+    var idx = g_list.view.currentIndex();
+    defer idx.delete();
+    if (!idx.isValid()) return null;
+    const row = @as(usize, @intCast(idx.row()));
     if (row >= g_list.indices.items.len) return null;
     const entry = g_list.indices.items[row];
     const item_idx = switch (entry) {
@@ -44,24 +44,24 @@ fn currentApp() ?*const de.DesktopApp {
 fn loadAppIcon(icon_name: ?[]const u8) QIcon {
     if (icon_name) |name| {
         if (name.len > 0) {
-            const icon = if (name[0] == '/') QIcon.New4(name) else QIcon.FromTheme(name);
-            if (!icon.IsNull()) return icon;
-            icon.Delete();
+            const icon = if (name[0] == '/') QIcon.new4(name) else QIcon.fromTheme(name);
+            if (!icon.isNull()) return icon;
+            icon.delete();
         }
     }
-    const fallback = QIcon.FromTheme("dialog-information");
-    if (!fallback.IsNull()) return fallback;
-    fallback.Delete();
-    return QIcon.New();
+    const fallback = QIcon.fromTheme("dialog-information");
+    if (!fallback.isNull()) return fallback;
+    fallback.delete();
+    return QIcon.new();
 }
 
 fn makeInfoIcon(icon_name: ?[]const u8) QPixmap {
     var app_icon = loadAppIcon(icon_name);
-    defer app_icon.Delete();
-    if (!app_icon.IsNull()) {
-        return app_icon.Pixmap2(64, 64);
+    defer app_icon.delete();
+    if (!app_icon.isNull()) {
+        return app_icon.pixmap2(64, 64);
     }
-    return QPixmap.New2(64, 64);
+    return QPixmap.new2(64, 64);
 }
 
 const Html = struct {
@@ -183,18 +183,18 @@ pub fn showInfoPanel() void {
     defer html.gpa.free(html_str);
 
     var icon_pix = makeInfoIcon(app.icon);
-    defer icon_pix.Delete();
+    defer icon_pix.delete();
 
-    var mb = QMessageBox.New6(
+    var mb = QMessageBox.new6(
         qt.qmessagebox_enums.Icon.Information,
         app.name,
         html_str,
         qt.qmessagebox_enums.StandardButton.Ok,
         g_parent,
     );
-    defer mb.Delete();
-    mb.SetIconPixmap(icon_pix);
-    mb.SetTextFormat(qt.qnamespace_enums.TextFormat.RichText);
-    mb.SetMinimumSize2(440, 350);
-    _ = mb.Exec();
+    defer mb.delete();
+    mb.setIconPixmap(icon_pix);
+    mb.setTextFormat(qt.qnamespace_enums.TextFormat.RichText);
+    mb.setMinimumSize2(440, 350);
+    _ = mb.exec();
 }

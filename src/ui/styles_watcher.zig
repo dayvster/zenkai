@@ -45,9 +45,9 @@ fn onReloadTimer(_: QTimer) callconv(.c) void {
 pub fn start(allocator: std.mem.Allocator) void {
     g_allocator = allocator;
 
-    g_timer = QTimer.New();
-    g_timer.OnTimeout(onReloadTimer);
-    g_timer.Start(500);
+    g_timer = QTimer.new();
+    g_timer.onTimeout(onReloadTimer);
+    g_timer.start(500);
 
     log.info("styles watcher started (polling every 500ms)", .{});
 }

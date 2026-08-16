@@ -55,43 +55,43 @@ pub fn setWindowWidget(widget: QWidget) void {
 
 pub fn animateFadeIn(window: QWidget) void {
     if (!g_cfg.enabled) {
-        window.SetWindowOpacity(1.0);
+        window.setWindowOpacity(1.0);
         return;
     }
-    window.SetWindowOpacity(0.0);
+    window.setWindowOpacity(0.0);
     var prop_name: [13]u8 = "windowOpacity".*;
-    var anim = QPropertyAnimation.New2(window, prop_name[0..]);
-    anim.SetDuration(g_cfg.interval_ms);
-    anim.SetStartValue(QVariant.New9(0.0));
-    anim.SetEndValue(QVariant.New9(1.0));
-    var easing = QEasingCurve.New3(@intFromEnum(g_cfg.easing));
-    defer easing.Delete();
-    anim.SetEasingCurve(easing);
-    anim.Start1(1);
+    var anim = QPropertyAnimation.new2(window, prop_name[0..]);
+    anim.setDuration(g_cfg.interval_ms);
+    anim.setStartValue(QVariant.new9(0.0));
+    anim.setEndValue(QVariant.new9(1.0));
+    var easing = QEasingCurve.new3(@intFromEnum(g_cfg.easing));
+    defer easing.delete();
+    anim.setEasingCurve(easing);
+    anim.start1(1);
 }
 
 fn onLaunchCloseFinished(_: QPropertyAnimation) callconv(.c) void {
-    QApp.Quit();
+    QApp.quit();
 }
 
 pub fn animateFadeOutAndQuit() void {
     const widget = g_window_widget orelse {
-        QApp.Quit();
+        QApp.quit();
         return;
     };
     if (!g_cfg.enabled) {
-        QApp.Quit();
+        QApp.quit();
         return;
     }
-    const current = widget.WindowOpacity();
+    const current = widget.windowOpacity();
     var prop_name: [13]u8 = "windowOpacity".*;
-    var anim = QPropertyAnimation.New2(widget, prop_name[0..]);
-    anim.SetDuration(g_cfg.interval_ms);
-    anim.SetStartValue(QVariant.New9(current));
-    anim.SetEndValue(QVariant.New9(0.0));
-    var easing = QEasingCurve.New3(@intFromEnum(EasingType.InCubic));
-    defer easing.Delete();
-    anim.SetEasingCurve(easing);
-    anim.OnFinished(onLaunchCloseFinished);
-    anim.Start1(1);
+    var anim = QPropertyAnimation.new2(widget, prop_name[0..]);
+    anim.setDuration(g_cfg.interval_ms);
+    anim.setStartValue(QVariant.new9(current));
+    anim.setEndValue(QVariant.new9(0.0));
+    var easing = QEasingCurve.new3(@intFromEnum(EasingType.InCubic));
+    defer easing.delete();
+    anim.setEasingCurve(easing);
+    anim.onFinished(onLaunchCloseFinished);
+    anim.start1(1);
 }

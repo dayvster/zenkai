@@ -15,20 +15,20 @@ const QApp = qt.QApplication;
 
 pub fn showError(msg: []const u8) void {
     const QLabel = qt.QLabel;
-    var label = QLabel.New3(msg);
-    defer label.Delete();
-    label.SetAlignment(@as(i32, 0x8004));
-    label.SetWindowFlag(2048);
-    label.SetWindowFlag(262144);
-    label.SetFixedSize2(300, 80);
-    const screen = label.Screen();
-    const screen_rect = screen.Geometry();
-    label.Move(
-        @divTrunc(screen_rect.Width() - 300, 2),
-        @divTrunc(screen_rect.Height() - 80, 2),
+    var label = QLabel.new3(msg);
+    defer label.delete();
+    label.setAlignment(@as(i32, 0x8004));
+    label.setWindowFlag(2048);
+    label.setWindowFlag(262144);
+    label.setFixedSize2(300, 80);
+    const screen = label.screen();
+    const screen_rect = screen.geometry();
+    label.move(
+        @divTrunc(screen_rect.width() - 300, 2),
+        @divTrunc(screen_rect.height() - 80, 2),
     );
-    label.Show();
-    _ = QApp.Exec();
+    label.show();
+    _ = QApp.exec();
 }
 
 pub fn renderList(

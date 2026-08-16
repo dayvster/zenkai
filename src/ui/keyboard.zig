@@ -14,17 +14,17 @@ var L: *List = undefined;
 var search_widget: QLineEdit = undefined;
 
 fn currentRow() ?i32 {
-    var idx = L.view.CurrentIndex();
-    defer idx.Delete();
-    if (!idx.IsValid()) return null;
-    return idx.Row();
+    var idx = L.view.currentIndex();
+    defer idx.delete();
+    if (!idx.isValid()) return null;
+    return idx.row();
 }
 
 fn focusSearch() void {
     var invalid = List.invalidIndex();
-    defer invalid.Delete();
-    L.view.SetCurrentIndex(invalid);
-    search_widget.SetFocus();
+    defer invalid.delete();
+    L.view.setCurrentIndex(invalid);
+    search_widget.setFocus();
 }
 
 fn onEnter(_: QShortcut) callconv(.c) void {
@@ -56,10 +56,10 @@ fn onDown(_: QShortcut) callconv(.c) void {
 }
 
 fn bind(window: QWidget, key: []const u8, handler: *const fn (QShortcut) callconv(.c) void) void {
-    const seq = QKeySequence.New2(key);
-    defer seq.Delete();
-    const s = QShortcut.New2(seq, window);
-    s.OnActivated(handler);
+    const seq = QKeySequence.new2(key);
+    defer seq.delete();
+    const s = QShortcut.new2(seq, window);
+    s.onActivated(handler);
 }
 
 fn scrollToTop() void {
@@ -71,15 +71,15 @@ fn scrollToEnd() void {
 }
 
 fn onSearchKeyPress(edit: QLineEdit, event: QKeyEvent) callconv(.c) void {
-    switch (event.Key()) {
+    switch (event.key()) {
         qt.qnamespace_enums.Key.Key_Home => scrollToTop(),
         qt.qnamespace_enums.Key.Key_End => scrollToEnd(),
-        else => edit.SuperKeyPressEvent(event),
+        else => edit.superKeyPressEvent(event),
     }
 }
 
 fn onEscape(_: QShortcut) callconv(.c) void {
-    QApp.Quit();
+    QApp.quit();
 }
 
 fn onPageUp(_: QShortcut) callconv(.c) void {
@@ -105,7 +105,7 @@ fn onTab(_: QShortcut) callconv(.c) void {
     if (L.indices.items.len > 0) {
         if (currentRow() == null) L.selectRow(0);
     }
-    L.view.SetFocus();
+    L.view.setFocus();
 }
 
 fn onShiftTab(_: QShortcut) callconv(.c) void {
@@ -118,7 +118,7 @@ fn makeActionHandler(comptime n: usize) *const fn (QShortcut) callconv(.c) void 
             const actions = List.currentItemActions();
             if (n < actions.len) {
                 utils.execute(actions[n].exec, L.allocator) catch {};
-                QApp.Quit();
+                QApp.quit();
             }
         }
     };
@@ -136,7 +136,7 @@ pub const Keyboard = struct {
         bind(window, "Escape", onEscape);
         bind(window, "PgUp", onPageUp);
         bind(window, "PgDown", onPageDown);
-        search.OnKeyPressEvent(onSearchKeyPress);
+        search.onKeyPressEvent(onSearchKeyPress);
         bind(window, "Tab", onTab);
         bind(window, "Shift+Tab", onShiftTab);
         inline for (0..10) |i| {

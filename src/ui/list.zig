@@ -30,22 +30,22 @@ var g_icon_size: i32 = 32;
 var g_no_icons: bool = false;
 
 fn loadIcon(icon_name: []const u8) QIcon {
-    if (icon_name.len == 0) return QIcon.New();
+    if (icon_name.len == 0) return QIcon.new();
     if (icon_name[0] == '/') {
-        return QIcon.New4(icon_name);
+        return QIcon.new4(icon_name);
     }
-    return QIcon.FromTheme(icon_name);
+    return QIcon.fromTheme(icon_name);
 }
 
 fn loadItemIcon(item: ListItem) QIcon {
     if (item.icon.len > 0) {
         const icon = loadIcon(item.icon);
-        if (!icon.IsNull()) return icon;
-        icon.Delete();
+        if (!icon.isNull()) return icon;
+        icon.delete();
     }
-    const fallback = QIcon.FromTheme("application-x-executable");
-    if (!fallback.IsNull()) return fallback;
-    fallback.Delete();
+    const fallback = QIcon.fromTheme("application-x-executable");
+    if (!fallback.isNull()) return fallback;
+    fallback.delete();
     return makeFallbackIcon(item.name);
 }
 
@@ -65,60 +65,60 @@ fn makeFallbackIcon(name: []const u8) QIcon {
     const idx = @as(usize, @intCast(first)) % palette.len;
     const c = palette[idx];
 
-    const bg = QColor.New5(c[0], c[1], c[2]);
-    defer bg.Delete();
+    const bg = QColor.new5(c[0], c[1], c[2]);
+    defer bg.delete();
 
     const luminance = @as(f32, @floatFromInt(c[0])) * 0.299 +
         @as(f32, @floatFromInt(c[1])) * 0.587 +
         @as(f32, @floatFromInt(c[2])) * 0.114;
     const text_color = if (luminance > 128.0)
-        QColor.New5(0, 0, 0)
+        QColor.new5(0, 0, 0)
     else
-        QColor.New5(255, 255, 255);
-    defer text_color.Delete();
+        QColor.new5(255, 255, 255);
+    defer text_color.delete();
 
-    var pixmap = QPixmap.New2(g_icon_size, g_icon_size);
-    defer pixmap.Delete();
-    pixmap.Fill1(bg);
+    var pixmap = QPixmap.new2(g_icon_size, g_icon_size);
+    defer pixmap.delete();
+    pixmap.fill1(bg);
 
-    var painter = QPainter.New();
-    defer painter.Delete();
-    _ = painter.Begin(pixmap);
-    defer _ = painter.End();
+    var painter = QPainter.new();
+    defer painter.delete();
+    _ = painter.begin(pixmap);
+    defer _ = painter.end();
 
-    painter.SetRenderHint(1);
-    painter.SetPen(text_color);
+    painter.setRenderHint(1);
+    painter.setPen(text_color);
 
     const border = @divTrunc(g_icon_size, 10);
     const radius = @as(f64, @floatFromInt(g_icon_size)) / 3.0;
     const iw = g_icon_size - 2 * border;
-    painter.DrawRoundedRect2(border, border, iw, iw, radius, radius);
+    painter.drawRoundedRect2(border, border, iw, iw, radius, radius);
 
-    var font = QFont.New2("sans-serif");
-    defer font.Delete();
-    font.SetPixelSize(g_icon_size - @divTrunc(g_icon_size, 4));
-    font.SetBold(true);
-    painter.SetFont(font);
+    var font = QFont.new2("sans-serif");
+    defer font.delete();
+    font.setPixelSize(g_icon_size - @divTrunc(g_icon_size, 4));
+    font.setBold(true);
+    painter.setFont(font);
 
-    var rect = QRect.New6(0, 0, g_icon_size, g_icon_size);
-    defer rect.Delete();
+    var rect = QRect.new6(0, 0, g_icon_size, g_icon_size);
+    defer rect.delete();
 
     var letter: [2]u8 = .{ first, 0 };
-    painter.DrawText6(rect, 132, letter[0..1]);
+    painter.drawText6(rect, 132, letter[0..1]);
 
-    return QIcon.New2(pixmap);
+    return QIcon.new2(pixmap);
 }
 
 fn tryLoadIcon(app: de.DesktopApp) QIcon {
     if (app.icon) |icon_name| {
         if (icon_name.len > 0) {
             const icon = loadIcon(icon_name);
-            if (!icon.IsNull()) return icon;
-            icon.Delete();
+            if (!icon.isNull()) return icon;
+            icon.delete();
         }
-        const fallback = QIcon.FromTheme("application-x-executable");
-        if (!fallback.IsNull()) return fallback;
-        fallback.Delete();
+        const fallback = QIcon.fromTheme("application-x-executable");
+        if (!fallback.isNull()) return fallback;
+        fallback.delete();
     }
     return makeFallbackIcon(app.name);
 }
@@ -126,12 +126,12 @@ fn tryLoadIcon(app: de.DesktopApp) QIcon {
 fn tryLoadPluginIcon(icon_name: []const u8) QIcon {
     if (icon_name.len > 0) {
         const icon = loadIcon(icon_name);
-        if (!icon.IsNull()) return icon;
-        icon.Delete();
+        if (!icon.isNull()) return icon;
+        icon.delete();
     }
-    const fallback = QIcon.FromTheme("application-x-executable");
-    if (!fallback.IsNull()) return fallback;
-    fallback.Delete();
+    const fallback = QIcon.fromTheme("application-x-executable");
+    if (!fallback.isNull()) return fallback;
+    fallback.delete();
     return makeFallbackIcon("pl");
 }
 
@@ -171,7 +171,7 @@ fn onDoubleClicked(_: QListView, _: QModelIndex) callconv(.c) void {
 }
 
 fn onCurrentChanged(_: QListView, current: QModelIndex, _: QModelIndex) callconv(.c) void {
-    const row = current.Row();
+    const row = current.row();
     if (row < 0) return;
     const urow = @as(usize, @intCast(row));
     if (urow >= g_list.indices.items.len) return;
@@ -202,10 +202,10 @@ fn onData(
     index: QModelIndex,
     role: i32,
 ) callconv(.c) QVariant {
-    const row = index.Row();
+    const row = index.row();
     const indices = g_list.indices.items;
     if (row < 0 or @as(usize, @intCast(row)) >= indices.len)
-        return QVariant.New();
+        return QVariant.new();
 
     const entry = indices[@as(usize, @intCast(row))];
 
@@ -216,31 +216,31 @@ fn onData(
                     .desktop_apps => |apps| apps[idx].name,
                     .items => |items| items[idx].name,
                 };
-                return QVariant.New24(name);
+                return QVariant.new24(name);
             }
             if (role == 1) {
-                if (g_no_icons) return QVariant.New();
+                if (g_no_icons) return QVariant.new();
                 const icon = switch (g_list.source) {
                     .desktop_apps => |apps| tryLoadIcon(apps[idx]),
                     .items => |items| loadItemIcon(items[idx]),
                 };
-                defer icon.Delete();
-                return icon.ToQVariant();
+                defer icon.delete();
+                return icon.toQVariant();
             }
         },
         .plugin => |plugin_idx| {
             const plugin_result = &g_list.plugin_results.items[plugin_idx];
-            if (role == 0) return QVariant.New24(plugin_result.title);
+            if (role == 0) return QVariant.new24(plugin_result.title);
             if (role == 1) {
-                if (g_no_icons) return QVariant.New();
+                if (g_no_icons) return QVariant.new();
                 const icon = tryLoadPluginIcon(plugin_result.icon);
-                defer icon.Delete();
-                return icon.ToQVariant();
+                defer icon.delete();
+                return icon.toQVariant();
             }
         },
     }
 
-    return QVariant.New();
+    return QVariant.new();
 }
 
 const FreqSortContext = struct {
@@ -291,20 +291,20 @@ pub const List = struct {
     fn initInternal(allocator: std.mem.Allocator, source: DataSource, icon_size: i32, plugin_manager: ?*plugins.PluginManager) List {
         g_icon_size = icon_size;
 
-        var model = QAbstractListModel.New();
-        model.OnRowCount(onRowCount);
-        model.OnData(onData);
+        var model = QAbstractListModel.new();
+        model.onRowCount(onRowCount);
+        model.onData(onData);
 
-        var view = QListView.New2();
-        view.SetAutoFillBackground(false);
-        view.SetAlternatingRowColors(false);
-        view.SetObjectName("appList");
-        var viewport = view.Viewport();
-        viewport.SetAutoFillBackground(false);
-        var icon_sz = QSize.New4(icon_size, icon_size);
-        defer icon_sz.Delete();
-        view.SetIconSize(icon_sz);
-        view.SetVerticalScrollMode(qt.qabstractitemview_enums.ScrollMode.ScrollPerItem);
+        var view = QListView.new2();
+        view.setAutoFillBackground(false);
+        view.setAlternatingRowColors(false);
+        view.setObjectName("appList");
+        var viewport = view.viewport();
+        viewport.setAutoFillBackground(false);
+        var icon_sz = QSize.new4(icon_size, icon_size);
+        defer icon_sz.delete();
+        view.setIconSize(icon_sz);
+        view.setVerticalScrollMode(qt.qabstractitemview_enums.ScrollMode.ScrollPerItem);
 
         var result = List{
             .allocator = allocator,
@@ -317,9 +317,9 @@ pub const List = struct {
             .frequency_store = null,
         };
         g_list = &result;
-        view.SetModel(model);
-        view.OnCurrentChanged(onCurrentChanged);
-        view.OnDoubleClicked(onDoubleClicked);
+        view.setModel(model);
+        view.onCurrentChanged(onCurrentChanged);
+        view.onDoubleClicked(onDoubleClicked);
 
         return result;
     }
@@ -412,12 +412,12 @@ pub const List = struct {
         }
 
         g_list = self;
-        self.model.BeginResetModel();
-        self.model.EndResetModel();
+        self.model.beginResetModel();
+        self.model.endResetModel();
     }
 
     pub fn invalidIndex() QModelIndex {
-        return QModelIndex.New3();
+        return QModelIndex.new3();
     }
 
     pub fn selectFirst(self: *List) void {
@@ -428,23 +428,23 @@ pub const List = struct {
 
     pub fn selectRow(self: *List, row: i32) void {
         var invalid = List.invalidIndex();
-        defer invalid.Delete();
-        var idx = self.model.Index(row, 0, invalid);
-        defer idx.Delete();
-        self.view.SetCurrentIndex(idx);
-        self.view.ScrollTo(idx, qt.qabstractitemview_enums.ScrollHint.EnsureVisible);
+        defer invalid.delete();
+        var idx = self.model.index(row, 0, invalid);
+        defer idx.delete();
+        self.view.setCurrentIndex(idx);
+        self.view.scrollTo(idx, qt.qabstractitemview_enums.ScrollHint.EnsureVisible);
     }
 
     pub fn launchSelected(self: *List) void {
-        if (!self.view.CurrentIndex().IsValid()) {
+        if (!self.view.currentIndex().isValid()) {
             self.selectFirst();
         }
 
-        var idx = self.view.CurrentIndex();
-        defer idx.Delete();
-        if (!idx.IsValid()) return;
+        var idx = self.view.currentIndex();
+        defer idx.delete();
+        if (!idx.isValid()) return;
 
-        const row = @as(usize, @intCast(idx.Row()));
+        const row = @as(usize, @intCast(idx.row()));
         if (row >= self.indices.items.len) return;
 
         switch (self.indices.items[row]) {
@@ -482,7 +482,7 @@ pub const List = struct {
     pub fn deinit(self: *List) void {
         freePluginResults(self.allocator, &self.plugin_results);
         self.plugin_results.deinit(self.allocator);
-        self.model.Delete();
+        self.model.delete();
         self.indices.deinit(self.allocator);
     }
 };

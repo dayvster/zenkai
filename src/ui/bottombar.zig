@@ -44,9 +44,9 @@ pub const BottomBar = struct {
 
     pub fn init(allocator: std.mem.Allocator, parent: qt.QWidget, vis: config.VisualConfig) BottomBar {
         _ = vis;
-        const container = QWidget.New2();
-        container.SetObjectName("bottomBar");
-        container.SetMinimumHeight(28);
+        const container = QWidget.new2();
+        container.setObjectName("bottomBar");
+        container.setMinimumHeight(28);
         return .{
             .allocator = allocator,
             .container = container,
@@ -60,13 +60,13 @@ pub const BottomBar = struct {
     pub fn setup(self: *BottomBar, list: *applist.List) void {
         g_app_list = list;
         g_bar = self;
-        self.container.OnResizeEvent(onContainerResize);
+        self.container.onResizeEvent(onContainerResize);
 
         info.setup(list, self.parent);
-        const seq = QKeySequence.New2("Ctrl+I");
-        defer seq.Delete();
-        self.info_shortcut = QShortcut.New2(seq, self.parent);
-        self.info_shortcut.OnActivated(struct {
+        const seq = QKeySequence.new2("Ctrl+I");
+        defer seq.delete();
+        self.info_shortcut = QShortcut.new2(seq, self.parent);
+        self.info_shortcut.onActivated(struct {
             fn handler(_: QShortcut) callconv(.c) void {
                 info.showInfoPanel();
             }
@@ -74,61 +74,61 @@ pub const BottomBar = struct {
     }
 
     fn layoutItems(self: *BottomBar) void {
-        const cr = self.container.ContentsRect();
-        const ch = cr.Height();
-        var x = cr.Left();
+        const cr = self.container.contentsRect();
+        const ch = cr.height();
+        var x = cr.left();
         for (self.items) |item| {
-            item.SetFixedHeight(ch);
-            item.AdjustSize();
-            const iw = item.Width();
-            item.SetGeometry(x, cr.Top(), iw, ch);
+            item.setFixedHeight(ch);
+            item.adjustSize();
+            const iw = item.width();
+            item.setGeometry(x, cr.top(), iw, ch);
             x += iw + 4;
         }
     }
 
     fn removeActions(self: *BottomBar) void {
-        for (self.actions) |a| a.Delete();
+        for (self.actions) |a| a.delete();
         if (self.actions.len > 0) self.allocator.free(self.actions);
         self.actions = &.{};
     }
 
     fn removeItems(self: *BottomBar) void {
         for (self.items) |item| {
-            item.Delete();
+            item.delete();
         }
         if (self.items.len > 0) self.allocator.free(self.items);
         self.items = &.{};
     }
 
     fn buildAction(self: *BottomBar, icon: QIcon, text: []const u8, shortcut: []const u8, callback: *const fn (QAction) callconv(.c) void) QAction {
-        const action = QAction.New6(icon, text, self.parent);
-        const seq = QKeySequence.New2(shortcut);
-        defer seq.Delete();
-        action.SetShortcut(seq);
-        action.OnTriggered(callback);
+        const action = QAction.new6(icon, text, self.parent);
+        const seq = QKeySequence.new2(shortcut);
+        defer seq.delete();
+        action.setShortcut(seq);
+        action.onTriggered(callback);
         return action;
     }
 
     fn buildItem(self: *BottomBar, action: QAction, shortcut_text: []const u8) QWidget {
-        const el = QWidget.New2();
-        el.SetObjectName("actionItem");
-        var row = HBoxLayout.New(el);
-        row.SetContentsMargins(0, 0, 0, 0);
-        row.SetSpacing(0);
+        const el = QWidget.new2();
+        el.setObjectName("actionItem");
+        var row = HBoxLayout.new(el);
+        row.setContentsMargins(0, 0, 0, 0);
+        row.setSpacing(0);
 
-        const button = QToolButton.New2();
-        button.SetObjectName("actionButton");
-        button.SetDefaultAction(action);
-        button.SetToolButtonStyle(qt.qnamespace_enums.ToolButtonStyle.ToolButtonTextBesideIcon);
-        row.AddWidget(button);
+        const button = QToolButton.new2();
+        button.setObjectName("actionButton");
+        button.setDefaultAction(action);
+        button.setToolButtonStyle(qt.qnamespace_enums.ToolButtonStyle.ToolButtonTextBesideIcon);
+        row.addWidget(button);
 
         if (shortcut_text.len > 0) {
-            const label = QLabel.New3(shortcut_text);
-            label.SetObjectName("actionShortcut");
-            row.AddWidget(label);
+            const label = QLabel.new3(shortcut_text);
+            label.setObjectName("actionShortcut");
+            row.addWidget(label);
         }
 
-        el.SetParent(self.container);
+        el.setParent(self.container);
         return el;
     }
 
@@ -155,26 +155,26 @@ pub const BottomBar = struct {
         self.items = self.allocator.alloc(QWidget, n) catch return;
 
         for (actions[0..n], 0..) |a, i| {
-            const el = QWidget.New2();
-            el.SetObjectName("actionItem");
-            var row = HBoxLayout.New(el);
-            row.SetContentsMargins(0, 0, 0, 0);
-            row.SetSpacing(4);
+            const el = QWidget.new2();
+            el.setObjectName("actionItem");
+            var row = HBoxLayout.new(el);
+            row.setContentsMargins(0, 0, 0, 0);
+            row.setSpacing(4);
 
             var buf: [8]u8 = undefined;
             const shortcut_str = if (i < 9)
                 std.fmt.bufPrint(&buf, "Ctrl+{d}", .{i + 1}) catch "?"
             else
                 std.fmt.bufPrint(&buf, "Ctrl+0", .{}) catch "?";
-            const shortcut_label = QLabel.New3(shortcut_str);
-            shortcut_label.SetObjectName("actionShortcut");
-            row.AddWidget(shortcut_label);
+            const shortcut_label = QLabel.new3(shortcut_str);
+            shortcut_label.setObjectName("actionShortcut");
+            row.addWidget(shortcut_label);
 
-            const name_label = QLabel.New3(a.name);
-            name_label.SetObjectName("actionName");
-            row.AddWidget(name_label);
+            const name_label = QLabel.new3(a.name);
+            name_label.setObjectName("actionName");
+            row.addWidget(name_label);
 
-            el.SetParent(self.container);
+            el.setParent(self.container);
             self.items[i] = el;
         }
 
@@ -200,14 +200,14 @@ pub const BottomBar = struct {
             }
         } else {
             {
-                const icon = QIcon.FromTheme("document-open");
-                defer icon.Delete();
+                const icon = QIcon.fromTheme("document-open");
+                defer icon.delete();
                 self.actions[0] = self.buildAction(icon, lang.get().bottom_bar_open, "", onOpen);
                 self.items[0] = self.buildItem(self.actions[0], lang.get().bottom_bar_return);
             }
             {
-                const icon = QIcon.FromTheme("dialog-information");
-                defer icon.Delete();
+                const icon = QIcon.fromTheme("dialog-information");
+                defer icon.delete();
                 self.actions[1] = self.buildAction(icon, lang.get().bottom_bar_info, "", info.onInfo);
                 self.items[1] = self.buildItem(self.actions[1], lang.get().bottom_bar_ctrl_i);
             }

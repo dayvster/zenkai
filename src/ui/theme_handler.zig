@@ -10,13 +10,13 @@ pub fn setApp(app: qt.QApplication) void {
 
 pub fn apply(allocator: std.mem.Allocator, base_qss: []const u8, theme_qss: []const u8) void {
     const combined = std.mem.concat(allocator, u8, &.{ base_qss, theme_qss }) catch {
-        g_qapp.SetStyleSheet(base_qss);
+        g_qapp.setStyleSheet(base_qss);
         return;
     };
     defer allocator.free(combined);
-    g_qapp.SetStyleSheet(combined);
+    g_qapp.setStyleSheet(combined);
 }
 
 pub fn reapply(qss: []const u8) void {
-    g_qapp.SetStyleSheet(qss);
+    g_qapp.setStyleSheet(qss);
 }
