@@ -2,6 +2,7 @@ const std = @import("std");
 const de = @import("desktopapp");
 const fsutils = @import("utils").fsutils;
 const PlistParser = @import("parser.zig").PlistParser;
+const log = @import("utils").log;
 const InfoPlist = @import("plist.zig").InfoPlist;
 
 pub const AppReader = struct {
@@ -87,9 +88,9 @@ pub const AppReader = struct {
 
         for (self.app_bundles.items) |bundle_path| {
             const plist_path = try std.fs.path.join(self.arena.allocator(), &.{ bundle_path, "Contents", "Info.plist" });
-            const content = fsutils.readFile(self.arena.allocator(), plist_path, 512 * 1024) catch |err| switch (err) {
-                error.FileNotFound, error.AccessDenied => continue,
-                else => |e| return e,
+            const content = fsutils.readFile(self.arena.allocator(), plist_path, 512 * 1024) catch |err| {
+                log.info("skipping unreadable Info.plist '{s}': {}", .{ bundle_path, err });
+                continue;
             };
 
             const plist_val = PlistParser.parse(self.arena.allocator(), content, false) catch continue;

@@ -2,6 +2,7 @@ const std = @import("std");
 const de = @import("desktopapp");
 const dapp_parser = @import("dapp_parser");
 const fsutils = @import("utils").fsutils;
+const log = @import("utils").log;
 
 pub const AppReader = struct {
     apps: std.ArrayList(de.DesktopApp),
@@ -83,13 +84,17 @@ pub const AppReader = struct {
         self.apps.clearRetainingCapacity();
 
         for (self.desktop_files.items) |file_path| {
-            const content = try fsutils.readFile(self.arena.allocator(), file_path, 2 * 1024 * 1024);
-            var app = dapp_parser.DappParser.parseDesktopFile(self.arena.allocator(), content) catch |err| switch (err) {
-                error.NoDisplay => continue,
-                else => |e| return e,
+            const content = fsutils.readFile(self.arena.allocator(), file_path, 2 * 1024 * 1024) catch |err| {
+                log.info("skipping unreadable desktop file '{s}': {}", .{ file_path, err });
+                continue;
             };
-            app.file_path = try self.arena.allocator().dupe(u8, file_path);
-            try self.apps.append(self.allocator, app);
+            var app = dapp_parser.DappParser.parseDesktopFile(self.arena.allocator(), content) catch |err| {
+                log.info("skipping unparsable desktop file '{s}': {}", .{ file_path, err });
+                continue;
+            };
+            if (app.name.len == 0) continue;
+            app.file_path = self.arena.allocator().dupe(u8, file_path) catch continue;
+            self.apps.append(self.allocator, app) catch |err| return err;
         }
     }
 

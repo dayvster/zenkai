@@ -1,0 +1,8 @@
+{
+  "name": "hyprland-commands",
+  "version": "1.0.0",
+  "main": "main.lua",
+  "description": "Quick Hyprland toggles and actions",
+  "author": "you",
+  "disabled": false
+}
