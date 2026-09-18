@@ -158,6 +158,7 @@ fn freePluginResults(allocator: std.mem.Allocator, results: *std.ArrayList(plugi
         allocator.free(plugin_result.title);
         allocator.free(plugin_result.subtitle);
         allocator.free(plugin_result.icon);
+        if (plugin_result.exec) |e| allocator.free(e);
     }
     results.clearRetainingCapacity();
 }

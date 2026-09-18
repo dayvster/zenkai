@@ -39,5 +39,6 @@ pub const PluginResult = struct {
     title: []const u8,
     subtitle: []const u8,
     icon: []const u8,
+    exec: ?[]const u8 = null,
     result_type: ResultType = .ExecCmd,
 };

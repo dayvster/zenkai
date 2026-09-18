@@ -5,6 +5,6 @@
     ]
   },
   "diagnostics": {
-    "globals": ["hl"]
+    "globals": ["api"]
   }
 }
