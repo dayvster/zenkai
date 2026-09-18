@@ -37,7 +37,7 @@ fn luaPrint(L: *lua.lua_State) callconv(.c) c_int {
 }
 
 pub fn setupSandbox(L: *lua.lua_State) void {
-    const removed_globals = .{ "os", "io", "loadfile", "dofile", "require", "package", "debug" };
+    const removed_globals = .{ "os", "io", "loadfile", "dofile", "require", "package", "debug", "load", "loadstring" };
     inline for (removed_globals) |name| {
         lua.lua_pushnil(L);
         lua.lua_setglobal(L, @as([*:0]const u8, name));
