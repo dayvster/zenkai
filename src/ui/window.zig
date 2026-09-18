@@ -5,6 +5,7 @@ const lang = @import("lang");
 
 const List = @import("list.zig").List;
 const ListItem = @import("list.zig").ListItem;
+const ListItemAction = @import("list.zig").ListItemAction;
 const Keyboard = @import("keyboard.zig").Keyboard;
 const BottomBar = @import("bottombar.zig").BottomBar;
 const SearchBar = @import("search_bar.zig").SearchBar;
@@ -62,6 +63,16 @@ fn onBackdropMove(_: qt.QWidget, _: qt.QMoveEvent) callconv(.c) void {
 
 fn onSearchDebounced(text: []const u8) void {
     g_window.list.setFilter(text);
+}
+
+fn onItemFocused(_: usize, actions: []const ListItemAction) void {
+    if (g_window.bottom_bar) |*bar| {
+        if (actions.len > 0) {
+            bar.setItemActions(actions);
+        } else {
+            bar.setDefaultActions();
+        }
+    }
 }
 
 fn onWindowClose(_: QWidget, _: QCloseEvent) callconv(.c) void {
@@ -201,6 +212,7 @@ pub const Window = struct {
             self.bottom_bar = BottomBar.init(allocator, window, vis);
             self.bottom_bar.?.setup(&self.list);
             self.bottom_bar.?.setDefaultActions();
+            List.setOnItemFocused(onItemFocused);
             main_layout.addWidget(self.bottom_bar.?.container);
         }
 
