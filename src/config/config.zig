@@ -93,6 +93,20 @@ fn parseInt(val: []const u8) !i32 {
     return try std.fmt.parseInt(i32, trimmed, 10);
 }
 
+pub fn parseTomlString(allocator: std.mem.Allocator, raw: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, raw, " \t\r");
+    if (trimmed.len == 0) return null;
+    if (trimmed.len >= 2 and
+        ((trimmed[0] == '"' and trimmed[trimmed.len - 1] == '"') or
+            (trimmed[0] == '\'' and trimmed[trimmed.len - 1] == '\'')))
+    {
+        const inner = trimmed[1 .. trimmed.len - 1];
+        if (inner.len == 0) return null;
+        return allocator.dupe(u8, inner) catch null;
+    }
+    return allocator.dupe(u8, trimmed) catch null;
+}
+
 pub fn loadConfig(allocator: std.mem.Allocator, config_path: []const u8) !VisualConfig {
     const content = fsutils.readFile(allocator, config_path, 128 * 1024) catch |err| {
         log.info("no config found, using defaults ({})", .{err});
@@ -126,20 +140,12 @@ pub fn loadConfig(allocator: std.mem.Allocator, config_path: []const u8) !Visual
         if (std.mem.eql(u8, key, "show_backdrop")) cfg.show_backdrop = std.mem.eql(u8, val, "true");
         if (std.mem.eql(u8, key, "fullscreen")) cfg.fullscreen = std.mem.eql(u8, val, "true");
         if (std.mem.eql(u8, key, "monitor")) cfg.monitor = parseInt(val) catch continue;
-        if (std.mem.eql(u8, key, "theme")) {
-            if (val.len > 0) cfg.theme = allocator.dupe(u8, val) catch null;
-        }
-        if (std.mem.eql(u8, key, "clipboard")) {
-            if (val.len > 0) cfg.clipboard = allocator.dupe(u8, val) catch null;
-        }
+        if (std.mem.eql(u8, key, "theme")) cfg.theme = parseTomlString(allocator, val);
+        if (std.mem.eql(u8, key, "clipboard")) cfg.clipboard = parseTomlString(allocator, val);
         if (std.mem.eql(u8, key, "no_animations")) cfg.no_animations = std.mem.eql(u8, val, "true");
         if (std.mem.eql(u8, key, "animation_interval")) cfg.animation_interval = parseInt(val) catch continue;
-        if (std.mem.eql(u8, key, "animation_easing")) {
-            if (val.len > 0) cfg.animation_easing = allocator.dupe(u8, val) catch null;
-        }
-        if (std.mem.eql(u8, key, "url_handler")) {
-            if (val.len > 0) cfg.url_handler = allocator.dupe(u8, val) catch null;
-        }
+        if (std.mem.eql(u8, key, "animation_easing")) cfg.animation_easing = parseTomlString(allocator, val);
+        if (std.mem.eql(u8, key, "url_handler")) cfg.url_handler = parseTomlString(allocator, val);
     }
 
     return cfg;
