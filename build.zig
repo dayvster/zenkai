@@ -152,6 +152,28 @@ pub fn build(b: *std.Build) !void {
         },
     }) else null;
 
+    const osx_tools = [_][]const u8{ "zenkai-osx-power", "zenkai-osx-audio", "zenkai-osx-system" };
+
+    if (target.result.os.tag == .macos) {
+        const osx_toolutil_module = b.addModule("osx_toolutil", .{
+            .root_source_file = b.path("tools/osx/toolutil.zig"),
+        });
+        for (osx_tools) |tool_name| {
+            const tool_module = b.createModule(.{
+                .root_source_file = b.path("tools/osx/" ++ tool_name ++ "/main.zig"),
+                .target = target,
+                .optimize = .ReleaseFast,
+            });
+            tool_module.link_libc = true;
+            tool_module.addImport("osx_toolutil", osx_toolutil_module);
+            const tool_exe = b.addExecutable(.{
+                .name = tool_name,
+                .root_module = tool_module,
+            });
+            b.installArtifact(tool_exe);
+        }
+    }
+
     exe.root_module.addImport("utils", utils_module);
     exe.root_module.addImport("desktopapp", desktopapp_module);
     exe.root_module.addImport("dapp_parser", dapp_parser_module);
