@@ -67,6 +67,7 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
     freeDesktopApps();
 
     var reader = platform.AppReader.init(allocator);
+    errdefer reader.deinit();
     reader.load() catch {
         ui.showError(lang.get().error_loading_desktop);
         return Error.LoadFailed;
@@ -93,7 +94,6 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
             if (item.actions.len > 0) freeListItemActions(allocator, item.actions);
         }
         all_items.deinit(allocator);
-        reader.deinit();
     }
 
     g_reader = reader;
