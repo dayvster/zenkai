@@ -140,6 +140,7 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "lua_capi", .module = lua_capi_module },
             .{ .name = "utils", .module = utils_module },
+            .{ .name = "config", .module = config_module },
         },
     });
 
