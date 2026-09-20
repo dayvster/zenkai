@@ -105,6 +105,44 @@ fn apiLog(L: *lua.lua_State) callconv(.c) c_int {
     return 0;
 }
 
+fn pushLuaStrField(L: *lua.lua_State, key: [*:0]const u8, value: []const u8) void {
+    _ = lua.lua_pushlstring(L, value.ptr, value.len);
+    lua.lua_setfield(L, -2, key);
+}
+
+fn loadPluginConfig(self: *PluginManager, L: *lua.lua_State, plugins_base_dir: []const u8, dir_name: []const u8) void {
+    const config_path = std.fs.path.join(self.allocator, &.{ plugins_base_dir, dir_name, "config.json" }) catch return;
+    defer self.allocator.free(config_path);
+
+    const config_content = loader.readFile(self.allocator, config_path) catch return;
+    defer self.allocator.free(config_content);
+
+    const parsed = std.json.parseFromSlice(types.PluginConfig, self.allocator, config_content, .{ .allocate = .alloc_always }) catch |err| {
+        utils.log.info("plugin '{s}': invalid config.json: {}", .{ dir_name, err });
+        return;
+    };
+    defer parsed.deinit();
+
+    lua.lua_newtable(L);
+    if (parsed.value.commands) |commands| {
+        lua.lua_newtable(L);
+        for (commands, 0..) |cmd, i| {
+            lua.lua_newtable(L);
+            pushLuaStrField(L, "title", cmd.title);
+            if (cmd.subtitle) |subtitle| pushLuaStrField(L, "subtitle", subtitle);
+            if (cmd.exec.len > 0) pushLuaStrField(L, "exec", cmd.exec);
+            if (cmd.icon) |icon| pushLuaStrField(L, "icon", icon);
+            lua.lua_rawseti(L, -2, @as(i64, @intCast(i + 1)));
+        }
+        lua.lua_setfield(L, -2, "commands");
+    }
+    if (parsed.value.replace) |replace| {
+        lua.lua_pushboolean(L, if (replace) 1 else 0);
+        lua.lua_setfield(L, -2, "replace");
+    }
+    lua.lua_setglobal(L, "plugin_config");
+}
+
 fn setupAPI(L: *lua.lua_State) void {
     lua.lua_newtable(L);
     lua.lua_pushcfunction(L, apiAddResult);
@@ -295,6 +333,7 @@ pub const PluginManager = struct {
         lua.luaL_openlibs(lua_state);
         sandbox.setupSandbox(lua_state);
         setupAPI(lua_state);
+        loadPluginConfig(self, lua_state, plugins_base_dir, dir_name);
 
         const lua_ok = lua.luaL_loadbufferx(lua_state, lua_content.ptr, lua_content.len, "plugin", null) == lua.LUA_OK and
             lua.lua_pcall(lua_state, 0, 0, 0) == lua.LUA_OK;
