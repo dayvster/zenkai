@@ -28,6 +28,7 @@ fn apiAddResult(L: *lua.lua_State) callconv(.c) c_int {
     const subtitle = if (lua.lua_tostring(L, 2)) |s| std.mem.sliceTo(s, 0) else "";
     const icon = if (lua.lua_tostring(L, 3)) |s| std.mem.sliceTo(s, 0) else "";
     const result_type_str = if (lua.lua_tostring(L, 4)) |s| std.mem.sliceTo(s, 0) else "";
+    const exec = if (lua.lua_tostring(L, 5)) |s| std.mem.sliceTo(s, 0) else "";
     const allocator = g_active_manager.allocator;
 
     const result_type: types.ResultType = if (std.mem.eql(u8, result_type_str, "NoReturn"))
@@ -39,12 +40,14 @@ fn apiAddResult(L: *lua.lua_State) callconv(.c) c_int {
         title: ?[]u8 = null,
         subtitle: ?[]u8 = null,
         icon: ?[]u8 = null,
+        exec: ?[]u8 = null,
     }{};
 
     defer {
         if (tracked.title) |t| allocator.free(t);
         if (tracked.subtitle) |s| allocator.free(s);
         if (tracked.icon) |i| allocator.free(i);
+        if (tracked.exec) |e| allocator.free(e);
     }
 
     tracked.title = allocator.dupe(u8, title) catch |err| {
@@ -59,6 +62,10 @@ fn apiAddResult(L: *lua.lua_State) callconv(.c) c_int {
         utils.log.info("plugin add_result OOM (icon): {}", .{err});
         return 0;
     };
+    tracked.exec = if (exec.len > 0) allocator.dupe(u8, exec) catch |err| {
+        utils.log.info("plugin add_result OOM (exec): {}", .{err});
+        return 0;
+    } else null;
 
     g_active_results.append(allocator, .{
         .plugin_index = g_active_plugin_index,
@@ -66,6 +73,7 @@ fn apiAddResult(L: *lua.lua_State) callconv(.c) c_int {
         .title = tracked.title.?,
         .subtitle = tracked.subtitle.?,
         .icon = tracked.icon.?,
+        .exec = tracked.exec,
         .result_type = result_type,
     }) catch |err| {
         utils.log.info("plugin add_result OOM (append): {}", .{err});
@@ -343,7 +351,15 @@ pub const PluginManager = struct {
     pub fn handleSelect(self: *PluginManager, result: *const PluginResult) void {
         switch (result.result_type) {
             .NoReturn => return,
-            .ExecCmd => {},
+            .ExecCmd => {
+                if (result.exec) |cmd| {
+                    if (cmd.len > 0) {
+                        utils.execute(cmd, self.allocator) catch |err| {
+                            utils.log.info("plugin exec failed: {}", .{err});
+                        };
+                    }
+                }
+            },
         }
 
         const plugin = &self.plugins.items[result.plugin_index];
