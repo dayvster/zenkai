@@ -1,0 +1,8 @@
+{
+    "name": "osx",
+    "version": "0.1.0",
+    "main": "main.lua",
+    "description": "Steer macOS: power, audio, volume, and live system status via zenkai-osx helper tools",
+    "author": "zenkai",
+    "disabled": false
+}

@@ -105,6 +105,65 @@ fn apiLog(L: *lua.lua_State) callconv(.c) c_int {
     return 0;
 }
 
+fn apiExec(L: *lua.lua_State) callconv(.c) c_int {
+    const allocator = g_active_manager.allocator;
+    const arg_count = lua.lua_gettop(L);
+    if (arg_count < 1) return 0;
+
+    const raw_bin = lua.lua_tostring(L, 1) orelse return 0;
+    const bin = std.mem.sliceTo(raw_bin, 0);
+    if (bin.len == 0) return 0;
+
+    var args_list = std.ArrayList([]const u8).empty;
+    defer args_list.deinit(allocator);
+
+    for (1..@as(usize, @intCast(arg_count))) |i| {
+        const index = @as(c_int, @intCast(i + 1));
+        if (lua.lua_tostring(L, index)) |raw_arg| {
+            const arg = std.mem.sliceTo(raw_arg, 0);
+            args_list.append(allocator, arg) catch return 0;
+        }
+    }
+
+    utils.spawnTool(bin, args_list.items, allocator) catch |err| {
+        utils.log.info("plugin exec failed: {}", .{err});
+    };
+    return 0;
+}
+
+fn apiRun(L: *lua.lua_State) callconv(.c) c_int {
+    const allocator = g_active_manager.allocator;
+    const arg_count = lua.lua_gettop(L);
+    if (arg_count < 1) return 0;
+
+    const raw_bin = lua.lua_tostring(L, 1) orelse return 0;
+    const bin = std.mem.sliceTo(raw_bin, 0);
+    if (bin.len == 0) return 0;
+
+    var args_list = std.ArrayList([]const u8).empty;
+    defer args_list.deinit(allocator);
+
+    for (1..@as(usize, @intCast(arg_count))) |i| {
+        const index = @as(c_int, @intCast(i + 1));
+        if (lua.lua_tostring(L, index)) |raw_arg| {
+            const arg = std.mem.sliceTo(raw_arg, 0);
+            args_list.append(allocator, arg) catch return 0;
+        }
+    }
+
+    const out = allocator.alloc(u8, 64 * 1024) catch return 0;
+    defer allocator.free(out);
+
+    const written = utils.runTool(bin, args_list.items, out, allocator) catch |err| {
+        utils.log.info("plugin run failed: {}", .{err});
+        lua.lua_pushnil(L);
+        return 1;
+    };
+
+    lua.lua_pushlstring(L, out[0..written].ptr, written);
+    return 1;
+}
+
 fn setupAPI(L: *lua.lua_State) void {
     lua.lua_newtable(L);
     lua.lua_pushcfunction(L, apiAddResult);
@@ -113,6 +172,10 @@ fn setupAPI(L: *lua.lua_State) void {
     lua.lua_setfield(L, -2, "log");
     lua.lua_pushcfunction(L, apiOpenUrl);
     lua.lua_setfield(L, -2, "open_url");
+    lua.lua_pushcfunction(L, apiExec);
+    lua.lua_setfield(L, -2, "exec");
+    lua.lua_pushcfunction(L, apiRun);
+    lua.lua_setfield(L, -2, "run");
     lua.lua_setglobal(L, "api");
 }
 
