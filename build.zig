@@ -230,6 +230,7 @@ pub fn build(b: *std.Build) !void {
     fuzz_test_module.addImport("desktopapp", desktopapp_module);
     fuzz_test_module.addImport("dapp_parser", dapp_parser_module);
     fuzz_test_module.addImport("args", args_module);
+    fuzz_test_module.addImport("config", config_module);
 
     const fuzz_tests = b.addTest(.{
         .root_module = fuzz_test_module,

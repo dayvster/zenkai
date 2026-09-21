@@ -95,10 +95,10 @@ pub fn main(init: std.process.Init) !void {
     if (pm) |*p| {
         plugins.setActiveManager(p);
         if (ctx.visual.clipboard) |clip| {
-            p.clipboard_cmd = init.gpa.dupe(u8, clip) catch null;
+            if (clip.len > 0) p.clipboard_cmd = init.gpa.dupe(u8, clip) catch null;
         }
         if (ctx.visual.url_handler) |handler| {
-            p.url_handler = init.gpa.dupe(u8, handler) catch null;
+            if (handler.len > 0) p.url_handler = init.gpa.dupe(u8, handler) catch null;
         }
     }
 
