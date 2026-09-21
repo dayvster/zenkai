@@ -470,29 +470,39 @@ pub fn launchSelected(self: *List) void {
                 switch (self.source) {
                     .desktop_apps => |apps| {
                         const app = &apps[item_idx];
-                        const argv_maybe = app.commandArgv(self.allocator) catch null;
-                        if (argv_maybe) |argv| {
-                            defer freeArgv(self.allocator, argv);
-                            utils.executeArgv(self.allocator, argv) catch |err| {
-                                utils.log.info("argv launch failed: {}", .{err});
-                                if (app.exec) |exec| if (exec.len > 0)
-                                    utils.execute(exec, self.allocator) catch {};
-                            };
-                        } else {
-                            if (app.exec) |exec| if (exec.len > 0)
-                                utils.execute(exec, self.allocator) catch {};
+                        const exec = app.exec orelse "";
+                        if (exec.len > 0) {
+                            const expanded = de.DesktopEntry.expandExecString(exec, app, self.allocator) catch "";
+                            if (expanded.len > 0) {
+                                defer self.allocator.free(expanded);
+                                const argv = utils.tokenizeCommandLine(self.allocator, expanded) catch null;
+                                if (argv) |argv_slice| {
+                                    defer freeArgv(self.allocator, argv_slice);
+                                    utils.executeArgv(self.allocator, argv_slice) catch |err| {
+                                        utils.log.info("failed to launch '{s}': {}", .{ app.name, err });
+                                    };
+                                }
+                            }
                         }
                     },
                     .items => |items| {
                         const item = &items[item_idx];
                         if (item.desktop_app_idx != null) {
-                            if (item.cmd.len == 0) return;
-                            const argv = utils.tokenizeCommandLine(self.allocator, item.cmd) catch return;
-                            defer freeArgv(self.allocator, argv);
-                            utils.executeArgv(self.allocator, argv) catch {
-                                utils.execute(item.cmd, self.allocator) catch {};
-                            };
+                            // Desktop apps and their actions are pre-expanded
+                            // by desktop_loader and launched via execve, never
+                            // through a shell.
+                            if (item.cmd.len > 0) {
+                                const argv = utils.tokenizeCommandLine(self.allocator, item.cmd) catch null;
+                                if (argv) |argv_slice| {
+                                    defer freeArgv(self.allocator, argv_slice);
+                                    utils.executeArgv(self.allocator, argv_slice) catch |err| {
+                                        utils.log.info("failed to launch '{s}': {}", .{ item.name, err });
+                                    };
+                                }
+                            }
                         } else {
+                            // Plain menu entries (--menu=...) are raw shell
+                            // command lines by design.
                             utils.execute(item.cmd, self.allocator) catch {};
                         }
                     },

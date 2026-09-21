@@ -6,7 +6,6 @@ const config = @import("config");
 const types = @import("types.zig");
 const sandbox = @import("sandbox.zig");
 const loader = @import("loader.zig");
-const de = @import("desktopapp");
 
 pub const Manifest = types.Manifest;
 pub const Hook = types.Hook;
@@ -490,18 +489,8 @@ pub const PluginManager = struct {
             .ExecCmd => {
                 if (result.exec) |cmd| {
                     if (cmd.len > 0) {
-                        var entry = de.DesktopEntry{
-                            .name = "",
-                            .exec = null,
-                            .icon = null,
-                            .file_path = null,
-                            .type = .Application,
-                            .extra = std.StringHashMap([]const u8).init(self.allocator),
-                        };
-                        defer entry.extra.deinit();
-
-                        const argv = de.DesktopEntry.buildCommandArgv(self.allocator, &entry, cmd) catch |err| {
-                            utils.log.info("plugin exec argv failed: {}", .{err});
+                        const argv = utils.tokenizeCommandLine(self.allocator, cmd) catch |err| {
+                            utils.log.info("plugin exec parse failed: {}", .{err});
                             return;
                         };
                         defer {

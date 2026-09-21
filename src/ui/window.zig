@@ -303,11 +303,12 @@ pub const Window = struct {
             if (g_monitor) |idx| {
                 const screens = QApp.screens(self.allocator);
                 defer self.allocator.free(screens);
-                if (screens.len == 0) return;
-                const i = clampMonitorIndex(idx, screens.len);
-                const geo = screens[i].geometry();
-                qt.QCursor.setPos(geo.x() + @divTrunc(geo.width(), 2), geo.y() + @divTrunc(geo.height(), 2));
-                self.widget.setGeometry(geo.x(), geo.y(), geo.width(), geo.height());
+                if (screens.len > 0) {
+                    const i = clampMonitorIndex(idx, screens.len);
+                    const geo = screens[i].geometry();
+                    qt.QCursor.setPos(geo.x() + @divTrunc(geo.width(), 2), geo.y() + @divTrunc(geo.height(), 2));
+                    self.widget.setGeometry(geo.x(), geo.y(), geo.width(), geo.height());
+                }
             }
             self.widget.showFullScreen();
         } else {

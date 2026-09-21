@@ -32,6 +32,14 @@ pub fn shouldShowApp(app: *const de.DesktopApp, desktop_names: []const []const u
     return true;
 }
 
+// A desktop entry is launchable only when it is a Type=Application entry.
+// Type=Link and Type=Directory entries carry no Exec and must not be listed
+// or launched as applications.
+pub fn shouldListApp(app: *const de.DesktopApp, desktop_names: []const []const u8) bool {
+    if (app.type != .Application) return false;
+    return shouldShowApp(app, desktop_names);
+}
+
 fn envsContains(desktop_names: []const []const u8, target: []const u8) bool {
     const t = std.mem.trim(u8, target, " \t");
     if (t.len == 0) return false;

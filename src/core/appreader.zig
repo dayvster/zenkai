@@ -115,7 +115,7 @@ pub const AppReader = struct {
                 continue;
             };
             if (app.name.len == 0) continue;
-            if (!dapp_parser.shouldShowApp(&app, desktops)) continue;
+            if (!dapp_parser.shouldListApp(&app, desktops)) continue;
             app.file_path = self.arena.allocator().dupe(u8, file_path) catch continue;
             self.apps.append(self.allocator, app) catch |err| return err;
         }

@@ -249,7 +249,7 @@ test "expandExecString with icon field code" {
         allocator.free(expanded);
         entry.deinit(allocator);
     }
-    try std.testing.expectEqualStrings("app --icon 'test-icon'", expanded);
+    try std.testing.expectEqualStrings("app --icon \"test-icon\"", expanded);
 }
 
 test "config: parseTomlString strips quotes" {
@@ -500,7 +500,7 @@ test "dapp_parser: OnlyShowIn and NotShowIn filtering" {
     }
 }
 
-test "desktopapp: buildCommandArgv produces exact argv" {
+test "desktopapp: expandExecString quotes field code values for Exec grammar" {
     const allocator = std.testing.allocator;
 
     var entry = desktopapp.DesktopEntry{
@@ -513,24 +513,28 @@ test "desktopapp: buildCommandArgv produces exact argv" {
     };
     defer entry.deinit(allocator);
 
-    const exec = "env FOO=\"bar baz\" %i -- %k %%u";
-    const argv = try desktopapp.DesktopEntry.buildCommandArgv(allocator, &entry, exec);
+    const exec = "env FOO=bar %i -- %k %c %%";
+    const expanded = try desktopapp.DesktopEntry.expandExecString(exec, &entry, allocator);
+    defer allocator.free(expanded);
+
+    try std.testing.expectEqualStrings("env FOO=bar --icon \"gimp\" -- \"/path/to/hi.desktop\" \"Foo Bar\" %", expanded);
+
+    const argv = try utils.tokenizeCommandLine(allocator, expanded);
     defer {
         for (argv) |a| allocator.free(a);
         allocator.free(argv);
     }
-
     try std.testing.expectEqual(@as(usize, 7), argv.len);
     try std.testing.expectEqualStrings("env", argv[0]);
-    try std.testing.expectEqualStrings("FOO=bar baz", argv[1]);
+    try std.testing.expectEqualStrings("FOO=bar", argv[1]);
     try std.testing.expectEqualStrings("--icon", argv[2]);
     try std.testing.expectEqualStrings("gimp", argv[3]);
     try std.testing.expectEqualStrings("--", argv[4]);
     try std.testing.expectEqualStrings("/path/to/hi.desktop", argv[5]);
-    try std.testing.expectEqualStrings("%u", argv[6]);
+    try std.testing.expectEqualStrings("Foo Bar", argv[6]);
 }
 
-test "desktopapp: buildCommandArgv drops file field codes" {
+test "desktopapp: expandExecString drops file and deprecated field codes" {
     const allocator = std.testing.allocator;
 
     var entry = desktopapp.DesktopEntry{
@@ -543,18 +547,20 @@ test "desktopapp: buildCommandArgv drops file field codes" {
     };
     defer entry.deinit(allocator);
 
-    const argv = try desktopapp.DesktopEntry.buildCommandArgv(allocator, &entry, "myapp %f %F %u %U -q");
+    const expanded = try desktopapp.DesktopEntry.expandExecString("myapp %f %F %u %U %d %D %n %N %v %m -q", &entry, allocator);
+    defer allocator.free(expanded);
+
+    const argv = try utils.tokenizeCommandLine(allocator, expanded);
     defer {
         for (argv) |a| allocator.free(a);
         allocator.free(argv);
     }
-
-    try std.testing.expectEqual(@as(usize, 3), argv.len);
+    try std.testing.expectEqual(@as(usize, 2), argv.len);
     try std.testing.expectEqualStrings("myapp", argv[0]);
     try std.testing.expectEqualStrings("-q", argv[1]);
 }
 
-test "desktopapp: buildCommandArgv handles percent escaping" {
+test "desktopapp: expandExecString keeps literal percent codes" {
     const allocator = std.testing.allocator;
 
     var entry = desktopapp.DesktopEntry{
@@ -567,56 +573,126 @@ test "desktopapp: buildCommandArgv handles percent escaping" {
     };
     defer entry.deinit(allocator);
 
-    const argv = try desktopapp.DesktopEntry.buildCommandArgv(allocator, &entry, "show %%literal and a%qb");
+    const expanded = try desktopapp.DesktopEntry.expandExecString("show %%literal and a%qb", &entry, allocator);
+    defer allocator.free(expanded);
+
+    const argv = try utils.tokenizeCommandLine(allocator, expanded);
     defer {
         for (argv) |a| allocator.free(a);
         allocator.free(argv);
     }
-
     try std.testing.expectEqual(@as(usize, 3), argv.len);
     try std.testing.expectEqualStrings("show", argv[0]);
     try std.testing.expectEqualStrings("%literal", argv[1]);
-    try std.testing.expectEqualStrings("ab", argv[2]);
+    try std.testing.expectEqualStrings("a%qb", argv[2]);
 }
 
-test "utils: tokenizeCommandLine handles quotes and escapes" {
+test "desktopapp: expandExecString then tokenizeCommandLine round-trips quoted values" {
     const allocator = std.testing.allocator;
 
-    const input = "foo --bar=\"hello world\" 'single quoted' a\\ b plain";
+    var entry = desktopapp.DesktopEntry{
+        .name = "Quote\" $ `\\ App",
+        .exec = null,
+        .icon = null,
+        .file_path = "/tmp/we ird//path.desktop",
+        .type = .Application,
+        .extra = std.StringHashMap([]const u8).init(allocator),
+    };
+    defer entry.deinit(allocator);
+
+    const expanded = try desktopapp.DesktopEntry.expandExecString("launch %k %c", &entry, allocator);
+    defer allocator.free(expanded);
+
+    const argv = try utils.tokenizeCommandLine(allocator, expanded);
+    defer {
+        for (argv) |a| allocator.free(a);
+        allocator.free(argv);
+    }
+    try std.testing.expectEqual(@as(usize, 3), argv.len);
+    try std.testing.expectEqualStrings("launch", argv[0]);
+    try std.testing.expectEqualStrings("/tmp/we ird//path.desktop", argv[1]);
+    try std.testing.expectEqualStrings("Quote\" $ `\\ App", argv[2]);
+}
+
+test "dapp_parser: shouldListApp filters non-application entry types" {
+    const allocator = std.testing.allocator;
+    const any = [_][]const u8{"Whatever"};
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=Link
+            \\Type=Link
+            \\URL=https://example.com
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expect(!dapp_parser.shouldListApp(&entry, &any));
+    }
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=Dir
+            \\Type=Directory
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expect(!dapp_parser.shouldListApp(&entry, &any));
+    }
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=App
+            \\Type=Application
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expect(dapp_parser.shouldListApp(&entry, &any));
+
+        const kde = [_][]const u8{"KDE"};
+        try std.testing.expect(dapp_parser.shouldListApp(&entry, &kde));
+    }
+}
+
+test "dapp_parser: shouldListApp keeps OnlyShowIn filtering" {
+    const allocator = std.testing.allocator;
+
+    const content =
+        \\[Desktop Entry]
+        \\Name=GNOMEApp
+        \\OnlyShowIn=GNOME;
+        \\
+    ;
+    var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+    defer entry.deinit(allocator);
+
+    const gnome = [_][]const u8{"GNOME"};
+    try std.testing.expect(dapp_parser.shouldListApp(&entry, &gnome));
+
+    const kde = [_][]const u8{"KDE"};
+    try std.testing.expect(!dapp_parser.shouldListApp(&entry, &kde));
+}
+
+test "utils: tokenizeCommandLine handles Exec grammar escapes in double quotes" {
+    const allocator = std.testing.allocator;
+
+    const input = "foo --bar=\"hello world\" \"a\\\"b\" \"$HOME\" \"\\`t\\`\" plain";
     const tokens = try utils.tokenizeCommandLine(allocator, input);
     defer {
         for (tokens) |t| allocator.free(t);
         allocator.free(tokens);
     }
 
-    try std.testing.expectEqual(@as(usize, 5), tokens.len);
+    try std.testing.expectEqual(@as(usize, 6), tokens.len);
     try std.testing.expectEqualStrings("foo", tokens[0]);
     try std.testing.expectEqualStrings("--bar=hello world", tokens[1]);
-    try std.testing.expectEqualStrings("single quoted", tokens[2]);
-    try std.testing.expectEqualStrings("a b", tokens[3]);
-    try std.testing.expectEqualStrings("plain", tokens[4]);
-}
-
-test "utils: tokenizeCommandLine drops empty tokens" {
-    const allocator = std.testing.allocator;
-
-    const input = "   one   two\t  three  ";
-    const tokens = try utils.tokenizeCommandLine(allocator, input);
-    defer {
-        for (tokens) |t| allocator.free(t);
-        allocator.free(tokens);
-    }
-
-    try std.testing.expectEqual(@as(usize, 3), tokens.len);
-    try std.testing.expectEqualStrings("one", tokens[0]);
-    try std.testing.expectEqualStrings("two", tokens[1]);
-    try std.testing.expectEqualStrings("three", tokens[2]);
-}
-
-test "utils: tokenizeCommandLine empty input yields no tokens" {
-    const allocator = std.testing.allocator;
-
-    const tokens = try utils.tokenizeCommandLine(allocator, "");
-    try std.testing.expectEqual(@as(usize, 0), tokens.len);
-    allocator.free(tokens);
+    try std.testing.expectEqualStrings("a\"b", tokens[2]);
+    try std.testing.expectEqualStrings("$HOME", tokens[3]);
+    try std.testing.expectEqualStrings("`t`", tokens[4]);
+    try std.testing.expectEqualStrings("plain", tokens[5]);
 }

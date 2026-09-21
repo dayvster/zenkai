@@ -2,7 +2,6 @@ const std = @import("std");
 const qt = @import("libqt6zig");
 const List = @import("list.zig").List;
 const utils = @import("utils");
-const de = @import("desktopapp");
 
 const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;
@@ -126,28 +125,18 @@ fn makeActionHandler(comptime n: usize) *const fn (QShortcut) callconv(.c) void 
             if (n < actions.len) {
                 const exec = actions[n].exec;
                 if (exec.len > 0) {
-                    var entry = de.DesktopEntry{
-                        .name = "",
-                        .exec = null,
-                        .icon = null,
-                        .file_path = null,
-                        .type = .Application,
-                        .extra = std.StringHashMap([]const u8).init(L.allocator),
+                    const argv = utils.tokenizeCommandLine(L.allocator, exec) catch |err| {
+                        utils.log.info("action exec parse failed: {}", .{err});
+                        QApp.quit();
+                        return;
                     };
-                    defer entry.extra.deinit();
-
-                    const argv_maybe = de.DesktopEntry.buildCommandArgv(L.allocator, &entry, exec) catch null;
-                    if (argv_maybe) |argv| {
-                        defer {
-                            for (argv) |arg| L.allocator.free(arg);
-                            L.allocator.free(argv);
-                        }
-                        utils.executeArgv(L.allocator, argv) catch {
-                            utils.execute(exec, L.allocator) catch {};
-                        };
-                    } else {
-                        utils.execute(exec, L.allocator) catch {};
+                    defer {
+                        for (argv) |arg| L.allocator.free(arg);
+                        L.allocator.free(argv);
                     }
+                    utils.executeArgv(L.allocator, argv) catch |err| {
+                        utils.log.info("failed to launch action: {}", .{err});
+                    };
                 }
                 QApp.quit();
             }

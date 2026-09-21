@@ -200,6 +200,14 @@ pub fn executeArgv(allocator: std.mem.Allocator, argv: []const []const u8) !void
     try spawnTool(final.items[0], final.items[1..], allocator);
 }
 
+// Splits an Exec value into arguments following the freedesktop Desktop Entry
+// specification (section "The Exec key", as of 1.5):
+//   - arguments are separated by spaces (tabs also accepted as separators)
+//   - double quotes group an argument and preserve whitespace; inside double
+//     quotes only ", \, ` and $ are unescaped when preceded by a backslash
+//   - single quotes and backslashes outside double quotes are LITERAL
+//     characters (no shell-style single quoting, no shell expansion)
+//   - an unterminated double quote is treated as an error
 pub fn tokenizeCommandLine(allocator: std.mem.Allocator, input: []const u8) ![]const []const u8 {
     var tokens = std.ArrayList([]const u8).empty;
     errdefer {
@@ -214,7 +222,7 @@ pub fn tokenizeCommandLine(allocator: std.mem.Allocator, input: []const u8) ![]c
 
         var buf = std.ArrayList(u8).empty;
         defer buf.deinit(allocator);
-        var started = false;
+        var tok_started = false;
 
         while (i < input.len) {
             const c = input[i];
@@ -222,15 +230,8 @@ pub fn tokenizeCommandLine(allocator: std.mem.Allocator, input: []const u8) ![]c
                 i += 1;
                 break;
             }
-            started = true;
-            if (c == '\'') {
-                i += 1;
-                while (i < input.len and input[i] != '\'') {
-                    try buf.append(allocator, input[i]);
-                    i += 1;
-                }
-                if (i < input.len) i += 1;
-            } else if (c == '"') {
+            tok_started = true;
+            if (c == '"') {
                 i += 1;
                 while (i < input.len and input[i] != '"') {
                     if (input[i] == '\\' and i + 1 < input.len and
@@ -242,19 +243,17 @@ pub fn tokenizeCommandLine(allocator: std.mem.Allocator, input: []const u8) ![]c
                     try buf.append(allocator, input[i]);
                     i += 1;
                 }
-                if (i < input.len) i += 1;
-            } else if (c == '\\' and i + 1 < input.len) {
-                i += 1;
-                try buf.append(allocator, input[i]);
+                if (i >= input.len) return error.InvalidSyntax;
                 i += 1;
             } else {
-                try buf.append(allocator, input[i]);
+                try buf.append(allocator, c);
                 i += 1;
             }
         }
 
-        if (!started) continue;
-        try tokens.append(allocator, try buf.toOwnedSlice(allocator));
+        if (tok_started and buf.items.len > 0) {
+            try tokens.append(allocator, try buf.toOwnedSlice(allocator));
+        }
     }
 
     return try tokens.toOwnedSlice(allocator);
@@ -420,6 +419,7 @@ pub fn runToolTimed(name: []const u8, args: []const []const u8, out: []u8, timeo
     }
 
     if (pid == 0) {
+        _ = std.c.setpgid(0, 0);
         _ = std.c.close(pipefd[0]);
         _ = std.c.dup2(pipefd[1], 1);
         if (pipefd[1] != 1) _ = std.c.close(pipefd[1]);
@@ -463,7 +463,10 @@ pub fn runToolTimed(name: []const u8, args: []const []const u8, out: []u8, timeo
         }
     }
 
-    if (timed_out) _ = std.c.kill(pid, 9);
+    // The child runs in its own process group (setpgid above), so killing the
+    // negative pid also terminates any descendants it spawned. If the process
+    // group is already gone kill(-pid) simply fails harmlessly.
+    if (timed_out) _ = std.c.kill(-pid, 9);
     _ = std.c.close(pipefd[0]);
 
     var status: c_int = 0;
@@ -471,4 +474,116 @@ pub fn runToolTimed(name: []const u8, args: []const []const u8, out: []u8, timeo
 
     if (timed_out) return error.RunTimeout;
     return .{ .bytes = total, .truncated = truncated };
+}
+
+test "utils: findBundleDir detects .app bundles for macOS launching" {
+    try std.testing.expectEqualStrings("/Applications/Foo.app", findBundleDir("/Applications/Foo.app/Contents/MacOS/foo").?);
+    try std.testing.expectEqualStrings("/Applications/Foo.app", findBundleDir("/Applications/Foo.app/Contents/Frameworks/lib.dylib").?);
+    try std.testing.expectEqualStrings("/Applications/A.app/Contents/Resources/B.app", findBundleDir("/Applications/A.app/Contents/Resources/B.app/Contents/MacOS/b").?);
+    try std.testing.expect(findBundleDir("/usr/bin/foo") == null);
+    try std.testing.expect(findBundleDir("plain") == null);
+}
+
+test "utils: executeArgv surfaces an error instead of falling back to a shell" {
+    const allocator = std.testing.allocator;
+    const argv = [_][]const u8{"/definitely-not-a-real-zenkai-test-binary"};
+    try std.testing.expectError(error.NotFound, executeArgv(allocator, &argv));
+}
+
+test "utils: tokenizeCommandLine follows Exec grammar (double quotes only)" {
+    const allocator = std.testing.allocator;
+
+    {
+        const input = "foo \"bar baz\" \"a\\\"b\" plain";
+        const tokens = try tokenizeCommandLine(allocator, input);
+        defer {
+            for (tokens) |t| allocator.free(t);
+            allocator.free(tokens);
+        }
+        try std.testing.expectEqual(@as(usize, 4), tokens.len);
+        try std.testing.expectEqualStrings("foo", tokens[0]);
+        try std.testing.expectEqualStrings("bar baz", tokens[1]);
+        try std.testing.expectEqualStrings("a\"b", tokens[2]);
+        try std.testing.expectEqualStrings("plain", tokens[3]);
+    }
+
+    {
+        const input = "sh -c \"echo \\$HOME\"";
+        const tokens = try tokenizeCommandLine(allocator, input);
+        defer {
+            for (tokens) |t| allocator.free(t);
+            allocator.free(tokens);
+        }
+        try std.testing.expectEqual(@as(usize, 3), tokens.len);
+        try std.testing.expectEqualStrings("sh", tokens[0]);
+        try std.testing.expectEqualStrings("-c", tokens[1]);
+        try std.testing.expectEqualStrings("echo $HOME", tokens[2]);
+    }
+}
+
+test "utils: tokenizeCommandLine treats single quotes and backslashes as literal (Exec grammar)" {
+    const allocator = std.testing.allocator;
+
+    const input = "app 'single quoted' a\\ b";
+    const tokens = try tokenizeCommandLine(allocator, input);
+    defer {
+        for (tokens) |t| allocator.free(t);
+        allocator.free(tokens);
+    }
+
+    try std.testing.expectEqual(@as(usize, 5), tokens.len);
+    try std.testing.expectEqualStrings("app", tokens[0]);
+    try std.testing.expectEqualStrings("'single", tokens[1]);
+    try std.testing.expectEqualStrings("quoted'", tokens[2]);
+    try std.testing.expectEqualStrings("a\\", tokens[3]);
+    try std.testing.expectEqualStrings("b", tokens[4]);
+}
+
+test "utils: tokenizeCommandLine rejects an unterminated double quote" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, tokenizeCommandLine(allocator, "app \"unclosed"));
+}
+
+test "utils: tokenizeCommandLine drops empty arguments" {
+    const allocator = std.testing.allocator;
+
+    {
+        const input = "   one   two\t  three  ";
+        const tokens = try tokenizeCommandLine(allocator, input);
+        defer {
+            for (tokens) |t| allocator.free(t);
+            allocator.free(tokens);
+        }
+        try std.testing.expectEqual(@as(usize, 3), tokens.len);
+        try std.testing.expectEqualStrings("one", tokens[0]);
+        try std.testing.expectEqualStrings("two", tokens[1]);
+        try std.testing.expectEqualStrings("three", tokens[2]);
+    }
+
+    {
+        const input = "a \"\" b";
+        const tokens = try tokenizeCommandLine(allocator, input);
+        defer {
+            for (tokens) |t| allocator.free(t);
+            allocator.free(tokens);
+        }
+        try std.testing.expectEqual(@as(usize, 2), tokens.len);
+        try std.testing.expectEqualStrings("a", tokens[0]);
+        try std.testing.expectEqualStrings("b", tokens[1]);
+    }
+}
+
+test "utils: tokenizeCommandLine empty input yields no tokens" {
+    const allocator = std.testing.allocator;
+    const tokens = try tokenizeCommandLine(allocator, "");
+    try std.testing.expectEqual(@as(usize, 0), tokens.len);
+    allocator.free(tokens);
+}
+
+test "utils: runToolTimed enforces the timeout and kills the child process" {
+    if (comptime builtin.os.tag != .windows) {
+        const allocator = std.testing.allocator;
+        var out: [64]u8 = undefined;
+        try std.testing.expectError(error.RunTimeout, runToolTimed("sleep", &.{"5"}, &out, 50, allocator));
+    }
 }
