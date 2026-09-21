@@ -202,7 +202,7 @@ fn tryLoadPluginConfig(self: *PluginManager, L: *lua.lua_State, path: []const u8
 }
 
 fn loadPluginConfig(self: *PluginManager, L: *lua.lua_State, plugins_base_dir: []const u8, dir_name: []const u8, plugin_name: []const u8) void {
-    if (config.configDir(self.allocator)) |cfg_dir| {
+if (config.configDir(self.allocator) catch null) |cfg_dir| {
         defer self.allocator.free(cfg_dir);
         const user_file = std.fmt.allocPrint(self.allocator, "{s}.json", .{plugin_name}) catch return;
         defer self.allocator.free(user_file);

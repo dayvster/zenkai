@@ -122,7 +122,7 @@ fn uptime(allocator: std.mem.Allocator) []const u8 {
     }
     const boot_secs = std.fmt.parseInt(u64, raw[start..i], 10) catch return allocator.dupe(u8, "uptime\t?\n") catch "";
 
-    const now = std.time.timestamp();
+    const now: i64 = @divFloor(std.time.milliTimestamp(), 1000);
     const uptime_secs: u64 = @intCast(now - @as(i64, @intCast(boot_secs)));
 
     const days = uptime_secs / (24 * 3600);
