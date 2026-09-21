@@ -1,4 +1,4 @@
-local trigger_prefixes = { "hypr", "wm" }
+﻿local trigger_prefixes = { "hypr", "wm" }
 
 local function strip_prefix(q)
     if q == "hypr" or q == "wm" then
@@ -18,7 +18,23 @@ local function add_result(title, subtitle, cmd, icon)
     api.add_result(title, subtitle, icon, "ExecCmd", cmd)
 end
 
+local function custom_palette()
+    local commands = plugin_config and plugin_config.commands
+    if not commands then
+        return
+    end
+    for _, c in ipairs(commands) do
+        if type(c) == "table" and c.title and c.exec and c.exec ~= "" then
+            add_result(c.title, c.subtitle or c.exec, c.exec, c.icon or "system-run")
+        end
+    end
+end
+
 local function palette()
+    if plugin_config and plugin_config.replace == true then
+        custom_palette()
+        return
+    end
     local items = {
         { "Workspace 1", "hyprctl dispatch workspace 1", "view-fullscreen" },
         { "Workspace 2", "hyprctl dispatch workspace 2", "view-fullscreen" },
@@ -44,6 +60,7 @@ local function palette()
     for _, it in ipairs(items) do
         add_result(it[1], it[2], it[2], it[3])
     end
+    custom_palette()
 end
 
 local function workspace_result(target, extra)

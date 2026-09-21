@@ -1,6 +1,7 @@
 const std = @import("std");
 const lua = @import("lua_capi");
 const utils = @import("utils");
+const config = @import("config");
 const types = @import("types.zig");
 const sandbox = @import("sandbox.zig");
 const loader = @import("loader.zig");
@@ -162,6 +163,57 @@ fn apiRun(L: *lua.lua_State) callconv(.c) c_int {
 
     lua.lua_pushlstring(L, out[0..written].ptr, written);
     return 1;
+}
+
+fn pushLuaStrField(L: *lua.lua_State, key: [*:0]const u8, value: []const u8) void {
+    _ = lua.lua_pushlstring(L, value.ptr, value.len);
+    lua.lua_setfield(L, -2, key);
+}
+
+fn tryLoadPluginConfig(self: *PluginManager, L: *lua.lua_State, path: []const u8, plugin_name: []const u8) bool {
+    const config_content = loader.readFile(self.allocator, path) catch return false;
+    defer self.allocator.free(config_content);
+
+    const parsed = std.json.parseFromSlice(types.PluginConfig, self.allocator, config_content, .{ .allocate = .alloc_always }) catch |err| {
+        utils.log.info("plugin '{s}': invalid config {s}: {}", .{ plugin_name, path, err });
+        return false;
+    };
+    defer parsed.deinit();
+
+    lua.lua_newtable(L);
+    if (parsed.value.commands) |commands| {
+        lua.lua_newtable(L);
+        for (commands, 0..) |cmd, i| {
+            lua.lua_newtable(L);
+            pushLuaStrField(L, "title", cmd.title);
+            if (cmd.subtitle) |subtitle| pushLuaStrField(L, "subtitle", subtitle);
+            if (cmd.exec.len > 0) pushLuaStrField(L, "exec", cmd.exec);
+            if (cmd.icon) |icon| pushLuaStrField(L, "icon", icon);
+            lua.lua_rawseti(L, -2, @as(i64, @intCast(i + 1)));
+        }
+        lua.lua_setfield(L, -2, "commands");
+    }
+    if (parsed.value.replace) |replace| {
+        lua.lua_pushboolean(L, if (replace) 1 else 0);
+        lua.lua_setfield(L, -2, "replace");
+    }
+    lua.lua_setglobal(L, "plugin_config");
+    return true;
+}
+
+fn loadPluginConfig(self: *PluginManager, L: *lua.lua_State, plugins_base_dir: []const u8, dir_name: []const u8, plugin_name: []const u8) void {
+    if (config.configDir(self.allocator)) |cfg_dir| {
+        defer self.allocator.free(cfg_dir);
+        const user_file = std.fmt.allocPrint(self.allocator, "{s}.json", .{plugin_name}) catch return;
+        defer self.allocator.free(user_file);
+        const user_path = std.fs.path.join(self.allocator, &.{ cfg_dir, user_file }) catch return;
+        defer self.allocator.free(user_path);
+        if (tryLoadPluginConfig(self, L, user_path, plugin_name)) return;
+    }
+
+    const plugin_config_path = std.fs.path.join(self.allocator, &.{ plugins_base_dir, dir_name, "config.json" }) catch return;
+    defer self.allocator.free(plugin_config_path);
+    _ = tryLoadPluginConfig(self, L, plugin_config_path, plugin_name);
 }
 
 fn setupAPI(L: *lua.lua_State) void {
@@ -358,6 +410,7 @@ pub const PluginManager = struct {
         lua.luaL_openlibs(lua_state);
         sandbox.setupSandbox(lua_state);
         setupAPI(lua_state);
+        loadPluginConfig(self, lua_state, plugins_base_dir, dir_name, plugin_name);
 
         const lua_ok = lua.luaL_loadbufferx(lua_state, lua_content.ptr, lua_content.len, "plugin", null) == lua.LUA_OK and
             lua.lua_pcall(lua_state, 0, 0, 0) == lua.LUA_OK;
