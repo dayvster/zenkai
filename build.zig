@@ -140,6 +140,7 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "lua_capi", .module = lua_capi_module },
             .{ .name = "utils", .module = utils_module },
+            .{ .name = "config", .module = config_module },
         },
     });
 
@@ -158,7 +159,7 @@ pub fn build(b: *std.Build) !void {
         const osx_toolutil_module = b.addModule("osx_toolutil", .{
             .root_source_file = b.path("tools/osx/toolutil.zig"),
         });
-        for (osx_tools) |tool_name| {
+        inline for (osx_tools) |tool_name| {
             const tool_module = b.createModule(.{
                 .root_source_file = b.path("tools/osx/" ++ tool_name ++ "/main.zig"),
                 .target = target,
@@ -229,6 +230,7 @@ pub fn build(b: *std.Build) !void {
     fuzz_test_module.addImport("desktopapp", desktopapp_module);
     fuzz_test_module.addImport("dapp_parser", dapp_parser_module);
     fuzz_test_module.addImport("args", args_module);
+    fuzz_test_module.addImport("config", config_module);
 
     const fuzz_tests = b.addTest(.{
         .root_module = fuzz_test_module,

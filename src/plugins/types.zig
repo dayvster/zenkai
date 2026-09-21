@@ -42,3 +42,15 @@ pub const PluginResult = struct {
     exec: ?[]const u8 = null,
     result_type: ResultType = .ExecCmd,
 };
+
+pub const PluginConfigCommand = struct {
+    title: []const u8,
+    subtitle: ?[]const u8 = null,
+    exec: []const u8,
+    icon: ?[]const u8 = null,
+};
+
+pub const PluginConfig = struct {
+    commands: ?[]PluginConfigCommand = null,
+    replace: ?bool = null,
+};

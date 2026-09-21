@@ -1,0 +1,17 @@
+{
+  "commands": [
+    {
+      "title": "Cycle keyboard layout",
+      "subtitle": "hyprctl switchxkblayout atv1 next",
+      "exec": "hyprctl switchxkblayout atv1 next",
+      "icon": "preferences-desktop-keyboard"
+    },
+    {
+      "title": "Toggle idle inhibitor",
+      "subtitle": "Keep the display awake",
+      "exec": "swayidle -w timeout 10 'hyprctl dispatch dpms off' resume 'hyprctl dispatch dpms on'",
+      "icon": "gnome-settings-power"
+    }
+  ],
+  "replace": false
+}

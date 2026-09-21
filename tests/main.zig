@@ -2,6 +2,7 @@ const std = @import("std");
 const args = @import("args");
 const dapp_parser = @import("dapp_parser");
 const desktopapp = @import("desktopapp");
+const config = @import("config");
 
 fn smithBytes(smith: *std.testing.Smith, buf: []u8) []const u8 {
     const len = smith.sliceWithHash(buf, @truncate(@intFromPtr(buf.ptr)));
@@ -248,4 +249,36 @@ test "expandExecString with icon field code" {
         entry.deinit(allocator);
     }
     try std.testing.expectEqualStrings("app --icon 'test-icon'", expanded);
+}
+
+test "config: parseTomlString strips quotes" {
+    const allocator = std.testing.allocator;
+
+    {
+        const v = config.parseTomlString(allocator, "\"dracula\"");
+        defer allocator.free(v.?);
+        try std.testing.expectEqualStrings("dracula", v.?);
+    }
+
+    {
+        const v = config.parseTomlString(allocator, "'wl-clipboard'");
+        defer allocator.free(v.?);
+        try std.testing.expectEqualStrings("wl-clipboard", v.?);
+    }
+
+    {
+        const v = config.parseTomlString(allocator, "xdg-open");
+        defer allocator.free(v.?);
+        try std.testing.expectEqualStrings("xdg-open", v.?);
+    }
+
+    {
+        const v = config.parseTomlString(allocator, "\"\"");
+        try std.testing.expect(v == null);
+    }
+
+    {
+        const v = config.parseTomlString(allocator, "");
+        try std.testing.expect(v == null);
+    }
 }

@@ -1,6 +1,7 @@
 const std = @import("std");
 const lua = @import("lua_capi");
 const utils = @import("utils");
+const config = @import("config");
 const types = @import("types.zig");
 const sandbox = @import("sandbox.zig");
 const loader = @import("loader.zig");
@@ -162,6 +163,57 @@ fn apiRun(L: *lua.lua_State) callconv(.c) c_int {
 
     lua.lua_pushlstring(L, out[0..written].ptr, written);
     return 1;
+}
+
+fn pushLuaStrField(L: *lua.lua_State, key: [*:0]const u8, value: []const u8) void {
+    _ = lua.lua_pushlstring(L, value.ptr, value.len);
+    lua.lua_setfield(L, -2, key);
+}
+
+fn tryLoadPluginConfig(self: *PluginManager, L: *lua.lua_State, path: []const u8, plugin_name: []const u8) bool {
+    const config_content = loader.readFile(self.allocator, path) catch return false;
+    defer self.allocator.free(config_content);
+
+    const parsed = std.json.parseFromSlice(types.PluginConfig, self.allocator, config_content, .{ .allocate = .alloc_always }) catch |err| {
+        utils.log.info("plugin '{s}': invalid config {s}: {}", .{ plugin_name, path, err });
+        return false;
+    };
+    defer parsed.deinit();
+
+    lua.lua_newtable(L);
+    if (parsed.value.commands) |commands| {
+        lua.lua_newtable(L);
+        for (commands, 0..) |cmd, i| {
+            lua.lua_newtable(L);
+            pushLuaStrField(L, "title", cmd.title);
+            if (cmd.subtitle) |subtitle| pushLuaStrField(L, "subtitle", subtitle);
+            if (cmd.exec.len > 0) pushLuaStrField(L, "exec", cmd.exec);
+            if (cmd.icon) |icon| pushLuaStrField(L, "icon", icon);
+            lua.lua_rawseti(L, -2, @as(i64, @intCast(i + 1)));
+        }
+        lua.lua_setfield(L, -2, "commands");
+    }
+    if (parsed.value.replace) |replace| {
+        lua.lua_pushboolean(L, if (replace) 1 else 0);
+        lua.lua_setfield(L, -2, "replace");
+    }
+    lua.lua_setglobal(L, "plugin_config");
+    return true;
+}
+
+fn loadPluginConfig(self: *PluginManager, L: *lua.lua_State, plugins_base_dir: []const u8, dir_name: []const u8, plugin_name: []const u8) void {
+    if (config.configDir(self.allocator)) |cfg_dir| {
+        defer self.allocator.free(cfg_dir);
+        const user_file = std.fmt.allocPrint(self.allocator, "{s}.json", .{plugin_name}) catch return;
+        defer self.allocator.free(user_file);
+        const user_path = std.fs.path.join(self.allocator, &.{ cfg_dir, user_file }) catch return;
+        defer self.allocator.free(user_path);
+        if (tryLoadPluginConfig(self, L, user_path, plugin_name)) return;
+    }
+
+    const plugin_config_path = std.fs.path.join(self.allocator, &.{ plugins_base_dir, dir_name, "config.json" }) catch return;
+    defer self.allocator.free(plugin_config_path);
+    _ = tryLoadPluginConfig(self, L, plugin_config_path, plugin_name);
 }
 
 fn setupAPI(L: *lua.lua_State) void {
@@ -358,6 +410,7 @@ pub const PluginManager = struct {
         lua.luaL_openlibs(lua_state);
         sandbox.setupSandbox(lua_state);
         setupAPI(lua_state);
+        loadPluginConfig(self, lua_state, plugins_base_dir, dir_name, plugin_name);
 
         const lua_ok = lua.luaL_loadbufferx(lua_state, lua_content.ptr, lua_content.len, "plugin", null) == lua.LUA_OK and
             lua.lua_pcall(lua_state, 0, 0, 0) == lua.LUA_OK;
@@ -438,7 +491,8 @@ pub const PluginManager = struct {
 
             if (url.len > 1023) return;
 
-            if (self.clipboard_cmd) |clip_cmd| {
+            const clip_cmd = self.clipboard_cmd orelse "";
+            if (clip_cmd.len > 0) {
                 var pipefd: [2]i32 = undefined;
                 if (std.os.linux.pipe(&pipefd) != 0) return;
 
@@ -475,27 +529,64 @@ pub const PluginManager = struct {
                 _ = std.os.linux.close(pipefd[1]);
             } else {
                 const handler = self.url_handler orelse "xdg-open";
-                var buf: [1024:0]u8 = undefined;
-                const total = handler.len + 1 + url.len;
-                if (total >= buf.len) return;
-                @memcpy(buf[0..handler.len], handler);
-                buf[handler.len] = ' ';
-                @memcpy(buf[handler.len + 1 ..][0..url.len], url);
-                buf[total] = 0;
-                const sh = @as([*:0]const u8, "sh");
-                const c = @as([*:0]const u8, "-c");
+
+                var handler_buf: [1024:0]u8 = undefined;
+                var handler_c: [*:0]const u8 = undefined;
+                if (std.mem.indexOfScalar(u8, handler, '/') != null) {
+                    if (handler.len >= handler_buf.len) return;
+                    @memcpy(handler_buf[0..handler.len], handler);
+                    handler_buf[handler.len] = 0;
+                    handler_c = @as([*:0]const u8, @ptrCast(&handler_buf));
+                } else {
+                    const written = std.fmt.bufPrint(&handler_buf, "/usr/bin/{s}", .{handler}) catch return;
+                    handler_buf[written.len] = 0;
+                    handler_c = @as([*:0]const u8, @ptrCast(&handler_buf));
+                }
+
+                var url_buf: [1024:0]u8 = undefined;
+                if (url.len >= url_buf.len) return;
+                @memcpy(url_buf[0..url.len], url);
+                url_buf[url.len] = 0;
+
                 const argv = [_:null]?[*:0]u8{
-                    @constCast(sh),
-                    @constCast(c),
-                    @as([*:0]u8, @ptrCast(&buf)),
+                    @constCast(handler_c),
+                    @as([*:0]u8, @ptrCast(&url_buf)),
                     null,
                 };
+
                 const pid = std.os.linux.fork();
-                if (std.os.linux.errno(pid) == .SUCCESS and pid == 0) {
-                    _ = std.os.linux.execve("/bin/sh", &argv, utils.environ);
+                if (std.os.linux.errno(pid) != .SUCCESS) return;
+                if (pid == 0) {
+                    _ = std.os.linux.execve(handler_c, &argv, utils.environ);
                     std.os.linux.exit(1);
                 }
+
+                const thread_data = self.allocator.create(ThreadData) catch return;
+                thread_data.* = .{
+                    .pid = @as(i32, @intCast(pid)),
+                    .allocator = self.allocator,
+                };
+
+                const thread = std.Thread.spawn(.{}, reapChild, .{thread_data}) catch |err| {
+                    self.allocator.destroy(thread_data);
+                    var status: u32 = 0;
+                    _ = std.os.linux.waitpid(@as(i32, @intCast(pid)), &status, 0);
+                    utils.log.info("plugin url open reap thread failed: {}", .{err});
+                    return;
+                };
+                thread.detach();
             }
         }
     }
 };
+
+const ThreadData = struct {
+    pid: i32,
+    allocator: std.mem.Allocator,
+};
+
+fn reapChild(data: *ThreadData) void {
+    var status: u32 = 0;
+    _ = std.os.linux.waitpid(data.pid, &status, 0);
+    data.allocator.destroy(data);
+}
