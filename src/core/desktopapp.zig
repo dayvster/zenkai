@@ -1,4 +1,5 @@
 const std = @import("std");
+const utils = @import("utils");
 
 pub const DesktopApp = DesktopEntry;
 
@@ -55,6 +56,110 @@ pub const DesktopEntry = struct {
     pub fn expandExec(self: *const DesktopEntry, allocator: std.mem.Allocator) ![]const u8 {
         const exec = self.exec orelse return error.NoExec;
         return expandExecString(exec, self, allocator);
+    }
+
+    const ArgvFlusher = struct {
+        allocator: std.mem.Allocator,
+        frag: *std.ArrayList(u8),
+        out: *std.ArrayList([]const u8),
+
+        fn run(self: *ArgvFlusher) !void {
+            if (self.frag.items.len == 0) return;
+            try self.out.append(self.allocator, try self.allocator.dupe(u8, self.frag.items));
+            self.frag.clearRetainingCapacity();
+        }
+    };
+
+    fn expandToken(allocator: std.mem.Allocator, entry: *const DesktopEntry, token: []const u8) ![]const []const u8 {
+        var out = std.ArrayList([]const u8).empty;
+        errdefer {
+            for (out.items) |a| allocator.free(a);
+            out.deinit(allocator);
+        }
+        var frag = std.ArrayList(u8).empty;
+        defer frag.deinit(allocator);
+
+        var flusher = ArgvFlusher{ .allocator = allocator, .frag = &frag, .out = &out };
+
+        var i: usize = 0;
+        while (i < token.len) {
+            const c = token[i];
+            if (c == '%' and i + 1 < token.len) {
+                switch (token[i + 1]) {
+                    'i' => {
+                        try flusher.run();
+                        if (entry.icon) |icon| {
+                            if (icon.len > 0) {
+                                try out.append(allocator, try allocator.dupe(u8, "--icon"));
+                                try out.append(allocator, try allocator.dupe(u8, icon));
+                            }
+                        }
+                    },
+                    'c' => {
+                        try flusher.run();
+                        if (entry.name.len > 0) try out.append(allocator, try allocator.dupe(u8, entry.name));
+                    },
+                    'k' => {
+                        try flusher.run();
+                        if (entry.file_path) |fp| {
+                            if (fp.len > 0) try out.append(allocator, try allocator.dupe(u8, fp));
+                        }
+                    },
+                    'f', 'F', 'u', 'U' => try flusher.run(),
+                    '%' => try frag.append(allocator, '%'),
+                    'd', 'D', 'n', 'N', 'v', 'm' => {},
+                    else => {},
+                }
+                i += 2;
+            } else {
+                try frag.append(allocator, c);
+                i += 1;
+            }
+        }
+        try flusher.run();
+
+        return try out.toOwnedSlice(allocator);
+    }
+
+    pub fn buildCommandArgv(allocator: std.mem.Allocator, entry: *const DesktopEntry, exec: []const u8) ![]const []const u8 {
+        if (exec.len == 0) return error.NoExec;
+
+        const tokens = try utils.tokenizeCommandLine(allocator, exec);
+        defer {
+            for (tokens) |t| allocator.free(t);
+            allocator.free(tokens);
+        }
+
+        var argv = std.ArrayList([]const u8).empty;
+        errdefer {
+            for (argv.items) |a| allocator.free(a);
+            argv.deinit(allocator);
+        }
+
+        for (tokens) |token| {
+            if (token.len == 0) continue;
+            const expanded = try expandToken(allocator, entry, token);
+            for (expanded, 0..) |e, idx| {
+                if (e.len == 0) {
+                    allocator.free(e);
+                    continue;
+                }
+                argv.append(allocator, e) catch |err| {
+                    for (expanded[idx..]) |rest| allocator.free(rest);
+                    allocator.free(expanded);
+                    return err;
+                };
+            }
+            allocator.free(expanded);
+        }
+
+        if (argv.items.len == 0) return error.NoExec;
+        return try argv.toOwnedSlice(allocator);
+    }
+
+    pub fn commandArgv(self: *const DesktopEntry, allocator: std.mem.Allocator) ![]const []const u8 {
+        const exec = self.exec orelse return error.NoExec;
+        return buildCommandArgv(allocator, self, exec);
     }
 
     pub fn expandExecString(exec: []const u8, entry: *const DesktopEntry, allocator: std.mem.Allocator) ![]const u8 {

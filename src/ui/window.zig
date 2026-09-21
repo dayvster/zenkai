@@ -31,6 +31,26 @@ fn nanoTimestamp() i64 {
     return @as(i64, ts.sec) * std.time.ns_per_s + @as(i64, ts.nsec);
 }
 
+pub fn clampMonitorIndex(idx: i32, count: usize) usize {
+    if (count == 0) return 0;
+    const i = if (idx < 0) 0 else @as(usize, @intCast(idx));
+    return @min(i, count - 1);
+}
+
+test "clampMonitorIndex" {
+    try std.testing.expectEqual(@as(usize, 0), clampMonitorIndex(-1, 3));
+    try std.testing.expectEqual(@as(usize, 0), clampMonitorIndex(-100, 3));
+    try std.testing.expectEqual(@as(usize, 0), clampMonitorIndex(0, 3));
+    try std.testing.expectEqual(@as(usize, 1), clampMonitorIndex(1, 3));
+    try std.testing.expectEqual(@as(usize, 2), clampMonitorIndex(2, 3));
+    try std.testing.expectEqual(@as(usize, 2), clampMonitorIndex(999, 3));
+    try std.testing.expectEqual(@as(usize, 0), clampMonitorIndex(0, 1));
+    try std.testing.expectEqual(@as(usize, 0), clampMonitorIndex(5, 1));
+    try std.testing.expectEqual(@as(usize, 0), clampMonitorIndex(-3, 0));
+    try std.testing.expectEqual(@as(usize, 0), clampMonitorIndex(0, 0));
+    try std.testing.expectEqual(@as(usize, 0), clampMonitorIndex(2, 0));
+}
+
 fn onAppStateChanged(_: QApp, state: i32) callconv(.c) void {
     if (!g_close_on_focus_out) return;
     if (state == 2) {
@@ -63,6 +83,9 @@ fn onBackdropMove(_: qt.QWidget, _: qt.QMoveEvent) callconv(.c) void {
 
 fn onSearchDebounced(text: []const u8) void {
     g_window.list.setFilter(text);
+    if (g_window.list.plugin_manager) |pm| {
+        pm.dispatchIdle();
+    }
 }
 
 fn onItemFocused(_: usize, actions: []const ListItemAction) void {
@@ -116,7 +139,8 @@ pub const Window = struct {
         const target_screen = if (vis.monitor) |idx| blk: {
             const screens = QApp.screens(allocator);
             defer allocator.free(screens);
-            const i = @min(@max(@as(usize, @intCast(idx)), 0), screens.len - 1);
+            if (screens.len == 0) break :blk cursor_screen;
+            const i = clampMonitorIndex(idx, screens.len);
             break :blk screens[i];
         } else cursor_screen;
 
@@ -279,7 +303,8 @@ pub const Window = struct {
             if (g_monitor) |idx| {
                 const screens = QApp.screens(self.allocator);
                 defer self.allocator.free(screens);
-                const i = @min(@max(@as(usize, @intCast(idx)), 0), screens.len - 1);
+                if (screens.len == 0) return;
+                const i = clampMonitorIndex(idx, screens.len);
                 const geo = screens[i].geometry();
                 qt.QCursor.setPos(geo.x() + @divTrunc(geo.width(), 2), geo.y() + @divTrunc(geo.height(), 2));
                 self.widget.setGeometry(geo.x(), geo.y(), geo.width(), geo.height());

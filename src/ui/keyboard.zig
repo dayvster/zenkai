@@ -2,6 +2,7 @@ const std = @import("std");
 const qt = @import("libqt6zig");
 const List = @import("list.zig").List;
 const utils = @import("utils");
+const de = @import("desktopapp");
 
 const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;
@@ -74,7 +75,13 @@ fn onSearchKeyPress(edit: QLineEdit, event: QKeyEvent) callconv(.c) void {
     switch (event.key()) {
         qt.qnamespace_enums.Key.Key_Home => scrollToTop(),
         qt.qnamespace_enums.Key.Key_End => scrollToEnd(),
-        else => edit.superKeyPressEvent(event),
+        else => {
+            if (L.plugin_manager) |pm| {
+                const key_text = event.text();
+                if (key_text.len > 0) pm.dispatchKeyPress(key_text);
+            }
+            edit.superKeyPressEvent(event);
+        },
     }
 }
 
@@ -117,7 +124,31 @@ fn makeActionHandler(comptime n: usize) *const fn (QShortcut) callconv(.c) void 
         fn handler(_: QShortcut) callconv(.c) void {
             const actions = List.currentItemActions();
             if (n < actions.len) {
-                utils.execute(actions[n].exec, L.allocator) catch {};
+                const exec = actions[n].exec;
+                if (exec.len > 0) {
+                    var entry = de.DesktopEntry{
+                        .name = "",
+                        .exec = null,
+                        .icon = null,
+                        .file_path = null,
+                        .type = .Application,
+                        .extra = std.StringHashMap([]const u8).init(L.allocator),
+                    };
+                    defer entry.extra.deinit();
+
+                    const argv_maybe = de.DesktopEntry.buildCommandArgv(L.allocator, &entry, exec) catch null;
+                    if (argv_maybe) |argv| {
+                        defer {
+                            for (argv) |arg| L.allocator.free(arg);
+                            L.allocator.free(argv);
+                        }
+                        utils.executeArgv(L.allocator, argv) catch {
+                            utils.execute(exec, L.allocator) catch {};
+                        };
+                    } else {
+                        utils.execute(exec, L.allocator) catch {};
+                    }
+                }
                 QApp.quit();
             }
         }

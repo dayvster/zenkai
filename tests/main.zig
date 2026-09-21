@@ -3,6 +3,7 @@ const args = @import("args");
 const dapp_parser = @import("dapp_parser");
 const desktopapp = @import("desktopapp");
 const config = @import("config");
+const utils = @import("utils");
 
 fn smithBytes(smith: *std.testing.Smith, buf: []u8) []const u8 {
     const len = smith.sliceWithHash(buf, @truncate(@intFromPtr(buf.ptr)));
@@ -281,4 +282,341 @@ test "config: parseTomlString strips quotes" {
         const v = config.parseTomlString(allocator, "");
         try std.testing.expect(v == null);
     }
+}
+
+test "args: negative numeric flags are rejected" {
+    const allocator = std.testing.allocator;
+    var argv = std.ArrayList([:0]u8).empty;
+    defer {
+        for (argv.items) |a| allocator.free(a);
+        argv.deinit(allocator);
+    }
+
+    try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--size=-5"));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--width=-100"));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--height=-1"));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--monitor=-2"));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--animation-interval=-3"));
+
+    const cfg = args.parse(argv.items);
+    try std.testing.expect(cfg.icon_size == null);
+    try std.testing.expect(cfg.window_width == null);
+    try std.testing.expect(cfg.window_height == null);
+    try std.testing.expect(cfg.monitor == null);
+    try std.testing.expect(cfg.animation_interval == null);
+}
+
+test "args: non-numeric numeric flags are rejected" {
+    const allocator = std.testing.allocator;
+    var argv = std.ArrayList([:0]u8).empty;
+    defer {
+        for (argv.items) |a| allocator.free(a);
+        argv.deinit(allocator);
+    }
+
+    try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--size=abc"));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--monitor="));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--width=12.5"));
+
+    const cfg = args.parse(argv.items);
+    try std.testing.expect(cfg.icon_size == null);
+    try std.testing.expect(cfg.monitor == null);
+    try std.testing.expect(cfg.window_width == null);
+}
+
+test "dapp_parser: positive numeric flags still parse" {
+    const allocator = std.testing.allocator;
+    var argv = std.ArrayList([:0]u8).empty;
+    defer {
+        for (argv.items) |a| allocator.free(a);
+        argv.deinit(allocator);
+    }
+
+    try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--size=0"));
+    try argv.append(allocator, try allocator.dupeZ(u8, "--monitor=3"));
+
+    const cfg = args.parse(argv.items);
+    try std.testing.expectEqual(@as(i32, 0), cfg.icon_size.?);
+    try std.testing.expectEqual(@as(i32, 3), cfg.monitor.?);
+}
+
+test "dapp_parser: parses Type" {
+    const allocator = std.testing.allocator;
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=Link
+            \\Type=Link
+            \\URL=https://example.com
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expectEqual(desktopapp.DesktopEntry.Type.Link, entry.type);
+    }
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=Dir
+            \\Type=Directory
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expectEqual(desktopapp.DesktopEntry.Type.Directory, entry.type);
+    }
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=App
+            \\Type=Application
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expectEqual(desktopapp.DesktopEntry.Type.Application, entry.type);
+    }
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=Default
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expectEqual(desktopapp.DesktopEntry.Type.Application, entry.type);
+    }
+}
+
+test "dapp_parser: localized Name selection" {
+    const allocator = std.testing.allocator;
+    defer dapp_parser.setLocale(null);
+
+    const content =
+        \\[Desktop Entry]
+        \\Name=Firefox
+        \\Name[de]=Feuerfuchs
+        \\Name[de_DE]=Feuerfuchs Spezial
+        \\Name[fr]=Phénix
+        \\
+    ;
+
+    {
+        dapp_parser.setLocale("de_DE");
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expectEqualStrings("Feuerfuchs Spezial", entry.name);
+    }
+
+    {
+        dapp_parser.setLocale("de");
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expectEqualStrings("Feuerfuchs Spezial", entry.name);
+    }
+
+    {
+        dapp_parser.setLocale("fr");
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expectEqualStrings("Phénix", entry.name);
+    }
+
+    {
+        dapp_parser.setLocale("it");
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expectEqualStrings("Firefox", entry.name);
+    }
+
+    {
+        dapp_parser.setLocale(null);
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+        try std.testing.expectEqualStrings("Firefox", entry.name);
+    }
+}
+
+test "dapp_parser: OnlyShowIn and NotShowIn filtering" {
+    const allocator = std.testing.allocator;
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=GNOMEApp
+            \\OnlyShowIn=GNOME;
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+
+        const gnome = [_][]const u8{"GNOME"};
+        try std.testing.expect(dapp_parser.shouldShowApp(&entry, &gnome));
+
+        const kde = [_][]const u8{"KDE"};
+        try std.testing.expect(!dapp_parser.shouldShowApp(&entry, &kde));
+
+        const empty = [_][]const u8{};
+        try std.testing.expect(!dapp_parser.shouldShowApp(&entry, &empty));
+    }
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=KDEOnly
+            \\NotShowIn=GNOME;
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+
+        const gnome = [_][]const u8{"GNOME"};
+        try std.testing.expect(!dapp_parser.shouldShowApp(&entry, &gnome));
+
+        const kde = [_][]const u8{"X-KDE"};
+        try std.testing.expect(dapp_parser.shouldShowApp(&entry, &kde));
+    }
+
+    {
+        const content =
+            \\[Desktop Entry]
+            \\Name=NoFilter
+            \\
+        ;
+        var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
+        defer entry.deinit(allocator);
+
+        const any = [_][]const u8{"Whatever"};
+        try std.testing.expect(dapp_parser.shouldShowApp(&entry, &any));
+        const empty = [_][]const u8{};
+        try std.testing.expect(dapp_parser.shouldShowApp(&entry, &empty));
+    }
+}
+
+test "desktopapp: buildCommandArgv produces exact argv" {
+    const allocator = std.testing.allocator;
+
+    var entry = desktopapp.DesktopEntry{
+        .name = "Foo Bar",
+        .exec = null,
+        .icon = "gimp",
+        .file_path = "/path/to/hi.desktop",
+        .type = .Application,
+        .extra = std.StringHashMap([]const u8).init(allocator),
+    };
+    defer entry.deinit(allocator);
+
+    const exec = "env FOO=\"bar baz\" %i -- %k %%u";
+    const argv = try desktopapp.DesktopEntry.buildCommandArgv(allocator, &entry, exec);
+    defer {
+        for (argv) |a| allocator.free(a);
+        allocator.free(argv);
+    }
+
+    try std.testing.expectEqual(@as(usize, 7), argv.len);
+    try std.testing.expectEqualStrings("env", argv[0]);
+    try std.testing.expectEqualStrings("FOO=bar baz", argv[1]);
+    try std.testing.expectEqualStrings("--icon", argv[2]);
+    try std.testing.expectEqualStrings("gimp", argv[3]);
+    try std.testing.expectEqualStrings("--", argv[4]);
+    try std.testing.expectEqualStrings("/path/to/hi.desktop", argv[5]);
+    try std.testing.expectEqualStrings("%u", argv[6]);
+}
+
+test "desktopapp: buildCommandArgv drops file field codes" {
+    const allocator = std.testing.allocator;
+
+    var entry = desktopapp.DesktopEntry{
+        .name = "AppC",
+        .exec = null,
+        .icon = null,
+        .file_path = null,
+        .type = .Application,
+        .extra = std.StringHashMap([]const u8).init(allocator),
+    };
+    defer entry.deinit(allocator);
+
+    const argv = try desktopapp.DesktopEntry.buildCommandArgv(allocator, &entry, "myapp %f %F %u %U -q");
+    defer {
+        for (argv) |a| allocator.free(a);
+        allocator.free(argv);
+    }
+
+    try std.testing.expectEqual(@as(usize, 3), argv.len);
+    try std.testing.expectEqualStrings("myapp", argv[0]);
+    try std.testing.expectEqualStrings("-q", argv[1]);
+}
+
+test "desktopapp: buildCommandArgv handles percent escaping" {
+    const allocator = std.testing.allocator;
+
+    var entry = desktopapp.DesktopEntry{
+        .name = "AppC",
+        .exec = null,
+        .icon = null,
+        .file_path = null,
+        .type = .Application,
+        .extra = std.StringHashMap([]const u8).init(allocator),
+    };
+    defer entry.deinit(allocator);
+
+    const argv = try desktopapp.DesktopEntry.buildCommandArgv(allocator, &entry, "show %%literal and a%qb");
+    defer {
+        for (argv) |a| allocator.free(a);
+        allocator.free(argv);
+    }
+
+    try std.testing.expectEqual(@as(usize, 3), argv.len);
+    try std.testing.expectEqualStrings("show", argv[0]);
+    try std.testing.expectEqualStrings("%literal", argv[1]);
+    try std.testing.expectEqualStrings("ab", argv[2]);
+}
+
+test "utils: tokenizeCommandLine handles quotes and escapes" {
+    const allocator = std.testing.allocator;
+
+    const input = "foo --bar=\"hello world\" 'single quoted' a\\ b plain";
+    const tokens = try utils.tokenizeCommandLine(allocator, input);
+    defer {
+        for (tokens) |t| allocator.free(t);
+        allocator.free(tokens);
+    }
+
+    try std.testing.expectEqual(@as(usize, 5), tokens.len);
+    try std.testing.expectEqualStrings("foo", tokens[0]);
+    try std.testing.expectEqualStrings("--bar=hello world", tokens[1]);
+    try std.testing.expectEqualStrings("single quoted", tokens[2]);
+    try std.testing.expectEqualStrings("a b", tokens[3]);
+    try std.testing.expectEqualStrings("plain", tokens[4]);
+}
+
+test "utils: tokenizeCommandLine drops empty tokens" {
+    const allocator = std.testing.allocator;
+
+    const input = "   one   two\t  three  ";
+    const tokens = try utils.tokenizeCommandLine(allocator, input);
+    defer {
+        for (tokens) |t| allocator.free(t);
+        allocator.free(tokens);
+    }
+
+    try std.testing.expectEqual(@as(usize, 3), tokens.len);
+    try std.testing.expectEqualStrings("one", tokens[0]);
+    try std.testing.expectEqualStrings("two", tokens[1]);
+    try std.testing.expectEqualStrings("three", tokens[2]);
+}
+
+test "utils: tokenizeCommandLine empty input yields no tokens" {
+    const allocator = std.testing.allocator;
+
+    const tokens = try utils.tokenizeCommandLine(allocator, "");
+    try std.testing.expectEqual(@as(usize, 0), tokens.len);
+    allocator.free(tokens);
 }

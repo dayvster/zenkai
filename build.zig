@@ -105,6 +105,9 @@ pub fn build(b: *std.Build) !void {
 
     const desktopapp_module = b.addModule("desktopapp", .{
         .root_source_file = b.path("src/core/desktopapp.zig"),
+        .imports = &.{
+            .{ .name = "utils", .module = utils_module },
+        },
     });
 
     const dapp_parser_module = b.addModule("dapp_parser", .{
@@ -141,6 +144,8 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "lua_capi", .module = lua_capi_module },
             .{ .name = "utils", .module = utils_module },
             .{ .name = "config", .module = config_module },
+            .{ .name = "dapp_parser", .module = dapp_parser_module },
+            .{ .name = "desktopapp", .module = desktopapp_module },
         },
     });
 

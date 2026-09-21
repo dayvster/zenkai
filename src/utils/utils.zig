@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 pub const log = @import("log.zig");
 pub const fsutils = @import("fsutils.zig");
 pub const simd = @import("simd.zig");
@@ -111,14 +112,14 @@ pub fn execute(cmd: []const u8, allocator: std.mem.Allocator) !void {
         null,
     };
 
-    const pid = std.os.linux.fork();
-    if (std.os.linux.errno(pid) != .SUCCESS) {
+    const pid = std.c.fork();
+    if (pid < 0) {
         return error.ForkFailed;
     }
 
     if (pid == 0) {
-        _ = std.os.linux.execve("/bin/sh", &argv, environ);
-        std.os.linux.exit(1);
+        _ = std.c.execve("/bin/sh", &argv, environ);
+        std.c._exit(1);
     }
 
     const thread_data = try allocator.create(ThreadData);
@@ -130,7 +131,7 @@ pub fn execute(cmd: []const u8, allocator: std.mem.Allocator) !void {
     const thread = std.Thread.spawn(.{}, reapChild, .{thread_data}) catch |err| {
         allocator.destroy(thread_data);
         var status: u32 = 0;
-        _ = std.os.linux.waitpid(@as(i32, @intCast(pid)), &status, 0);
+        _ = std.c.waitpid(@as(i32, @intCast(pid)), &status, 0);
         return err;
     };
     thread.detach();
@@ -143,8 +144,126 @@ const ThreadData = struct {
 
 fn reapChild(data: *ThreadData) void {
     var status: u32 = 0;
-    _ = std.os.linux.waitpid(data.pid, &status, 0);
+    _ = std.c.waitpid(data.pid, &status, 0);
     data.allocator.destroy(data);
+}
+
+pub fn resolveExecutable(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    if (name.len == 0) return error.NotFound;
+    if (std.mem.indexOfScalar(u8, name, '/') != null) {
+        if (fileExists(name)) return try allocator.dupe(u8, name);
+        return error.NotFound;
+    }
+    if (std.c.getenv("PATH")) |path_raw| {
+        const path = std.mem.sliceTo(path_raw, 0);
+        var it = std.mem.splitScalar(u8, path, ':');
+        while (it.next()) |dir| {
+            if (dir.len == 0) continue;
+            const candidate = std.fs.path.join(allocator, &.{ dir, name }) catch continue;
+            if (fileExists(candidate)) return candidate;
+            allocator.free(candidate);
+        }
+    }
+    return error.NotFound;
+}
+
+fn findBundleDir(path: []const u8) ?[]const u8 {
+    var end = path.len;
+    while (end > 0) {
+        const slash = std.mem.lastIndexOfScalar(u8, path[0..end], '/');
+        const dir_start = slash orelse 0;
+        if (std.mem.endsWith(u8, path[dir_start..end], ".app")) return path[dir_start..end];
+        if (slash == null) return null;
+        end = slash.?;
+    }
+    return null;
+}
+
+pub fn executeArgv(allocator: std.mem.Allocator, argv: []const []const u8) !void {
+    if (argv.len == 0) return error.NoExecutable;
+    const exe = try resolveExecutable(allocator, argv[0]);
+    defer allocator.free(exe);
+
+    var final = std.ArrayList([]const u8).empty;
+    defer final.deinit(allocator);
+    try final.append(allocator, exe);
+    if (builtin.os.tag == .macos) {
+        if (findBundleDir(exe)) |bundle| {
+            final.clearRetainingCapacity();
+            try final.append(allocator, "/usr/bin/open");
+            try final.append(allocator, bundle);
+            try final.append(allocator, "--args");
+        }
+    }
+    for (argv[1..]) |arg| try final.append(allocator, arg);
+
+    try spawnTool(final.items[0], final.items[1..], allocator);
+}
+
+pub fn tokenizeCommandLine(allocator: std.mem.Allocator, input: []const u8) ![]const []const u8 {
+    var tokens = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (tokens.items) |t| allocator.free(t);
+        tokens.deinit(allocator);
+    }
+
+    var i: usize = 0;
+    while (i < input.len) {
+        while (i < input.len and (input[i] == ' ' or input[i] == '\t')) i += 1;
+        if (i >= input.len) break;
+
+        var buf = std.ArrayList(u8).empty;
+        defer buf.deinit(allocator);
+        var started = false;
+
+        while (i < input.len) {
+            const c = input[i];
+            if (c == ' ' or c == '\t') {
+                i += 1;
+                break;
+            }
+            started = true;
+            if (c == '\'') {
+                i += 1;
+                while (i < input.len and input[i] != '\'') {
+                    try buf.append(allocator, input[i]);
+                    i += 1;
+                }
+                if (i < input.len) i += 1;
+            } else if (c == '"') {
+                i += 1;
+                while (i < input.len and input[i] != '"') {
+                    if (input[i] == '\\' and i + 1 < input.len and
+                        (input[i + 1] == '"' or input[i + 1] == '\\' or input[i + 1] == '$' or
+                            input[i + 1] == '`'))
+                    {
+                        i += 1;
+                    }
+                    try buf.append(allocator, input[i]);
+                    i += 1;
+                }
+                if (i < input.len) i += 1;
+            } else if (c == '\\' and i + 1 < input.len) {
+                i += 1;
+                try buf.append(allocator, input[i]);
+                i += 1;
+            } else {
+                try buf.append(allocator, input[i]);
+                i += 1;
+            }
+        }
+
+        if (!started) continue;
+        try tokens.append(allocator, try buf.toOwnedSlice(allocator));
+    }
+
+    return try tokens.toOwnedSlice(allocator);
+}
+
+fn nowNs() u64 {
+    var ts: std.c.timespec = std.mem.zeroes(std.c.timespec);
+    _ = std.c.clock_gettime(std.c.CLOCK.MONOTONIC, &ts);
+    return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
 }
 
 pub extern "c" var environ: [*:null]?[*:0]u8;
@@ -267,7 +386,15 @@ pub fn spawnTool(name: []const u8, args: []const []const u8, allocator: std.mem.
     thread.detach();
 }
 
-pub fn runTool(name: []const u8, args: []const []const u8, out: []u8, allocator: std.mem.Allocator) !usize {
+pub const RunResult = struct {
+    bytes: usize,
+    truncated: bool,
+};
+
+const POLL_IN: i16 = 0x1;
+const POLL_HUP: i16 = 0x10;
+
+pub fn runToolTimed(name: []const u8, args: []const []const u8, out: []u8, timeout_ms: u64, allocator: std.mem.Allocator) !RunResult {
     const tool = toolPath(allocator, name) orelse return error.ToolNotFound;
     defer allocator.free(tool);
 
@@ -295,7 +422,6 @@ pub fn runTool(name: []const u8, args: []const []const u8, out: []u8, allocator:
     if (pid == 0) {
         _ = std.c.close(pipefd[0]);
         _ = std.c.dup2(pipefd[1], 1);
-        _ = std.c.dup2(pipefd[1], 2);
         if (pipefd[1] != 1) _ = std.c.close(pipefd[1]);
         _ = std.c.execve(@ptrCast(argv.array[0].?), @as([*:null]const ?[*:0]const u8, @ptrCast(&argv.array)), environ);
         std.c._exit(127);
@@ -304,15 +430,45 @@ pub fn runTool(name: []const u8, args: []const []const u8, out: []u8, allocator:
     _ = std.c.close(pipefd[1]);
 
     var total: usize = 0;
-    while (total < out.len) {
-        const bytes = std.c.read(pipefd[0], out[total..].ptr, out.len - total);
-        if (bytes <= 0) break;
-        total += @intCast(bytes);
+    var truncated = false;
+    var timed_out = false;
+    var scratch: [256]u8 = undefined;
+    const deadline = nowNs() + timeout_ms * std.time.ns_per_ms;
+
+    while (true) {
+        const now = nowNs();
+        if (now >= deadline) {
+            timed_out = true;
+            break;
+        }
+        var pollfd = std.c.pollfd{
+            .fd = pipefd[0],
+            .events = POLL_IN,
+            .revents = 0,
+        };
+        const remaining_ms: i32 = @intCast(@min((deadline - now) / std.time.ns_per_ms, 999));
+        const pr = std.c.poll(&pollfd, 1, remaining_ms);
+        if (pr < 0) break;
+        if (pr == 0) continue;
+
+        if ((pollfd.revents & (POLL_IN | POLL_HUP)) == 0) continue;
+        if (total < out.len) {
+            const n = std.c.read(pipefd[0], out[total..].ptr, out.len - total);
+            if (n <= 0) break;
+            total += @intCast(n);
+        } else {
+            truncated = true;
+            const n = std.c.read(pipefd[0], scratch.ptr, scratch.len);
+            if (n <= 0) break;
+        }
     }
+
+    if (timed_out) _ = std.c.kill(pid, 9);
     _ = std.c.close(pipefd[0]);
 
     var status: c_int = 0;
     _ = std.c.waitpid(pid, &status, 0);
 
-    return total;
+    if (timed_out) return error.RunTimeout;
+    return .{ .bytes = total, .truncated = truncated };
 }

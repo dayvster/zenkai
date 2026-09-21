@@ -141,6 +141,12 @@ pub fn deinitPluginNames(allocator: std.mem.Allocator, names: [][]const u8) void
     allocator.free(names);
 }
 
+fn parseNonNegativeInt(text: []const u8) ?i32 {
+    const val = std.fmt.parseInt(i32, text, 10) catch return null;
+    if (val < 0) return null;
+    return val;
+}
+
 pub fn parse(args: [][:0]u8) Config {
     var cfg: Config = .{
         .icon_size = null,
@@ -176,11 +182,11 @@ pub fn parse(args: [][:0]u8) Config {
             show_help();
             std.process.exit(0);
         } else if (std.mem.startsWith(u8, arg, "--size=")) {
-            cfg.icon_size = std.fmt.parseInt(i32, arg["--size=".len..], 10) catch null;
+            cfg.icon_size = parseNonNegativeInt(arg["--size=".len..]);
         } else if (std.mem.startsWith(u8, arg, "--width=")) {
-            cfg.window_width = std.fmt.parseInt(i32, arg["--width=".len..], 10) catch null;
+            cfg.window_width = parseNonNegativeInt(arg["--width=".len..]);
         } else if (std.mem.startsWith(u8, arg, "--height=")) {
-            cfg.window_height = std.fmt.parseInt(i32, arg["--height=".len..], 10) catch null;
+            cfg.window_height = parseNonNegativeInt(arg["--height=".len..]);
         } else if (std.mem.eql(u8, arg, "--verbose") or std.mem.eql(u8, arg, "-v")) {
             log.verbose = true;
         } else if (std.mem.eql(u8, arg, "--debug")) {
@@ -211,7 +217,7 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.eql(u8, arg, "--fullscreen")) {
             cfg.fullscreen = true;
         } else if (std.mem.startsWith(u8, arg, "--monitor=")) {
-            cfg.monitor = std.fmt.parseInt(i32, arg["--monitor=".len..], 10) catch null;
+            cfg.monitor = parseNonNegativeInt(arg["--monitor=".len..]);
         } else if (std.mem.startsWith(u8, arg, "--clipboard=")) {
             const val = arg["--clipboard=".len..];
             cfg.clipboard = if (val.len > 0) val else null;
@@ -228,7 +234,7 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.eql(u8, arg, "--no-animations")) {
             cfg.no_animations = true;
         } else if (std.mem.startsWith(u8, arg, "--animation-interval=")) {
-            cfg.animation_interval = std.fmt.parseInt(i32, arg["--animation-interval=".len..], 10) catch null;
+            cfg.animation_interval = parseNonNegativeInt(arg["--animation-interval=".len..]);
         } else if (std.mem.startsWith(u8, arg, "--animation-easing=")) {
             const val = arg["--animation-easing=".len..];
             cfg.animation_easing = if (val.len > 0) val else null;

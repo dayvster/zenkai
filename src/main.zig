@@ -7,6 +7,7 @@ const log = @import("utils").log;
 const debug = @import("debug/debug.zig");
 const bootstrap = @import("core/bootstrap.zig");
 const desktop_loader = @import("core/desktop_loader.zig");
+const dapp_parser = @import("core/dapp_parser.zig");
 const args = @import("args/args.zig");
 const theme = @import("theme/theme.zig");
 const plugins = @import("plugins");
@@ -100,7 +101,9 @@ pub fn main(init: std.process.Init) !void {
         if (ctx.visual.url_handler) |handler| {
             if (handler.len > 0) p.url_handler = init.gpa.dupe(u8, handler) catch null;
         }
+        p.dispatchStartup();
     }
+    dapp_parser.setLocale(ctx.cfg.language);
 
     const use_menus = menu_entries.len > 0;
     const skip_desktop = use_menus or ctx.cfg.no_dapps;
