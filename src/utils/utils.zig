@@ -148,10 +148,22 @@ fn reapChild(data: *ThreadData) void {
     data.allocator.destroy(data);
 }
 
+const X_OK: c_int = 1;
+
+// True when path names an existing file with at least one execute bit set.
+// execve() remains the ultimate authority, but checking X_OK here lets
+// resolution report a precise error instead of failing later.
+fn isExecutableFile(allocator: std.mem.Allocator, path: []const u8) bool {
+    const z = allocator.dupeZ(u8, path) catch return false;
+    defer allocator.free(z);
+    return std.c.access(z.ptr, X_OK) == 0;
+}
+
 pub fn resolveExecutable(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
     if (name.len == 0) return error.NotFound;
     if (std.mem.indexOfScalar(u8, name, '/') != null) {
-        if (fileExists(name)) return try allocator.dupe(u8, name);
+        if (isExecutableFile(allocator, name)) return try allocator.dupe(u8, name);
+        if (fileExists(name)) return error.NotExecutable;
         return error.NotFound;
     }
     if (std.c.getenv("PATH")) |path_raw| {
@@ -160,7 +172,7 @@ pub fn resolveExecutable(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
         while (it.next()) |dir| {
             if (dir.len == 0) continue;
             const candidate = std.fs.path.join(allocator, &.{ dir, name }) catch continue;
-            if (fileExists(candidate)) return candidate;
+            if (isExecutableFile(allocator, candidate)) return candidate;
             allocator.free(candidate);
         }
     }
@@ -277,19 +289,20 @@ pub const tool_arg_limit = 16;
 
 pub fn toolPath(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
     if (std.mem.indexOfScalar(u8, name, '/') != null) {
+        if (!isExecutableFile(allocator, name)) return null;
         return allocator.dupe(u8, name) catch null;
     }
     const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
     if (std.process.executableDirPathAlloc(io, allocator) catch null) |exe_dir| {
         defer allocator.free(exe_dir);
         const candidate = std.fs.path.join(allocator, &.{ exe_dir, name }) catch return null;
-        if (fileExists(candidate)) return candidate;
+        if (isExecutableFile(allocator, candidate)) return candidate;
         allocator.free(candidate);
     }
     if (std.c.getenv("ZENKAI_TOOLS")) |tools_dir_raw| {
         const tools_dir = std.mem.sliceTo(tools_dir_raw, 0);
         const candidate = std.fs.path.join(allocator, &.{ tools_dir, name }) catch return null;
-        if (fileExists(candidate)) return candidate;
+        if (isExecutableFile(allocator, candidate)) return candidate;
         allocator.free(candidate);
     }
     if (std.c.getenv("PATH")) |path_raw| {
@@ -298,7 +311,7 @@ pub fn toolPath(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
         while (it.next()) |dir| {
             if (dir.len == 0) continue;
             const candidate = std.fs.path.join(allocator, &.{ dir, name }) catch continue;
-            if (fileExists(candidate)) return candidate;
+            if (isExecutableFile(allocator, candidate)) return candidate;
             allocator.free(candidate);
         }
     }
@@ -490,6 +503,12 @@ test "utils: executeArgv surfaces an error instead of falling back to a shell" {
     const allocator = std.testing.allocator;
     const argv = [_][]const u8{"/definitely-not-a-real-zenkai-test-binary"};
     try std.testing.expectError(error.NotFound, executeArgv(allocator, &argv));
+}
+
+test "utils: executeArgv reports an existing but non-executable file distinctly" {
+    const allocator = std.testing.allocator;
+    const argv = [_][]const u8{"/etc/hosts"};
+    try std.testing.expectError(error.NotExecutable, executeArgv(allocator, &argv));
 }
 
 test "utils: tokenizeCommandLine follows Exec grammar (double quotes only)" {
