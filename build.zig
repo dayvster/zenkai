@@ -159,7 +159,7 @@ pub fn build(b: *std.Build) !void {
         const osx_toolutil_module = b.addModule("osx_toolutil", .{
             .root_source_file = b.path("tools/osx/toolutil.zig"),
         });
-        for (osx_tools) |tool_name| {
+        inline for (osx_tools) |tool_name| {
             const tool_module = b.createModule(.{
                 .root_source_file = b.path("tools/osx/" ++ tool_name ++ "/main.zig"),
                 .target = target,
