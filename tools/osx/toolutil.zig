@@ -88,7 +88,7 @@ pub fn execCaptureRaw(allocator: std.mem.Allocator, parts: []const []const u8, o
     if (std.c.waitpid(pid, &status, 0) < 0) return null;
 
     const status_u: u32 = @intCast(status);
-    const code = if (std.c.W.IFEXITED(status_u)) std.c.W.EXITSTATUS(status_u) else -1;
+    const code: c_int = if (std.c.W.IFEXITED(status_u)) @intCast(std.c.W.EXITSTATUS(status_u)) else -1;
     return .{ .len = total, .code = code };
 }
 

@@ -17,6 +17,7 @@ const Statvfs = extern struct {
 
 extern fn sysctlbyname(name: [*:0]const u8, oldp: ?*anyopaque, oldlenp: ?*usize, newp: ?*const anyopaque, newlen: usize) c_int;
 extern fn statvfs(path: [*:0]const u8, buf: *Statvfs) c_int;
+extern "c" fn time(t: ?*c_long) c_long;
 
 fn capture(allocator: std.mem.Allocator, parts: []const []const u8) []const u8 {
     const out = allocator.alloc(u8, util.MaxCapture) catch return "";
@@ -122,7 +123,7 @@ fn uptime(allocator: std.mem.Allocator) []const u8 {
     }
     const boot_secs = std.fmt.parseInt(u64, raw[start..i], 10) catch return allocator.dupe(u8, "uptime\t?\n") catch "";
 
-    const now: i64 = @divFloor(std.time.milliTimestamp(), 1000);
+    const now: i64 = @intCast(time(null));
     const uptime_secs: u64 = @intCast(now - @as(i64, @intCast(boot_secs)));
 
     const days = uptime_secs / (24 * 3600);

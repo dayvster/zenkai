@@ -161,7 +161,7 @@ fn apiRun(L: *lua.lua_State) callconv(.c) c_int {
         return 1;
     };
 
-    lua.lua_pushlstring(L, out[0..written].ptr, written);
+    _ = lua.lua_pushlstring(L, out[0..written].ptr, written);
     return 1;
 }
 
