@@ -45,7 +45,18 @@ fn makeItemActionHandler(comptime n: usize) *const fn (QAction) callconv(.c) voi
             if (n >= actions.len) return;
             const exec = actions[n].exec;
             if (exec.len == 0) return;
-            utils.execute(exec, g_app_list.allocator) catch {};
+            const argv = utils.tokenizeCommandLine(g_app_list.allocator, exec) catch |err| {
+                utils.log.info("action exec parse failed: {}", .{err});
+                QApp.quit();
+                return;
+            };
+            defer {
+                for (argv) |arg| g_app_list.allocator.free(arg);
+                g_app_list.allocator.free(argv);
+            }
+            utils.executeArgv(g_app_list.allocator, argv) catch |err| {
+                utils.log.info("failed to launch action: {}", .{err});
+            };
             QApp.quit();
         }
     }.handler;
