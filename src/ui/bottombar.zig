@@ -1,6 +1,7 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const config = @import("config");
+const utils = @import("utils");
 const applist = @import("list.zig");
 const ListItemAction = @import("list.zig").ListItemAction;
 const info = @import("info.zig");
@@ -15,6 +16,7 @@ const QIcon = qt.QIcon;
 const QLabel = qt.QLabel;
 const QWidget = qt.QWidget;
 const QResizeEvent = qt.QResizeEvent;
+const QApp = qt.QApplication;
 
 var g_app_list: *applist.List = undefined;
 var g_bar: *BottomBar = undefined;
@@ -28,6 +30,25 @@ pub const Action = struct {
 
 fn onOpen(_: QAction) callconv(.c) void {
     g_app_list.launchSelected();
+}
+
+fn loadActionIcon(icon_name: []const u8) QIcon {
+    if (icon_name.len == 0) return QIcon.new();
+    if (icon_name[0] == '/') return QIcon.new4(icon_name);
+    return QIcon.fromTheme(icon_name);
+}
+
+fn makeItemActionHandler(comptime n: usize) *const fn (QAction) callconv(.c) void {
+    return struct {
+        fn handler(_: QAction) callconv(.c) void {
+            const actions = applist.List.currentItemActions();
+            if (n >= actions.len) return;
+            const exec = actions[n].exec;
+            if (exec.len == 0) return;
+            utils.execute(exec, g_app_list.allocator) catch {};
+            QApp.quit();
+        }
+    }.handler;
 }
 
 fn onContainerResize(_: QWidget, _: QResizeEvent) callconv(.c) void {
@@ -151,10 +172,17 @@ pub const BottomBar = struct {
             return;
         }
 
-        self.actions = &.{};
-        self.items = self.allocator.alloc(QWidget, n) catch return;
+        self.actions = self.allocator.alloc(QAction, n) catch return;
+        self.items = self.allocator.alloc(QWidget, n) catch {
+            self.allocator.free(self.actions);
+            self.actions = &.{};
+            return;
+        };
 
-        for (actions[0..n], 0..) |a, i| {
+        inline for (0..10) |i| {
+            if (i >= n) break;
+            const a = actions[i];
+
             const el = QWidget.new2();
             el.setObjectName("actionItem");
             var row = HBoxLayout.new(el);
@@ -170,9 +198,16 @@ pub const BottomBar = struct {
             shortcut_label.setObjectName("actionShortcut");
             row.addWidget(shortcut_label);
 
-            const name_label = QLabel.new3(a.name);
-            name_label.setObjectName("actionName");
-            row.addWidget(name_label);
+            const icon = loadActionIcon(a.icon);
+            defer icon.delete();
+            self.actions[i] = QAction.new6(icon, a.name, self.parent);
+            self.actions[i].onTriggered(makeItemActionHandler(i));
+
+            const button = QToolButton.new2();
+            button.setObjectName("actionButton");
+            button.setDefaultAction(self.actions[i]);
+            button.setToolButtonStyle(qt.qnamespace_enums.ToolButtonStyle.ToolButtonTextBesideIcon);
+            row.addWidget(button);
 
             el.setParent(self.container);
             self.items[i] = el;
