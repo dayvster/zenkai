@@ -159,13 +159,12 @@ pub fn toolPath(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
     if (std.mem.indexOfScalar(u8, name, '/') != null) {
         return allocator.dupe(u8, name) catch null;
     }
-    if (std.process.getSelfExePathAlloc(allocator) catch null) |exe_path| {
-        defer allocator.free(exe_path);
-        if (std.fs.path.dirname(exe_path)) |exe_dir| {
-            const candidate = std.fs.path.join(allocator, &.{ exe_dir, name }) catch return null;
-            if (fileExists(candidate)) return candidate;
-            allocator.free(candidate);
-        }
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    if (std.process.executableDirPathAlloc(io, allocator) catch null) |exe_dir| {
+        defer allocator.free(exe_dir);
+        const candidate = std.fs.path.join(allocator, &.{ exe_dir, name }) catch return null;
+        if (fileExists(candidate)) return candidate;
+        allocator.free(candidate);
     }
     if (std.c.getenv("ZENKAI_TOOLS")) |tools_dir_raw| {
         const tools_dir = std.mem.sliceTo(tools_dir_raw, 0);
