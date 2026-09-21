@@ -251,7 +251,9 @@ pub fn tokenizeCommandLine(allocator: std.mem.Allocator, input: []const u8) ![]c
             }
         }
 
-        if (tok_started and buf.items.len > 0) {
+        // An explicitly quoted empty argument is kept as an empty token;
+        // separators alone never produce empty tokens.
+        if (tok_started) {
             try tokens.append(allocator, try buf.toOwnedSlice(allocator));
         }
     }
@@ -544,33 +546,44 @@ test "utils: tokenizeCommandLine rejects an unterminated double quote" {
     try std.testing.expectError(error.InvalidSyntax, tokenizeCommandLine(allocator, "app \"unclosed"));
 }
 
-test "utils: tokenizeCommandLine drops empty arguments" {
+test "utils: tokenizeCommandLine collapses separators without empty tokens" {
     const allocator = std.testing.allocator;
 
-    {
-        const input = "   one   two\t  three  ";
-        const tokens = try tokenizeCommandLine(allocator, input);
-        defer {
-            for (tokens) |t| allocator.free(t);
-            allocator.free(tokens);
-        }
-        try std.testing.expectEqual(@as(usize, 3), tokens.len);
-        try std.testing.expectEqualStrings("one", tokens[0]);
-        try std.testing.expectEqualStrings("two", tokens[1]);
-        try std.testing.expectEqualStrings("three", tokens[2]);
+    const input = "   one   two\t  three  ";
+    const tokens = try tokenizeCommandLine(allocator, input);
+    defer {
+        for (tokens) |t| allocator.free(t);
+        allocator.free(tokens);
     }
+    try std.testing.expectEqual(@as(usize, 3), tokens.len);
+    try std.testing.expectEqualStrings("one", tokens[0]);
+    try std.testing.expectEqualStrings("two", tokens[1]);
+    try std.testing.expectEqualStrings("three", tokens[2]);
+}
 
-    {
-        const input = "a \"\" b";
-        const tokens = try tokenizeCommandLine(allocator, input);
-        defer {
-            for (tokens) |t| allocator.free(t);
-            allocator.free(tokens);
-        }
-        try std.testing.expectEqual(@as(usize, 2), tokens.len);
-        try std.testing.expectEqualStrings("a", tokens[0]);
-        try std.testing.expectEqualStrings("b", tokens[1]);
+test "utils: tokenizeCommandLine preserves an explicitly quoted empty argument" {
+    const allocator = std.testing.allocator;
+
+    const input = "a \"\" b";
+    const tokens = try tokenizeCommandLine(allocator, input);
+    defer {
+        for (tokens) |t| allocator.free(t);
+        allocator.free(tokens);
     }
+    try std.testing.expectEqual(@as(usize, 3), tokens.len);
+    try std.testing.expectEqualStrings("a", tokens[0]);
+    try std.testing.expectEqualStrings("", tokens[1]);
+    try std.testing.expectEqualStrings("b", tokens[2]);
+
+    const input2 = "x \"\"";
+    const tokens2 = try tokenizeCommandLine(allocator, input2);
+    defer {
+        for (tokens2) |t| allocator.free(t);
+        allocator.free(tokens2);
+    }
+    try std.testing.expectEqual(@as(usize, 2), tokens2.len);
+    try std.testing.expectEqualStrings("x", tokens2[0]);
+    try std.testing.expectEqualStrings("", tokens2[1]);
 }
 
 test "utils: tokenizeCommandLine empty input yields no tokens" {

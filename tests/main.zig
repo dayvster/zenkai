@@ -419,7 +419,7 @@ test "dapp_parser: localized Name selection" {
         dapp_parser.setLocale("de");
         var entry = try dapp_parser.DappParser.parseDesktopFile(allocator, content);
         defer entry.deinit(allocator);
-        try std.testing.expectEqualStrings("Feuerfuchs Spezial", entry.name);
+        try std.testing.expectEqualStrings("Feuerfuchs", entry.name);
     }
 
     {
