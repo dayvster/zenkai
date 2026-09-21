@@ -159,7 +159,7 @@ pub fn toolPath(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
     if (std.mem.indexOfScalar(u8, name, '/') != null) {
         return allocator.dupe(u8, name) catch null;
     }
-    if (std.fs.selfExePathAlloc(allocator) catch null) |exe_path| {
+    if (std.process.getSelfExePathAlloc(allocator) catch null) |exe_path| {
         defer allocator.free(exe_path);
         if (std.fs.path.dirname(exe_path)) |exe_dir| {
             const candidate = std.fs.path.join(allocator, &.{ exe_dir, name }) catch return null;
