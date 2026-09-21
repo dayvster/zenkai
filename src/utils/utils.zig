@@ -190,12 +190,12 @@ fn fileExists(path: []const u8) bool {
 
 const ArgvC = struct {
     array: [tool_arg_limit + 1:null]?[*:0]const u8,
-    owned: [][*:0]u8,
+    owned: [][:0]u8,
 };
 
 fn buildArgvC(allocator: std.mem.Allocator, args: []const []const u8) !ArgvC {
     if (args.len == 0 or args.len > tool_arg_limit) return error.TooManyArgs;
-    const owned = try allocator.alloc([*:0]u8, args.len);
+    const owned = try allocator.alloc([:0]u8, args.len);
     var array: [tool_arg_limit + 1:null]?[*:0]const u8 = undefined;
     var count: usize = 0;
     errdefer {

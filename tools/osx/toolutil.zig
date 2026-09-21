@@ -21,26 +21,29 @@ pub fn usageExit() noreturn {
     std.process.exit(2);
 }
 
-pub fn buildArgv(allocator: std.mem.Allocator, parts: []const []const u8) ![:null]?[*:0]u8 {
-    const argv = try allocator.allocSentinel(?[*:0]u8, parts.len, null);
-    var count: usize = 0;
-    errdefer {
-        for (argv[0..count]) |ptr| if (ptr) |arg| allocator.free(arg);
-        allocator.free(argv);
+pub const Argv = struct {
+    sentinel: [:null]?[*:0]u8,
+    owned: [][:0]u8,
+
+    pub fn deinit(self: *const Argv, allocator: std.mem.Allocator) void {
+        for (self.owned) |z| allocator.free(z);
+        allocator.free(self.owned);
+        allocator.free(self.sentinel);
     }
+};
+
+pub fn buildArgv(allocator: std.mem.Allocator, parts: []const []const u8) !Argv {
+    const owned = try allocator.alloc([:0]u8, parts.len);
+    errdefer allocator.free(owned);
+    const sentinel = try allocator.allocSentinel(?[*:0]u8, parts.len, null);
+    var count: usize = 0;
+    errdefer for (owned[0..count]) |z| allocator.free(z);
     for (parts, 0..) |part, i| {
-        const z = try allocator.dupeZ(u8, part);
-        argv[i] = z.ptr;
+        owned[i] = try allocator.dupeZ(u8, part);
+        sentinel[i] = owned[i].ptr;
         count += 1;
     }
-    return argv;
-}
-
-fn freeArgv(allocator: std.mem.Allocator, argv: [:null]?[*:0]u8) void {
-    for (argv) |ptr| if (ptr) |arg| {
-        allocator.free(arg);
-    };
-    allocator.free(argv);
+    return .{ .sentinel = sentinel, .owned = owned };
 }
 
 pub const CaptureResult = struct {
@@ -50,7 +53,7 @@ pub const CaptureResult = struct {
 
 pub fn execCaptureRaw(allocator: std.mem.Allocator, parts: []const []const u8, out: []u8) ?CaptureResult {
     const argv = buildArgv(allocator, parts) catch return null;
-    defer freeArgv(allocator, argv);
+    defer argv.deinit(allocator);
 
     var pipefd: [2]c_int = undefined;
     if (std.c.pipe(&pipefd) != 0) return null;
@@ -67,7 +70,7 @@ pub fn execCaptureRaw(allocator: std.mem.Allocator, parts: []const []const u8, o
         _ = std.c.dup2(pipefd[1], 1);
         _ = std.c.dup2(pipefd[1], 2);
         if (pipefd[1] != 1) _ = std.c.close(pipefd[1]);
-        _ = std.c.execve(argv[0].?, argv.ptr, environ);
+        _ = std.c.execve(argv.sentinel[0].?, @as([*:null]const ?[*:0]const u8, @ptrCast(argv.sentinel.ptr)), environ);
         std.c._exit(127);
     }
 
@@ -84,7 +87,8 @@ pub fn execCaptureRaw(allocator: std.mem.Allocator, parts: []const []const u8, o
     var status: c_int = 0;
     if (std.c.waitpid(pid, &status, 0) < 0) return null;
 
-    const code = if (std.c.W.IFEXITED(status)) std.c.W.EXITSTATUS(status) else -1;
+    const status_u: u32 = @intCast(status);
+    const code = if (std.c.W.IFEXITED(status_u)) std.c.W.EXITSTATUS(status_u) else -1;
     return .{ .len = total, .code = code };
 }
 
@@ -96,19 +100,20 @@ pub fn execCapture(allocator: std.mem.Allocator, parts: []const []const u8, out:
 
 pub fn execWait(allocator: std.mem.Allocator, parts: []const []const u8) !u8 {
     const argv = try buildArgv(allocator, parts);
-    defer freeArgv(allocator, argv);
+    defer argv.deinit(allocator);
 
     const pid = std.c.fork();
     if (pid < 0) return error.SpawnFailed;
     if (pid == 0) {
-        _ = std.c.execve(argv[0].?, argv.ptr, environ);
+        _ = std.c.execve(argv.sentinel[0].?, @as([*:null]const ?[*:0]const u8, @ptrCast(argv.sentinel.ptr)), environ);
         std.c._exit(127);
     }
 
     var status: c_int = 0;
     if (std.c.waitpid(pid, &status, 0) < 0) return error.SpawnFailed;
-    if (!std.c.W.IFEXITED(status)) return error.SpawnFailed;
-    return @intCast(std.c.W.EXITSTATUS(status));
+    const status_u: u32 = @intCast(status);
+    if (!std.c.W.IFEXITED(status_u)) return error.SpawnFailed;
+    return @intCast(std.c.W.EXITSTATUS(status_u));
 }
 
 pub fn sanitize(buf: []u8) void {
