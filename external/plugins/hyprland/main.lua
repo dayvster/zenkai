@@ -1,4 +1,4 @@
-﻿local trigger_prefixes = { "hypr", "wm" }
+local trigger_prefixes = { "hypr", "wm" }
 
 local function strip_prefix(q)
     if q == "hypr" or q == "wm" then
