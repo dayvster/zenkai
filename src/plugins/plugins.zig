@@ -491,7 +491,8 @@ pub const PluginManager = struct {
 
             if (url.len > 1023) return;
 
-            if (self.clipboard_cmd) |clip_cmd| {
+            const clip_cmd = self.clipboard_cmd orelse "";
+            if (clip_cmd.len > 0) {
                 var pipefd: [2]i32 = undefined;
                 if (std.os.linux.pipe(&pipefd) != 0) return;
 
@@ -528,27 +529,64 @@ pub const PluginManager = struct {
                 _ = std.os.linux.close(pipefd[1]);
             } else {
                 const handler = self.url_handler orelse "xdg-open";
-                var buf: [1024:0]u8 = undefined;
-                const total = handler.len + 1 + url.len;
-                if (total >= buf.len) return;
-                @memcpy(buf[0..handler.len], handler);
-                buf[handler.len] = ' ';
-                @memcpy(buf[handler.len + 1 ..][0..url.len], url);
-                buf[total] = 0;
-                const sh = @as([*:0]const u8, "sh");
-                const c = @as([*:0]const u8, "-c");
+
+                var handler_buf: [1024:0]u8 = undefined;
+                var handler_c: [*:0]const u8 = undefined;
+                if (std.mem.indexOfScalar(u8, handler, '/') != null) {
+                    if (handler.len >= handler_buf.len) return;
+                    @memcpy(handler_buf[0..handler.len], handler);
+                    handler_buf[handler.len] = 0;
+                    handler_c = @as([*:0]const u8, @ptrCast(&handler_buf));
+                } else {
+                    const written = std.fmt.bufPrint(&handler_buf, "/usr/bin/{s}", .{handler}) catch return;
+                    handler_buf[written.len] = 0;
+                    handler_c = @as([*:0]const u8, @ptrCast(&handler_buf));
+                }
+
+                var url_buf: [1024:0]u8 = undefined;
+                if (url.len >= url_buf.len) return;
+                @memcpy(url_buf[0..url.len], url);
+                url_buf[url.len] = 0;
+
                 const argv = [_:null]?[*:0]u8{
-                    @constCast(sh),
-                    @constCast(c),
-                    @as([*:0]u8, @ptrCast(&buf)),
+                    @constCast(handler_c),
+                    @as([*:0]u8, @ptrCast(&url_buf)),
                     null,
                 };
+
                 const pid = std.os.linux.fork();
-                if (std.os.linux.errno(pid) == .SUCCESS and pid == 0) {
-                    _ = std.os.linux.execve("/bin/sh", &argv, utils.environ);
+                if (std.os.linux.errno(pid) != .SUCCESS) return;
+                if (pid == 0) {
+                    _ = std.os.linux.execve(handler_c, &argv, utils.environ);
                     std.os.linux.exit(1);
                 }
+
+                const thread_data = self.allocator.create(ThreadData) catch return;
+                thread_data.* = .{
+                    .pid = @as(i32, @intCast(pid)),
+                    .allocator = self.allocator,
+                };
+
+                const thread = std.Thread.spawn(.{}, reapChild, .{thread_data}) catch |err| {
+                    self.allocator.destroy(thread_data);
+                    var status: u32 = 0;
+                    _ = std.os.linux.waitpid(@as(i32, @intCast(pid)), &status, 0);
+                    utils.log.info("plugin url open reap thread failed: {}", .{err});
+                    return;
+                };
+                thread.detach();
             }
         }
     }
 };
+
+const ThreadData = struct {
+    pid: i32,
+    allocator: std.mem.Allocator,
+};
+
+fn reapChild(data: *ThreadData) void {
+    var status: u32 = 0;
+    _ = std.os.linux.waitpid(data.pid, &status, 0);
+    data.allocator.destroy(data);
+}
