@@ -36,6 +36,26 @@ fn pathExists(path: []const u8) bool {
     return true;
 }
 
+fn shortcutIcon(allocator: std.mem.Allocator, shortcut_path: []const u8) ?[]const u8 {
+    if (!endsWithIgnoreCase(shortcut_path, ".url")) return null;
+    const content = fsutils.readFile(allocator, shortcut_path, 64 * 1024) catch return null;
+    defer allocator.free(content);
+
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        const separator = std.mem.indexOfScalar(u8, trimmed, '=') orelse continue;
+        const key = std.mem.trim(u8, trimmed[0..separator], " \t");
+        if (!std.ascii.eqlIgnoreCase(key, "IconFile")) continue;
+
+        const icon_path = std.mem.trim(u8, trimmed[separator + 1 ..], " \t\r\"'");
+        if (icon_path.len == 0 or !pathExists(icon_path)) return null;
+        if (endsWithIgnoreCase(icon_path, ".ico")) return allocator.dupe(u8, icon_path) catch null;
+        return std.fmt.allocPrint(allocator, "{s}{s}", .{ shell_icon_prefix, icon_path }) catch null;
+    }
+    return null;
+}
+
 fn resolvePackageLogo(allocator: std.mem.Allocator, package_path: []const u8, app_id: []const u8) ?[]const u8 {
     if (package_path.len == 0) return null;
     const manifest_path = std.fmt.allocPrint(allocator, "{s}\\AppxManifest.xml", .{package_path}) catch return null;
@@ -162,7 +182,7 @@ pub const AppReader = struct {
                 .type = .Application,
                 .exec = try std.fmt.allocPrint(arena, "\"{s}\"", .{path}),
                 .file_path = try arena.dupe(u8, path),
-                .icon = try std.fmt.allocPrint(arena, "{s}{s}", .{ shell_icon_prefix, path }),
+                .icon = shortcutIcon(arena, path) orelse try std.fmt.allocPrint(arena, "{s}{s}", .{ shell_icon_prefix, path }),
                 .extra = std.StringHashMap([]const u8).init(arena),
             };
             try self.apps.append(self.allocator, app);

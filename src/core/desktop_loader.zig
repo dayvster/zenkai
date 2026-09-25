@@ -9,7 +9,11 @@ const lang = @import("lang");
 const config = @import("config");
 
 const CachedItem = struct { name: []const u8, cmd: []const u8, icon: []const u8 };
-const CachedItems = struct { items: []CachedItem };
+const cache_version: u32 = 1;
+const CachedItems = struct {
+    version: u32 = 0,
+    items: []CachedItem,
+};
 
 fn cachePath(allocator: std.mem.Allocator) ![]u8 {
     const dir = try config.configDir(allocator);
@@ -34,6 +38,7 @@ pub fn loadCache(allocator: std.mem.Allocator) ?[]ui.ListItem {
     defer allocator.free(content);
     const parsed = std.json.parseFromSlice(CachedItems, allocator, content, .{ .allocate = .alloc_always }) catch return null;
     defer parsed.deinit();
+    if (parsed.value.version != cache_version) return null;
     const items = allocator.alloc(ui.ListItem, parsed.value.items.len) catch return null;
     var initialized: usize = 0;
     errdefer {
@@ -60,7 +65,7 @@ pub fn saveCache(allocator: std.mem.Allocator, items: []const ui.ListItem) void 
     const cached = allocator.alloc(CachedItem, items.len) catch return;
     defer allocator.free(cached);
     for (items, 0..) |item, i| cached[i] = .{ .name = item.name, .cmd = item.cmd, .icon = item.icon };
-    const json = std.json.Stringify.valueAlloc(allocator, CachedItems{ .items = cached }, .{}) catch return;
+    const json = std.json.Stringify.valueAlloc(allocator, CachedItems{ .version = cache_version, .items = cached }, .{}) catch return;
     defer allocator.free(json);
     const path = cachePath(allocator) catch return;
     defer allocator.free(path);
