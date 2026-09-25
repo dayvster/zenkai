@@ -233,11 +233,12 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.eql(u8, arg, "--no-plugins")) {
             cfg.no_plugins = true;
         } else if (std.mem.eql(u8, arg, "--run")) {
-            if (comptime builtin.os.tag != .windows) {
+            if (comptime builtin.os.tag == .windows) {
+                cfg.run_mode = true;
+            } else {
                 std.debug.print("--run is only available on Windows\n", .{});
                 std.process.exit(1);
             }
-            cfg.run_mode = true;
         } else if (std.mem.startsWith(u8, arg, "--language=")) {
             const val = arg["--language=".len..];
             cfg.language = if (val.len > 0) val else null;
