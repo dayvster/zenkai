@@ -56,7 +56,31 @@ pub fn openCommand(allocator: std.mem.Allocator, executable: []const u8, paramet
 }
 
 pub fn openArgv(allocator: std.mem.Allocator, executable: []const u8, args: []const []const u8) !void {
-    const parameters = try std.mem.join(allocator, " ", args);
+    var parameters_list: std.ArrayList(u8) = .empty;
+    defer parameters_list.deinit(allocator);
+    for (args, 0..) |arg, index| {
+        if (index > 0) try parameters_list.append(allocator, ' ');
+        try appendQuotedArgument(&parameters_list, allocator, arg);
+    }
+    const parameters = try parameters_list.toOwnedSlice(allocator);
     defer allocator.free(parameters);
     return openCommand(allocator, executable, parameters);
+}
+
+fn appendQuotedArgument(out: *std.ArrayList(u8), allocator: std.mem.Allocator, arg: []const u8) !void {
+    try out.append(allocator, '"');
+    var backslashes: usize = 0;
+    for (arg) |char| {
+        if (char == '\\') {
+            backslashes += 1;
+            continue;
+        }
+
+        const slash_count = if (char == '"') backslashes * 2 + 1 else backslashes;
+        for (0..slash_count) |_| try out.append(allocator, '\\');
+        try out.append(allocator, char);
+        backslashes = 0;
+    }
+    for (0..backslashes * 2) |_| try out.append(allocator, '\\');
+    try out.append(allocator, '"');
 }

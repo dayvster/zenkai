@@ -10,7 +10,7 @@ extern "advapi32" fn RegGetValueW(
     data: ?*anyopaque,
     data_size: *u32,
 ) callconv(.winapi) i32;
-const current_user: HKEY = @ptrFromInt(0x80000001);
+const current_user: HKEY = @ptrFromInt(@as(usize, @bitCast(@as(isize, -2147483647))));
 const personalize_key = std.unicode.utf8ToUtf16LeStringLiteral("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
 const dwm_key = std.unicode.utf8ToUtf16LeStringLiteral("Software\\Microsoft\\Windows\\DWM");
 const explorer_accent_key = std.unicode.utf8ToUtf16LeStringLiteral("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent");

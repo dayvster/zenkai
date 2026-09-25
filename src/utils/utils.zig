@@ -205,23 +205,27 @@ fn findBundleDir(path: []const u8) ?[]const u8 {
 
 pub fn executeArgv(allocator: std.mem.Allocator, argv: []const []const u8) !void {
     if (argv.len == 0) return error.NoExecutable;
-    const exe = try resolveExecutable(allocator, argv[0]);
-    defer allocator.free(exe);
+    if (comptime builtin.os.tag == .windows) {
+        return @import("windows.zig").openArgv(allocator, argv[0], argv[1..]);
+    } else {
+        const exe = try resolveExecutable(allocator, argv[0]);
+        defer allocator.free(exe);
 
-    var final = std.ArrayList([]const u8).empty;
-    defer final.deinit(allocator);
-    try final.append(allocator, exe);
-    if (builtin.os.tag == .macos) {
-        if (findBundleDir(exe)) |bundle| {
-            final.clearRetainingCapacity();
-            try final.append(allocator, "/usr/bin/open");
-            try final.append(allocator, bundle);
-            try final.append(allocator, "--args");
+        var final = std.ArrayList([]const u8).empty;
+        defer final.deinit(allocator);
+        try final.append(allocator, exe);
+        if (builtin.os.tag == .macos) {
+            if (findBundleDir(exe)) |bundle| {
+                final.clearRetainingCapacity();
+                try final.append(allocator, "/usr/bin/open");
+                try final.append(allocator, bundle);
+                try final.append(allocator, "--args");
+            }
         }
-    }
-    for (argv[1..]) |arg| try final.append(allocator, arg);
+        for (argv[1..]) |arg| try final.append(allocator, arg);
 
-    try spawnTool(final.items[0], final.items[1..], allocator);
+        try spawnTool(final.items[0], final.items[1..], allocator);
+    }
 }
 
 // Splits an Exec value into arguments following the freedesktop Desktop Entry

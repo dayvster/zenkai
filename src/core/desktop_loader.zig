@@ -49,6 +49,7 @@ pub fn loadCache(allocator: std.mem.Allocator) ?[]ui.ListItem {
             .name = allocator.dupe(u8, item.name) catch return null,
             .cmd = allocator.dupe(u8, item.cmd) catch return null,
             .icon = allocator.dupe(u8, item.icon) catch return null,
+            .desktop_app_idx = 0,
         };
         initialized += 1;
     }

@@ -25,6 +25,15 @@ var g_active_results: *std.ArrayList(PluginResult) = undefined;
 var g_next_result_identifier: usize = 0;
 var g_pending_open_url: ?[]const u8 = null;
 
+fn supportsCurrentPlatform(platforms: ?[][]const u8) bool {
+    const supported = platforms orelse return true;
+    const current_platform = @tagName(builtin.os.tag);
+    for (supported) |platform| {
+        if (std.ascii.eqlIgnoreCase(platform, current_platform)) return true;
+    }
+    return false;
+}
+
 fn apiAddResult(L: *lua.lua_State) callconv(.c) c_int {
     const title = if (lua.lua_tostring(L, 1)) |s| std.mem.sliceTo(s, 0) else "";
     const subtitle = if (lua.lua_tostring(L, 2)) |s| std.mem.sliceTo(s, 0) else "";
@@ -393,6 +402,10 @@ pub const PluginManager = struct {
         };
 
         const parsed_manifest = parsed.value;
+        if (!supportsCurrentPlatform(parsed_manifest.platforms)) {
+            parsed.deinit();
+            return;
+        }
         if ((parsed_manifest.disabled orelse false) or parsed_manifest.name.len == 0 or parsed_manifest.main.len == 0) {
             utils.log.info("plugin '{s}': disabled or missing name/main", .{dir_name});
             parsed.deinit();
