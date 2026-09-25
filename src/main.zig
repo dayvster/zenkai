@@ -35,7 +35,9 @@ fn onAppsRefresh(timer: qt.QTimer) callconv(.c) void {
         };
         const items = loaded;
         window.setOwnedItems(items);
-        if (!g_app_refresh_actions and !g_app_refresh_actions_bar) desktop_loader.saveCache(g_app_refresh_allocator, items);
+        if (!g_app_refresh_actions and !g_app_refresh_actions_bar and items.len > 0) {
+            desktop_loader.saveCache(g_app_refresh_allocator, items);
+        }
         log.info("app list refreshed in {d:.2}ms", .{@as(f64, @floatFromInt(debug.monotonicNs() - started)) / std.time.ns_per_ms});
     }
     timer.delete();
@@ -195,7 +197,7 @@ pub fn main(init: std.process.Init) !void {
         if (desktop_loader.loadCache(init.gpa)) |cached| {
             window.setOwnedItems(cached);
             log.info("loaded {d} apps from cache", .{cached.len});
-            refresh_apps = !desktop_loader.cacheIsFresh(init.gpa);
+            refresh_apps = cached.len == 0 or !desktop_loader.cacheIsFresh(init.gpa);
         }
     }
 

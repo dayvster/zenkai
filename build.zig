@@ -1,8 +1,10 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const configureQtExeRootModule = @import("libqt6zig").configureQtExeRootModule;
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
+    const qt_win_root = b.option([]const u8, "qt-win-root", "Windows Qt installation root") orelse "C:/Qt/6.8.3/llvm-mingw_64";
 
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -15,6 +17,7 @@ pub fn build(b: *std.Build) !void {
         .name = "zenkai",
         .root_module = module,
     });
+    if (target.result.os.tag == .windows) exe.subsystem = .windows;
 
     const qt6zig = b.dependency("libqt6zig", .{
         .target = target,
@@ -86,6 +89,7 @@ pub fn build(b: *std.Build) !void {
 
     try configureQtExeRootModule(b, exe, .{
         .linux_libraries = &.{"libgcc_eh.a"},
+        .win_root = qt_win_root,
     });
 
     if (target.result.os.tag == .windows) {
@@ -198,6 +202,26 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("lang", lang_module);
     if (osx_module) |mod| exe.root_module.addImport("osx", mod);
     b.installArtifact(exe);
+
+    if (target.result.os.tag == .windows and builtin.target.os.tag == .windows) {
+        const deploy_step = b.step("deploy-windows", "Build Zenkai and bundle its Qt runtime for Windows");
+        const deploy_cmd = b.addSystemCommand(&.{
+            b.fmt("{s}/bin/windeployqt.exe", .{qt_win_root}),
+            "--no-translations",
+            b.getInstallPath(.bin, "zenkai.exe"),
+        });
+        const runtime_dlls = [_][]const u8{ "libc++.dll", "libunwind.dll" };
+        for (runtime_dlls) |runtime_dll| {
+            const install_runtime = b.addInstallFileWithDir(
+                .{ .cwd_relative = b.fmt("{s}/bin/{s}", .{ qt_win_root, runtime_dll }) },
+                .bin,
+                runtime_dll,
+            );
+            deploy_cmd.step.dependOn(&install_runtime.step);
+        }
+        deploy_cmd.step.dependOn(b.getInstallStep());
+        deploy_step.dependOn(&deploy_cmd.step);
+    }
 
     const run_step = b.step("run", "Run the app");
 
