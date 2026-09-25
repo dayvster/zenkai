@@ -9,7 +9,7 @@ const lang = @import("lang");
 const config = @import("config");
 
 const CachedItem = struct { name: []const u8, cmd: []const u8, icon: []const u8 };
-const cache_version: u32 = 1;
+const cache_version: u32 = 2;
 const CachedItems = struct {
     version: u32 = 0,
     items: []CachedItem,

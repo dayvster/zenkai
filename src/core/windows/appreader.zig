@@ -11,6 +11,14 @@ fn endsWithIgnoreCase(text: []const u8, suffix: []const u8) bool {
     return text.len >= suffix.len and std.ascii.eqlIgnoreCase(text[text.len - suffix.len ..], suffix);
 }
 
+fn shortcutName(path: []const u8) []const u8 {
+    const basename = std.fs.path.basename(path);
+    return if (endsWithIgnoreCase(basename, ".lnk") or endsWithIgnoreCase(basename, ".url"))
+        basename[0 .. basename.len - 4]
+    else
+        basename;
+}
+
 fn attributeValue(tag: []const u8, attribute_name: []const u8) ?[]const u8 {
     var search_from: usize = 0;
     while (std.mem.indexOfPos(u8, tag, search_from, attribute_name)) |index| {
@@ -158,6 +166,15 @@ pub const AppReader = struct {
                 const basename = std.fs.path.basename(path);
                 if (!endsWithIgnoreCase(basename, ".lnk") and
                     !endsWithIgnoreCase(basename, ".url")) continue;
+                const name = shortcutName(path);
+                var duplicate = false;
+                for (found_paths.items) |found_path| {
+                    if (std.ascii.eqlIgnoreCase(shortcutName(found_path), name)) {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate) continue;
                 try found_paths.append(self.allocator, try self.allocator.dupe(u8, path));
             }
         }
@@ -173,10 +190,8 @@ pub const AppReader = struct {
         self.apps.clearRetainingCapacity();
         const arena = self.arena.allocator();
         for (self.shortcuts.items) |path| {
-            const basename = std.fs.path.basename(path);
-            const extension_len: usize = if (endsWithIgnoreCase(basename, ".lnk")) 4 else if (endsWithIgnoreCase(basename, ".url")) 4 else 0;
-            if (basename.len <= extension_len) continue;
-            const name = try arena.dupe(u8, basename[0 .. basename.len - extension_len]);
+            const name = try arena.dupe(u8, shortcutName(path));
+            if (name.len == 0) continue;
             const app = de.DesktopEntry{
                 .name = name,
                 .type = .Application,
