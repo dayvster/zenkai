@@ -2,7 +2,7 @@ const std = @import("std");
 const fsutils = @import("utils").fsutils;
 const log = @import("utils").log;
 
-const default_config = @embedFile("config.toml");
+const default_config = @embedFile("zenkai.conf");
 
 pub const VisualConfig = struct {
     window_width: i32 = 600,
@@ -57,13 +57,77 @@ pub const VisualConfig = struct {
     }
 };
 
-pub fn configDir(allocator: std.mem.Allocator) ![]u8 {
+pub fn xdgConfigHome(allocator: std.mem.Allocator) ?[]u8 {
     if (std.c.getenv("XDG_CONFIG_HOME")) |xdg| {
-        const dir = std.mem.sliceTo(xdg, 0);
-        return try std.fs.path.join(allocator, &.{ dir, "zenkai" });
+        if (std.mem.sliceTo(xdg, 0).len > 0) {
+            return allocator.dupe(u8, std.mem.sliceTo(xdg, 0)) catch null;
+        }
     }
-    const home = std.c.getenv("HOME") orelse "/home";
-    return try std.fs.path.join(allocator, &.{ std.mem.sliceTo(home, 0), ".config", "zenkai" });
+    if (std.c.getenv("HOME")) |home| {
+        const h = std.mem.sliceTo(home, 0);
+        return std.fs.path.join(allocator, &.{ h, ".config" }) catch null;
+    }
+    return null;
+}
+
+pub fn xdgDataHome(allocator: std.mem.Allocator) ?[]u8 {
+    if (std.c.getenv("XDG_DATA_HOME")) |xdg| {
+        if (std.mem.sliceTo(xdg, 0).len > 0) {
+            return allocator.dupe(u8, std.mem.sliceTo(xdg, 0)) catch null;
+        }
+    }
+    if (std.c.getenv("HOME")) |home| {
+        const h = std.mem.sliceTo(home, 0);
+        return std.fs.path.join(allocator, &.{ h, ".local", "share" }) catch null;
+    }
+    return null;
+}
+
+pub fn xdgCacheHome(allocator: std.mem.Allocator) ?[]u8 {
+    if (std.c.getenv("XDG_CACHE_HOME")) |xdg| {
+        if (std.mem.sliceTo(xdg, 0).len > 0) {
+            return allocator.dupe(u8, std.mem.sliceTo(xdg, 0)) catch null;
+        }
+    }
+    if (std.c.getenv("HOME")) |home| {
+        const h = std.mem.sliceTo(home, 0);
+        return std.fs.path.join(allocator, &.{ h, ".cache" }) catch null;
+    }
+    return null;
+}
+
+pub fn userConfigDir(allocator: std.mem.Allocator) ![]u8 {
+    const base = xdgConfigHome(allocator) orelse return error.NoBaseDir;
+    defer allocator.free(base);
+    return try std.fs.path.join(allocator, &.{ base, "zenkai" });
+}
+
+pub fn userDataDir(allocator: std.mem.Allocator) ![]u8 {
+    const base = xdgDataHome(allocator) orelse return error.NoBaseDir;
+    defer allocator.free(base);
+    return try std.fs.path.join(allocator, &.{ base, "zenkai" });
+}
+
+pub fn userCacheDir(allocator: std.mem.Allocator) ![]u8 {
+    const base = xdgCacheHome(allocator) orelse return error.NoBaseDir;
+    defer allocator.free(base);
+    return try std.fs.path.join(allocator, &.{ base, "zenkai" });
+}
+
+pub fn userPluginConfigDir(allocator: std.mem.Allocator) ![]u8 {
+    const base = try userConfigDir(allocator);
+    defer allocator.free(base);
+    return try std.fs.path.join(allocator, &.{ base, "plugins" });
+}
+
+pub fn userPluginDataDir(allocator: std.mem.Allocator) ![]u8 {
+    const base = try userDataDir(allocator);
+    defer allocator.free(base);
+    return try std.fs.path.join(allocator, &.{ base, "plugins" });
+}
+
+pub fn configDir(allocator: std.mem.Allocator) ![]u8 {
+    return try userConfigDir(allocator);
 }
 
 pub fn deploy(io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
@@ -74,9 +138,19 @@ pub fn deploy(io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
         try fsutils.makeDir(io, dir_path);
     }
 
-    const config_path = try std.fs.path.join(allocator, &.{ dir_path, "config.toml" });
-
     const cwd = std.Io.Dir.cwd();
+
+    const legacy_path = try std.fs.path.join(allocator, &.{ dir_path, "config.toml" });
+
+    if (std.Io.Dir.openFile(cwd, io, legacy_path, .{})) |file| {
+        file.close(io);
+        return legacy_path;
+    }
+
+    allocator.free(legacy_path);
+
+    const config_path = try std.fs.path.join(allocator, &.{ dir_path, "zenkai.conf" });
+
     if (std.Io.Dir.openFile(cwd, io, config_path, .{})) |file| {
         file.close(io);
         return config_path;

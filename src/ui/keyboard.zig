@@ -74,7 +74,13 @@ fn onSearchKeyPress(edit: QLineEdit, event: QKeyEvent) callconv(.c) void {
     switch (event.key()) {
         qt.qnamespace_enums.Key.Key_Home => scrollToTop(),
         qt.qnamespace_enums.Key.Key_End => scrollToEnd(),
-        else => edit.superKeyPressEvent(event),
+        else => {
+            if (L.plugin_manager) |pm| {
+                const key_text = event.text();
+                if (key_text.len > 0) pm.dispatchKeyPress(key_text);
+            }
+            edit.superKeyPressEvent(event);
+        },
     }
 }
 
@@ -117,7 +123,21 @@ fn makeActionHandler(comptime n: usize) *const fn (QShortcut) callconv(.c) void 
         fn handler(_: QShortcut) callconv(.c) void {
             const actions = List.currentItemActions();
             if (n < actions.len) {
-                utils.execute(actions[n].exec, L.allocator) catch {};
+                const exec = actions[n].exec;
+                if (exec.len > 0) {
+                    const argv = utils.tokenizeCommandLine(L.allocator, exec) catch |err| {
+                        utils.log.info("action exec parse failed: {}", .{err});
+                        QApp.quit();
+                        return;
+                    };
+                    defer {
+                        for (argv) |arg| L.allocator.free(arg);
+                        L.allocator.free(argv);
+                    }
+                    utils.executeArgv(L.allocator, argv) catch |err| {
+                        utils.log.info("failed to launch action: {}", .{err});
+                    };
+                }
                 QApp.quit();
             }
         }

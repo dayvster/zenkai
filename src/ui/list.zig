@@ -163,24 +163,25 @@ fn freePluginResults(allocator: std.mem.Allocator, results: *std.ArrayList(plugi
     results.clearRetainingCapacity();
 }
 
-var g_list: *List = undefined;
+var g_list: ?*List = null;
 var g_on_item_focused: ?*const fn (item_index: usize, actions: []const ListItemAction) void = null;
 var g_current_item_actions: []const ListItemAction = &.{};
 
 fn onDoubleClicked(_: QListView, _: QModelIndex) callconv(.c) void {
-    g_list.launchSelected();
+    if (g_list) |list| list.launchSelected();
 }
 
 fn onCurrentChanged(_: QListView, current: QModelIndex, _: QModelIndex) callconv(.c) void {
+    const list = g_list orelse return;
     const row = current.row();
     if (row < 0) return;
     const urow = @as(usize, @intCast(row));
-    if (urow >= g_list.indices.items.len) return;
+    if (urow >= list.indices.items.len) return;
 
-    const entry = g_list.indices.items[urow];
+    const entry = list.indices.items[urow];
     switch (entry) {
         .item => |item_idx| {
-            const items = switch (g_list.source) {
+            const items = switch (list.source) {
                 .items => |is| is,
                 .desktop_apps => return,
             };
@@ -195,7 +196,8 @@ fn onCurrentChanged(_: QListView, current: QModelIndex, _: QModelIndex) callconv
 }
 
 fn onRowCount(_: QAbstractListModel, _: QModelIndex) callconv(.c) i32 {
-    return @intCast(g_list.indices.items.len);
+    const list = g_list orelse return 0;
+    return @intCast(list.indices.items.len);
 }
 
 fn onData(
@@ -203,8 +205,9 @@ fn onData(
     index: QModelIndex,
     role: i32,
 ) callconv(.c) QVariant {
+    const list = g_list orelse return QVariant.new();
     const row = index.row();
-    const indices = g_list.indices.items;
+    const indices = list.indices.items;
     if (row < 0 or @as(usize, @intCast(row)) >= indices.len)
         return QVariant.new();
 
@@ -213,7 +216,7 @@ fn onData(
     switch (entry) {
         .item => |idx| {
             if (role == 0) {
-                const name = switch (g_list.source) {
+                const name = switch (list.source) {
                     .desktop_apps => |apps| apps[idx].name,
                     .items => |items| items[idx].name,
                 };
@@ -221,7 +224,7 @@ fn onData(
             }
             if (role == 1) {
                 if (g_no_icons) return QVariant.new();
-                const icon = switch (g_list.source) {
+                const icon = switch (list.source) {
                     .desktop_apps => |apps| tryLoadIcon(apps[idx]),
                     .items => |items| loadItemIcon(items[idx]),
                 };
@@ -230,7 +233,7 @@ fn onData(
             }
         },
         .plugin => |plugin_idx| {
-            const plugin_result = &g_list.plugin_results.items[plugin_idx];
+            const plugin_result = &list.plugin_results.items[plugin_idx];
             if (role == 0) return QVariant.new24(plugin_result.title);
             if (role == 1) {
                 if (g_no_icons) return QVariant.new();
@@ -250,21 +253,28 @@ const FreqSortContext = struct {
 };
 
 fn freqLessThan(ctx: FreqSortContext, a: IndexEntry, b: IndexEntry) bool {
-    const key_a = switch (a) {
-        .item => |i| switch (ctx.source.*) {
-            .desktop_apps => |apps| apps[i].name,
-            .items => |items| items[i].name,
-        },
+    const item_a = switch (a) {
+        .item => |i| i,
         .plugin => return false,
     };
-    const key_b = switch (b) {
-        .item => |i| switch (ctx.source.*) {
-            .desktop_apps => |apps| apps[i].name,
-            .items => |items| items[i].name,
-        },
+    const item_b = switch (b) {
+        .item => |i| i,
         .plugin => return true,
     };
-    return ctx.store.getScore(key_a) > ctx.store.getScore(key_b);
+    const key_a = switch (ctx.source.*) {
+        .desktop_apps => |apps| apps[item_a].name,
+        .items => |items| items[item_a].name,
+    };
+    const key_b = switch (ctx.source.*) {
+        .desktop_apps => |apps| apps[item_b].name,
+        .items => |items| items[item_b].name,
+    };
+    const score_a = ctx.store.getScore(key_a);
+    const score_b = ctx.store.getScore(key_b);
+    if (score_a != score_b) return score_a > score_b;
+    const cmp = std.ascii.orderIgnoreCase(key_a, key_b);
+    if (cmp != .eq) return cmp == .lt;
+    return item_a < item_b;
 }
 
 pub const List = struct {
@@ -317,7 +327,6 @@ pub const List = struct {
             .plugin_manager = plugin_manager,
             .frequency_store = null,
         };
-        g_list = &result;
         view.setModel(model);
         view.onCurrentChanged(onCurrentChanged);
         view.onDoubleClicked(onDoubleClicked);
@@ -436,7 +445,12 @@ pub const List = struct {
         self.view.scrollTo(idx, qt.qabstractitemview_enums.ScrollHint.EnsureVisible);
     }
 
-    pub fn launchSelected(self: *List) void {
+    fn freeArgv(allocator: std.mem.Allocator, argv: []const []const u8) void {
+    for (argv) |arg| allocator.free(arg);
+    allocator.free(argv);
+}
+
+pub fn launchSelected(self: *List) void {
         if (!self.view.currentIndex().isValid()) {
             self.selectFirst();
         }
@@ -456,12 +470,41 @@ pub const List = struct {
                 switch (self.source) {
                     .desktop_apps => |apps| {
                         const app = &apps[item_idx];
-                        const expanded = app.expandExec(self.allocator) catch return;
-                        defer self.allocator.free(expanded);
-                        utils.execute(expanded, self.allocator) catch {};
+                        const exec = app.exec orelse "";
+                        if (exec.len > 0) {
+                            const expanded = de.DesktopEntry.expandExecString(exec, app, self.allocator) catch "";
+                            if (expanded.len > 0) {
+                                defer self.allocator.free(expanded);
+                                const argv = utils.tokenizeCommandLine(self.allocator, expanded) catch null;
+                                if (argv) |argv_slice| {
+                                    defer freeArgv(self.allocator, argv_slice);
+                                    utils.executeArgv(self.allocator, argv_slice) catch |err| {
+                                        utils.log.info("failed to launch '{s}': {}", .{ app.name, err });
+                                    };
+                                }
+                            }
+                        }
                     },
                     .items => |items| {
-                        utils.execute(items[item_idx].cmd, self.allocator) catch {};
+                        const item = &items[item_idx];
+                        if (item.desktop_app_idx != null) {
+                            // Desktop apps and their actions are pre-expanded
+                            // by desktop_loader and launched via execve, never
+                            // through a shell.
+                            if (item.cmd.len > 0) {
+                                const argv = utils.tokenizeCommandLine(self.allocator, item.cmd) catch null;
+                                if (argv) |argv_slice| {
+                                    defer freeArgv(self.allocator, argv_slice);
+                                    utils.executeArgv(self.allocator, argv_slice) catch |err| {
+                                        utils.log.info("failed to launch '{s}': {}", .{ item.name, err });
+                                    };
+                                }
+                            }
+                        } else {
+                            // Plain menu entries (--menu=...) are raw shell
+                            // command lines by design.
+                            utils.execute(item.cmd, self.allocator) catch {};
+                        }
                     },
                 }
             },

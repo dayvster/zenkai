@@ -57,6 +57,17 @@ pub const DesktopEntry = struct {
         return expandExecString(exec, self, allocator);
     }
 
+    // Expands the field codes of an Exec value into a single command line in
+    // which every substituted value is quoted with double quotes following the
+    // freedesktop Exec grammar (see utils.tokenizeCommandLine). Field codes:
+    //   %i  -> "--icon <icon>"
+    //   %c  -> "<name>"
+    //   %k  -> "<file_path>"
+    //   %%  -> "%"
+    //   %f %F %u %U -> removed (Zenkai launches with no file/URL context; the
+    //     spec requires these to be removed when no file should be opened)
+    //   %d %D %n %N %v %m -> removed (deprecated)
+    //   any other %x -> kept literally
     pub fn expandExecString(exec: []const u8, entry: *const DesktopEntry, allocator: std.mem.Allocator) ![]const u8 {
         var buf: std.ArrayList(u8) = .empty;
         errdefer buf.deinit(allocator);
@@ -66,16 +77,16 @@ pub const DesktopEntry = struct {
             if (exec[i] == '%' and i + 1 < exec.len) {
                 switch (exec[i + 1]) {
                     '%' => try buf.append(allocator, '%'),
-                    'f', 'F', 'u', 'U' => {},
+                    'f', 'F', 'u', 'U', 'd', 'D', 'n', 'N', 'v', 'm' => {},
                     'i' => {
                         if (entry.icon) |icon| {
                             try buf.appendSlice(allocator, "--icon ");
-                            try shellQuote(allocator, &buf, icon);
+                            try quoteForExec(allocator, &buf, icon);
                         }
                     },
-                    'c' => try shellQuote(allocator, &buf, entry.name),
+                    'c' => try quoteForExec(allocator, &buf, entry.name),
                     'k' => {
-                        if (entry.file_path) |fp| try shellQuote(allocator, &buf, fp);
+                        if (entry.file_path) |fp| try quoteForExec(allocator, &buf, fp);
                     },
                     else => {
                         try buf.append(allocator, '%');
@@ -92,15 +103,18 @@ pub const DesktopEntry = struct {
         return try buf.toOwnedSlice(allocator);
     }
 
-    fn shellQuote(allocator: std.mem.Allocator, buf: *std.ArrayList(u8), value: []const u8) !void {
-        try buf.append(allocator, '\'');
-        for (value) |c| {
-            if (c == '\'') {
-                try buf.appendSlice(allocator, "'\\''");
-            } else {
-                try buf.append(allocator, c);
-            }
-        }
-        try buf.append(allocator, '\'');
+    // Quotes a single value for the Exec grammar: wrapped in double quotes with
+    // the ", \, ` and $ characters escaped so utils.tokenizeCommandLine
+    // round-trips the value back unmodified.
+    fn quoteForExec(allocator: std.mem.Allocator, buf: *std.ArrayList(u8), value: []const u8) !void {
+        try buf.append(allocator, '"');
+        for (value) |c| switch (c) {
+            '"' => try buf.appendSlice(allocator, "\\\""),
+            '\\' => try buf.appendSlice(allocator, "\\\\"),
+            '$' => try buf.appendSlice(allocator, "\\$"),
+            '`' => try buf.appendSlice(allocator, "\\`"),
+            else => try buf.append(allocator, c),
+        };
+        try buf.append(allocator, '"');
     }
 };

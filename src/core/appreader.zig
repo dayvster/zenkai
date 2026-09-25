@@ -53,6 +53,25 @@ pub const AppReader = struct {
             .max_depth = 10,
         };
 
+        if (std.c.getenv("XDG_DATA_HOME")) |xdg_raw| {
+            const xdg = std.mem.sliceTo(xdg_raw, 0);
+            const apps_dir = std.fs.path.join(self.allocator, &.{ xdg, "applications" }) catch return error.OutOfMemory;
+            defer self.allocator.free(apps_dir);
+
+            const found = fsutils.readDir(self.allocator, apps_dir, options) catch null;
+            if (found) |found_list| {
+                defer {
+                    for (found_list.items) |p| self.allocator.free(p);
+                    found_list.deinit(self.allocator);
+                }
+                for (found_list.items) |file_path| {
+                    const duped = try self.allocator.dupe(u8, file_path);
+                    errdefer self.allocator.free(duped);
+                    try new_files.append(self.allocator, duped);
+                }
+            }
+        }
+
         for (default_locations) |loc| {
             var found = fsutils.readDir(self.allocator, loc, options) catch |err| {
                 switch (err) {
@@ -83,6 +102,9 @@ pub const AppReader = struct {
         self.arena = std.heap.ArenaAllocator.init(self.allocator);
         self.apps.clearRetainingCapacity();
 
+        var desktops_buf: [dapp_parser.MaxDesktops][]const u8 = undefined;
+        const desktops = dapp_parser.readCurrentDesktops(&desktops_buf);
+
         for (self.desktop_files.items) |file_path| {
             const content = fsutils.readFile(self.arena.allocator(), file_path, 2 * 1024 * 1024) catch |err| {
                 log.info("skipping unreadable desktop file '{s}': {}", .{ file_path, err });
@@ -93,6 +115,7 @@ pub const AppReader = struct {
                 continue;
             };
             if (app.name.len == 0) continue;
+            if (!dapp_parser.shouldListApp(&app, desktops)) continue;
             app.file_path = self.arena.allocator().dupe(u8, file_path) catch continue;
             self.apps.append(self.allocator, app) catch |err| return err;
         }
