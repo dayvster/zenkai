@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const log = @import("utils").log;
 
 pub const help =
@@ -11,7 +12,7 @@ pub const help =
     \\  --height=N                Window height in pixels
     \\  --fullscreen              Start in fullscreen mode
     \\  --monitor=N               Monitor number to open on (0-based, default: cursor's monitor)
-    \\  --theme=NAME              Theme (dark, light, dracula, ayu-dark, minimal, or path)
+    \\  --theme=NAME              Theme (native, dark, light, dracula, ayu-dark, minimal, or path)
     \\  --debug                   Start debug timer
     \\  --theme-reloader          Enable live QSS reloading (requires --debug)
     \\  --verbose, -v             Verbose logging
@@ -30,6 +31,7 @@ pub const help =
     \\  --no-dapps                Skip scanning desktop applications (useful for plugin-only usage)
     \\  --no-plugins              Skip loading plugins
     \\  --plugin=NAME             Only load the specified plugin (may be repeated)
+    \\  --run                     Windows: open Run mode and execute the typed command
     \\  --language=CODE           Translation language code (e.g. fr, de)
     \\  --no-animations           Disable window animations
     \\  --animation-interval=MS   Animation duration in milliseconds (default: 200)
@@ -59,6 +61,7 @@ pub const Config = struct {
     url_handler: ?[]const u8,
     no_dapps: bool,
     no_plugins: bool,
+    run_mode: bool,
     language: ?[]const u8,
     no_animations: bool,
     animation_interval: ?i32,
@@ -170,6 +173,7 @@ pub fn parse(args: [][:0]u8) Config {
         .url_handler = null,
         .no_dapps = false,
         .no_plugins = false,
+        .run_mode = false,
         .language = null,
         .no_animations = false,
         .animation_interval = null,
@@ -228,6 +232,13 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.no_dapps = true;
         } else if (std.mem.eql(u8, arg, "--no-plugins")) {
             cfg.no_plugins = true;
+        } else if (std.mem.eql(u8, arg, "--run")) {
+            if (comptime builtin.os.tag == .windows) {
+                cfg.run_mode = true;
+            } else {
+                std.debug.print("--run is only available on Windows\n", .{});
+                std.process.exit(1);
+            }
         } else if (std.mem.startsWith(u8, arg, "--language=")) {
             const val = arg["--language=".len..];
             cfg.language = if (val.len > 0) val else null;

@@ -8,6 +8,7 @@ pub const Manifest = struct {
     description: ?[]const u8,
     author: ?[]const u8,
     disabled: ?bool,
+    platforms: ?[][]const u8 = null,
 };
 
 pub const Hook = enum {

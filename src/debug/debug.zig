@@ -1,14 +1,20 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const log = @import("utils").log;
 
 const CLOCK_MONOTONIC: i32 = 1;
 const timespec = extern struct { tv_sec: i64, tv_nsec: i64 };
 extern "c" fn clock_gettime(clk_id: i32, ts: *timespec) callconv(.c) i32;
+extern "kernel32" fn GetTickCount64() callconv(.winapi) u64;
 
 pub fn monotonicNs() u64 {
-    var ts: timespec = undefined;
-    _ = clock_gettime(CLOCK_MONOTONIC, &ts);
-    return @as(u64, @intCast(ts.tv_sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.tv_nsec));
+    if (comptime builtin.os.tag == .windows) {
+        return GetTickCount64() * std.time.ns_per_ms;
+    } else {
+        var ts: timespec = undefined;
+        _ = clock_gettime(CLOCK_MONOTONIC, &ts);
+        return @as(u64, @intCast(ts.tv_sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.tv_nsec));
+    }
 }
 
 const bench_enabled = @import("builtin").mode == .Debug;

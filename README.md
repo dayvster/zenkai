@@ -5,9 +5,11 @@
 # zenkai
 
 
-A fast app launcher for Linux. Written in Zig with Qt6.
+A fast app launcher for Linux and Windows. Written in Zig with Qt6.
 
 Scans your .desktop files from the usual places, shows you everything in a searchable list, and lets you filter through it as you type with fuzzy matching. Built because apparently 50 other launchers weren't enough.
+
+On Windows, Zenkai scans per-user and shared Start Menu folders for `.lnk` and `.url` shortcuts and opens them with the Windows shell. Configuration is stored under `%APPDATA%\zenkai`.
 
 Thanks to [rcalixte](https://github.com/rcalixte) for [libqt6zig](https://github.com/rcalixte/libqt6zig), the Zig bindings this project is built on.
 
@@ -29,6 +31,14 @@ Thanks to [rcalixte](https://github.com/rcalixte) for [libqt6zig](https://github
 - **GCC or Clang** - used by Zig to link C++ code (Qt is written in C++).
 - **libstdc++ or libc++** - the C++ standard library, comes with your compiler.
 - **pkg-config** - helps the build system find Qt headers and libraries.
+
+Windows builds also require Zig 0.16.0 and a Qt 6.8.2 development installation for the Windows target. Use the deployment build step to bundle the Qt and LLVM MinGW runtimes plus the platform plugin beside the executable:
+
+```powershell
+zig build deploy-windows -Dtarget=x86_64-windows-gnu
+```
+
+The output is `zig-out/bin/zenkai.exe`; it can be launched without setting `PATH` or `QT_PLUGIN_PATH`. If Qt is installed outside `C:/Qt/6.8.3/llvm-mingw_64`, pass its installation root with `-Dqt-win-root=<path>`.
 
 Zig fetches the following automatically when you run `zig build`:
 
@@ -90,6 +100,8 @@ Kick it off:
 Type to filter through your apps. Enter to launch. That's it.
 
 ### `--theme=<theme>`
+
+Use `native` to follow system light/dark appearance and accent color. It selects a macOS-style surface on macOS and a Windows-style surface on Windows. Windows defaults to `native`; an explicit config or `--theme` selection overrides it.
 
 ```sh
 ./zig-out/bin/zenkai --theme=dracula
@@ -161,6 +173,14 @@ Skips `.desktop` file scanning. Use this when you only want plugins or `--menu` 
 ### `--no-plugins`
 
 Skips loading plugins.
+
+### `--run`
+
+Opens Zenkai in Windows Run mode. Type a command or URL and press Enter to open it with the Windows shell, without a `run:` prefix.
+
+```powershell
+zenkai.exe --run
+```
 
 ### `--plugin=<name>`
 

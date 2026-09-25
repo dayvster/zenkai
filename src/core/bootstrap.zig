@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const qt = @import("libqt6zig");
 const ui = @import("../ui/ui.zig");
 const config = @import("config");
@@ -41,9 +42,9 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
 
     var visual = try config.loadConfig(allocator, config_path);
     visual.applyOverrides(allocator, cfg);
-
-    const theme_resolved = theme.resolve(allocator, cfg.theme);
-    defer if (theme_resolved.allocation) |m| allocator.free(m);
+    if (visual.theme == null and builtin.os.tag == .windows) {
+        visual.theme = try allocator.dupe(u8, "native");
+    }
 
     if (cfg.benchmark_all) debug.mark("qt init");
     const start_ns = if (cfg.start_timer) debug.monotonicNs() else 0;
@@ -52,6 +53,12 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     const app = QApp.new(std.heap.page_allocator, &argc, argv);
     errdefer app.delete();
     ui.theme.setApp(app);
+
+    const theme_resolved = if (visual.theme) |theme_name|
+        if (std.mem.eql(u8, theme_name, "native")) theme.resolveNative(allocator) else theme.resolve(allocator, visual.theme)
+    else
+        theme.resolve(allocator, null);
+    defer if (theme_resolved.allocation) |m| allocator.free(m);
 
     if (cfg.benchmark_all) debug.mark("theme apply");
     const main_qss_loaded = theme.readMainQss(allocator);

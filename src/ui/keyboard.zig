@@ -9,6 +9,7 @@ const QWidget = qt.QWidget;
 const QApp = qt.QApplication;
 const QLineEdit = qt.QLineEdit;
 const QKeyEvent = qt.QKeyEvent;
+const search_bar = @import("search_bar.zig");
 
 var L: *List = undefined;
 var search_widget: QLineEdit = undefined;
@@ -28,6 +29,10 @@ fn focusSearch() void {
 }
 
 fn onEnter(_: QShortcut) callconv(.c) void {
+    if (L.run_mode) {
+        L.launchRunCommand(search_bar.currentText());
+        return;
+    }
     L.launchSelected();
 }
 
@@ -76,7 +81,8 @@ fn onSearchKeyPress(edit: QLineEdit, event: QKeyEvent) callconv(.c) void {
         qt.qnamespace_enums.Key.Key_End => scrollToEnd(),
         else => {
             if (L.plugin_manager) |pm| {
-                const key_text = event.text();
+                const key_text = event.text(L.allocator);
+                defer L.allocator.free(key_text);
                 if (key_text.len > 0) pm.dispatchKeyPress(key_text);
             }
             edit.superKeyPressEvent(event);

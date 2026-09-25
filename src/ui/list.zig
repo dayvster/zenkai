@@ -19,6 +19,7 @@ const QRect = qt.QRect;
 const QFont = qt.QFont;
 const QApp = qt.QApplication;
 const animation = @import("animation.zig");
+const icon_loader = @import("icon_loader.zig");
 
 pub const ListItemAction = struct {
     name: []const u8,
@@ -30,11 +31,7 @@ var g_icon_size: i32 = 32;
 var g_no_icons: bool = false;
 
 fn loadIcon(icon_name: []const u8) QIcon {
-    if (icon_name.len == 0) return QIcon.new();
-    if (icon_name[0] == '/') {
-        return QIcon.new4(icon_name);
-    }
-    return QIcon.fromTheme(icon_name);
+    return icon_loader.load(icon_name);
 }
 
 fn loadItemIcon(item: ListItem) QIcon {
@@ -286,6 +283,7 @@ pub const List = struct {
     plugin_results: std.ArrayList(plugins.PluginResult),
     plugin_manager: ?*plugins.PluginManager,
     frequency_store: ?*freq.FrequencyStore,
+    run_mode: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp, icon_size: i32, plugin_manager: ?*plugins.PluginManager) List {
         g_icon_size = icon_size;
@@ -317,7 +315,7 @@ pub const List = struct {
         view.setIconSize(icon_sz);
         view.setVerticalScrollMode(qt.qabstractitemview_enums.ScrollMode.ScrollPerItem);
 
-        var result = List{
+        const result = List{
             .allocator = allocator,
             .view = view,
             .model = model,
@@ -363,6 +361,13 @@ pub const List = struct {
     pub fn setFilter(self: *List, text: []const u8) void {
         freePluginResults(self.allocator, &self.plugin_results);
         self.indices.clearRetainingCapacity();
+
+        if (self.run_mode) {
+            g_list = self;
+            self.model.beginResetModel();
+            self.model.endResetModel();
+            return;
+        }
 
         const count = self.sourceLen();
         if (text.len == 0) {
@@ -446,11 +451,11 @@ pub const List = struct {
     }
 
     fn freeArgv(allocator: std.mem.Allocator, argv: []const []const u8) void {
-    for (argv) |arg| allocator.free(arg);
-    allocator.free(argv);
-}
+        for (argv) |arg| allocator.free(arg);
+        allocator.free(argv);
+    }
 
-pub fn launchSelected(self: *List) void {
+    pub fn launchSelected(self: *List) void {
         if (!self.view.currentIndex().isValid()) {
             self.selectFirst();
         }
@@ -516,6 +521,16 @@ pub fn launchSelected(self: *List) void {
                 }
             },
         }
+        animation.animateFadeOutAndQuit();
+    }
+
+    pub fn launchRunCommand(self: *List, command: []const u8) void {
+        const trimmed = std.mem.trim(u8, command, " \t\r\n");
+        if (trimmed.len == 0) return;
+        utils.execute(trimmed, self.allocator) catch |err| {
+            log.info("Run command failed: {}", .{err});
+            return;
+        };
         animation.animateFadeOutAndQuit();
     }
 

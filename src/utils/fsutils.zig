@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub const ReadDirOptions = struct {
     extensions: ?[]const []const u8 = null,
@@ -107,7 +108,12 @@ fn readDirInternal(
 
 pub fn expandTilde(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     if (path.len == 0 or path[0] != '~') return try allocator.dupe(u8, path);
-    const home = if (std.c.getenv("HOME")) |h| std.mem.sliceTo(h, 0) else "/home";
+    const home = if (std.c.getenv("HOME")) |h|
+        std.mem.sliceTo(h, 0)
+    else if (std.c.getenv("USERPROFILE")) |h|
+        std.mem.sliceTo(h, 0)
+    else
+        "/home";
     if (path.len == 1) return try allocator.dupe(u8, home);
     return try std.fmt.allocPrint(allocator, "{s}{s}", .{ home, path[1..] });
 }
@@ -115,7 +121,13 @@ pub fn expandTilde(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 fn filterExtensions(filename: []const u8, extensions: ?[]const []const u8) bool {
     if (extensions == null) return true;
     for (extensions.?) |ext| {
-        if (std.mem.endsWith(u8, filename, ext)) return true;
+        if (filename.len < ext.len) continue;
+        const suffix = filename[filename.len - ext.len ..];
+        if (comptime builtin.os.tag == .windows) {
+            if (std.ascii.eqlIgnoreCase(suffix, ext)) return true;
+        } else if (std.mem.eql(u8, suffix, ext)) {
+            return true;
+        }
     }
     return false;
 }

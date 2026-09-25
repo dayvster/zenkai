@@ -7,7 +7,7 @@ const log = @import("utils").log;
 const debug = @import("debug/debug.zig");
 const bootstrap = @import("core/bootstrap.zig");
 const desktop_loader = @import("core/desktop_loader.zig");
-const dapp_parser = @import("core/dapp_parser.zig");
+const dapp_parser = @import("dapp_parser");
 const args = @import("args/args.zig");
 const theme = @import("theme/theme.zig");
 const plugins = @import("plugins");
@@ -15,6 +15,34 @@ const styles_watcher = @import("ui/styles_watcher.zig");
 const config = @import("config");
 const core_freq = @import("core_freq");
 const lang = @import("lang");
+
+var g_app_refresh_window: ?*ui.Window = null;
+var g_app_refresh_timer: ?qt.QTimer = null;
+var g_app_refresh_allocator: std.mem.Allocator = undefined;
+var g_app_refresh_benchmark = false;
+var g_app_refresh_actions = false;
+var g_app_refresh_actions_bar = false;
+
+fn onAppsRefresh(timer: qt.QTimer) callconv(.c) void {
+    timer.stop();
+    if (g_app_refresh_window) |window| {
+        const started = debug.monotonicNs();
+        const loaded = desktop_loader.load(g_app_refresh_allocator, g_app_refresh_benchmark, g_app_refresh_actions, g_app_refresh_actions_bar) catch |err| {
+            log.info("desktop load failed: {}", .{err});
+            timer.delete();
+            g_app_refresh_timer = null;
+            return;
+        };
+        const items = loaded;
+        window.setOwnedItems(items);
+        if (!g_app_refresh_actions and !g_app_refresh_actions_bar and items.len > 0) {
+            desktop_loader.saveCache(g_app_refresh_allocator, items);
+        }
+        log.info("app list refreshed in {d:.2}ms", .{@as(f64, @floatFromInt(debug.monotonicNs() - started)) / std.time.ns_per_ms});
+    }
+    timer.delete();
+    g_app_refresh_timer = null;
+}
 
 extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
 extern fn setenv([*:0]const u8, [*:0]const u8, i32) i32;
@@ -26,10 +54,11 @@ pub fn main(init: std.process.Init) !void {
     }
 
     var debug_freq = false;
-    {
+    if (comptime builtin.os.tag == .linux) {
         var fullscreen = false;
         var use_monitor = false;
-        var args_iter = init.minimal.args.iterate();
+        var args_iter = try init.minimal.args.iterateAllocator(init.gpa);
+        defer args_iter.deinit();
         while (args_iter.next()) |arg| {
             if (std.mem.eql(u8, arg, "--fullscreen")) fullscreen = true;
             if (std.mem.startsWith(u8, arg, "--monitor=")) use_monitor = true;
@@ -41,7 +70,8 @@ pub fn main(init: std.process.Init) !void {
         }
     }
     {
-        var args_iter2 = init.minimal.args.iterate();
+        var args_iter2 = try init.minimal.args.iterateAllocator(init.gpa);
+        defer args_iter2.deinit();
         while (args_iter2.next()) |arg| {
             if (std.mem.eql(u8, arg, "--list-themes")) {
                 std.debug.print("{s}", .{lang.get().available_themes});
@@ -58,9 +88,11 @@ pub fn main(init: std.process.Init) !void {
 
     var ctx = try bootstrap.init(init.gpa, init.minimal.args);
     defer ctx.deinit();
+    if (ctx.cfg.run_mode) ctx.visual.window_height = 140;
 
     {
-        var args_iter = init.minimal.args.iterate();
+        var args_iter = try init.minimal.args.iterateAllocator(init.gpa);
+        defer args_iter.deinit();
         while (args_iter.next()) |arg| {
             if (std.mem.eql(u8, arg, "--list-monitors")) {
                 const screens = QApp.screens(init.gpa);
@@ -90,7 +122,7 @@ pub fn main(init: std.process.Init) !void {
     const plugin_names = try args.parsePluginNames(init.gpa, ctx.argv);
     defer args.deinitPluginNames(init.gpa, plugin_names);
 
-    var pm: ?plugins.PluginManager = if (ctx.cfg.no_plugins) null else plugins.setup(init.gpa, plugin_names);
+    var pm: ?plugins.PluginManager = if (ctx.cfg.no_plugins or ctx.cfg.run_mode) null else plugins.setup(init.gpa, plugin_names);
     defer if (pm) |*p| p.deinit();
 
     if (pm) |*p| {
@@ -106,7 +138,7 @@ pub fn main(init: std.process.Init) !void {
     dapp_parser.setLocale(ctx.cfg.language);
 
     const use_menus = menu_entries.len > 0;
-    const skip_desktop = use_menus or ctx.cfg.no_dapps;
+    const skip_desktop = use_menus or ctx.cfg.no_dapps or ctx.cfg.run_mode;
 
     var items: []ui.ListItem = undefined;
     if (use_menus) {
@@ -155,7 +187,19 @@ pub fn main(init: std.process.Init) !void {
     var window: ui.Window = undefined;
     ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons, ctx.app);
     window.list.plugin_manager = if (pm) |*p| p else null;
+    window.list.run_mode = ctx.cfg.run_mode;
+    if (ctx.cfg.run_mode) window.search_bar.setPlaceholder("Type a command to run...");
     defer window.deinit();
+
+    const can_use_app_cache = !skip_desktop and !ctx.cfg.show_actions and !ctx.cfg.actions_bottombar;
+    var refresh_apps = !skip_desktop;
+    if (can_use_app_cache) {
+        if (desktop_loader.loadCache(init.gpa)) |cached| {
+            window.setOwnedItems(cached);
+            log.info("loaded {d} apps from cache", .{cached.len});
+            refresh_apps = cached.len == 0 or !desktop_loader.cacheIsFresh(init.gpa);
+        }
+    }
 
     var freq_store = core_freq.FrequencyStore.init(init.gpa);
     defer freq_store.deinit();
@@ -184,13 +228,17 @@ pub fn main(init: std.process.Init) !void {
 
     if (ctx.cfg.benchmark_all) debug.mark("show window");
     window.show();
+    if (ctx.cfg.run_mode) window.search_bar.focus();
 
-    if (!skip_desktop) {
-        const loaded = desktop_loader.load(init.gpa, ctx.cfg.benchmark_all, ctx.cfg.show_actions, ctx.cfg.actions_bottombar) catch |err| blk: {
-            log.info("desktop load failed: {}", .{err});
-            break :blk try init.gpa.alloc(ui.ListItem, 0);
-        };
-        window.setOwnedItems(loaded);
+    if (refresh_apps) {
+        g_app_refresh_window = &window;
+        g_app_refresh_allocator = init.gpa;
+        g_app_refresh_benchmark = ctx.cfg.benchmark_all;
+        g_app_refresh_actions = ctx.cfg.show_actions;
+        g_app_refresh_actions_bar = ctx.cfg.actions_bottombar;
+        g_app_refresh_timer = qt.QTimer.new();
+        g_app_refresh_timer.?.onTimeout(onAppsRefresh);
+        g_app_refresh_timer.?.start(50);
     }
 
     if (ctx.cfg.start_timer) {
@@ -202,6 +250,13 @@ pub fn main(init: std.process.Init) !void {
 
     if (ctx.cfg.start_timer and ctx.cfg.theme_reloader) styles_watcher.start(init.gpa);
     ui.Window.exec();
+
+    if (g_app_refresh_timer) |timer| {
+        timer.stop();
+        timer.delete();
+        g_app_refresh_timer = null;
+    }
+    g_app_refresh_window = null;
 
     if (cfg_dir_opt) |cfg_dir| freq_store.save(cfg_dir);
 }

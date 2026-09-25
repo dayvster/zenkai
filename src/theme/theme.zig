@@ -1,4 +1,6 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const qt = @import("libqt6zig");
 const log = @import("utils").log;
 const fsutils = @import("utils").fsutils;
 
@@ -71,10 +73,52 @@ pub const main_qss = @embedFile("../styles/main.qss");
 
 pub var g_theme_qss_filename: []const u8 = "dark.theme.qss";
 
-const ThemeResult = struct {
+pub const ThemeResult = struct {
     qss: []const u8,
     allocation: ?[]u8,
 };
+
+fn replaceAccent(allocator: std.mem.Allocator, qss: []const u8, needle: []const u8, accent: []const u8) ![]u8 {
+    return try std.mem.replaceOwned(u8, allocator, qss, needle, accent);
+}
+
+/// Resolves the OS appearance and accent from native system settings.
+pub fn resolveNative(allocator: std.mem.Allocator) ThemeResult {
+    var dark = false;
+    var accent: []const u8 = "#0078d4";
+    if (comptime builtin.os.tag == .windows) {
+        const settings = @import("native_windows.zig").detect();
+        dark = settings.dark;
+        accent = &settings.accent;
+    } else {
+        const color_scheme = qt.QApplication.styleHints().colorScheme();
+        dark = color_scheme == 2;
+        if (color_scheme == 0) {
+            var palette = qt.QApplication.palette2("QWidget");
+            defer palette.delete();
+            var window_color = palette.color(0, 10);
+            defer window_color.delete();
+            dark = window_color.lightness() < 128;
+        }
+        if (comptime builtin.os.tag == .macos) accent = "palette(Highlight)";
+    }
+
+    const base = if (comptime builtin.os.tag == .macos) blk: {
+        g_theme_qss_filename = "";
+        break :blk if (dark) cupertino_dark_qss else cupertino_qss;
+    } else if (comptime builtin.os.tag == .windows) blk: {
+        g_theme_qss_filename = "";
+        break :blk if (dark) @embedFile("../styles/native-windows-dark.qss") else @embedFile("../styles/native-windows-light.qss");
+    } else blk: {
+        g_theme_qss_filename = "";
+        break :blk if (dark) dark_qss else light_qss;
+    };
+
+    const accent_base = if (comptime builtin.os.tag == .macos) "#007aff" else "@ACCENT@";
+    const styled = replaceAccent(allocator, base, accent_base, accent) catch return .{ .qss = base, .allocation = null };
+    log.info("native theme: {s}, accent {s}", .{ if (dark) "dark" else "light", accent });
+    return .{ .qss = styled, .allocation = styled };
+}
 
 fn readDevStyle(allocator: std.mem.Allocator, filename: []const u8) ?[]u8 {
     const path = std.fs.path.join(allocator, &.{ "src", "styles", filename }) catch return null;
@@ -289,6 +333,7 @@ pub const theme_entries = [_]ThemeEntry{
     .{ .name = "matrix", .desc = "Green matrix rain" },
     .{ .name = "minimal", .desc = "Clean minimal dark" },
     .{ .name = "minimal-light", .desc = "Clean light minimal" },
+    .{ .name = "native", .desc = "Match system appearance and accent color" },
     .{ .name = "monokai", .desc = "Vibrant saturated dark" },
     .{ .name = "monokai-pro", .desc = "Balanced monokai" },
     .{ .name = "night-owl", .desc = "Owl-inspired dark" },
