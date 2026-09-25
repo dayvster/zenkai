@@ -49,6 +49,8 @@ pub fn build(b: *std.Build) !void {
         "qimage",
         "qpixmap",
         "qicon",
+        "qfileinfo",
+        "qfileiconprovider",
         "qrect",
         "qsize",
         "qpoint",
@@ -86,7 +88,18 @@ pub fn build(b: *std.Build) !void {
         .linux_libraries = &.{"libgcc_eh.a"},
     });
 
-    exe.root_module.linkSystemLibrary("m", .{});
+    if (target.result.os.tag == .windows) {
+        exe.root_module.linkSystemLibrary("shell32", .{});
+        exe.root_module.linkSystemLibrary("advapi32", .{});
+        exe.root_module.linkSystemLibrary("ole32", .{});
+        exe.root_module.linkSystemLibrary("oleaut32", .{});
+        exe.root_module.addCSourceFile(.{
+            .file = b.path("src/core/windows/appsfolder.cpp"),
+            .flags = &.{"-std=c++17"},
+        });
+    } else {
+        exe.root_module.linkSystemLibrary("m", .{});
+    }
 
     const lua_capi_module = b.addModule("lua_capi", .{
         .root_source_file = b.path("src/plugins/lua_capi.zig"),

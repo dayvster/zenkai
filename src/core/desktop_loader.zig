@@ -6,6 +6,69 @@ const debug = @import("../debug/debug.zig");
 const actions_mod = @import("actions.zig");
 const fsutils = @import("utils").fsutils;
 const lang = @import("lang");
+const config = @import("config");
+
+const CachedItem = struct { name: []const u8, cmd: []const u8, icon: []const u8 };
+const CachedItems = struct { items: []CachedItem };
+
+fn cachePath(allocator: std.mem.Allocator) ![]u8 {
+    const dir = try config.configDir(allocator);
+    defer allocator.free(dir);
+    return try std.fmt.allocPrint(allocator, "{s}/apps-{s}.json", .{ dir, @tagName(@import("builtin").os.tag) });
+}
+
+pub fn cacheIsFresh(allocator: std.mem.Allocator) bool {
+    const path = cachePath(allocator) catch return false;
+    defer allocator.free(path);
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const stat = std.Io.Dir.statFile(std.Io.Dir.cwd(), io, path, .{}) catch return false;
+    const now = std.Io.Timestamp.now(io, .real);
+    const age = now.nanoseconds - stat.mtime.nanoseconds;
+    return age >= 0 and age < 5 * std.time.ns_per_min;
+}
+
+pub fn loadCache(allocator: std.mem.Allocator) ?[]ui.ListItem {
+    const path = cachePath(allocator) catch return null;
+    defer allocator.free(path);
+    const content = fsutils.readFile(allocator, path, 8 * 1024 * 1024) catch return null;
+    defer allocator.free(content);
+    const parsed = std.json.parseFromSlice(CachedItems, allocator, content, .{ .allocate = .alloc_always }) catch return null;
+    defer parsed.deinit();
+    const items = allocator.alloc(ui.ListItem, parsed.value.items.len) catch return null;
+    var initialized: usize = 0;
+    errdefer {
+        for (items[0..initialized]) |item| {
+            allocator.free(item.name);
+            allocator.free(item.cmd);
+            allocator.free(item.icon);
+        }
+        allocator.free(items);
+    }
+    for (parsed.value.items, 0..) |item, i| {
+        items[i] = .{
+            .name = allocator.dupe(u8, item.name) catch return null,
+            .cmd = allocator.dupe(u8, item.cmd) catch return null,
+            .icon = allocator.dupe(u8, item.icon) catch return null,
+        };
+        initialized += 1;
+    }
+    return items;
+}
+
+pub fn saveCache(allocator: std.mem.Allocator, items: []const ui.ListItem) void {
+    const cached = allocator.alloc(CachedItem, items.len) catch return;
+    defer allocator.free(cached);
+    for (items, 0..) |item, i| cached[i] = .{ .name = item.name, .cmd = item.cmd, .icon = item.icon };
+    const json = std.json.Stringify.valueAlloc(allocator, CachedItems{ .items = cached }, .{}) catch return;
+    defer allocator.free(json);
+    const path = cachePath(allocator) catch return;
+    defer allocator.free(path);
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const cwd = std.Io.Dir.cwd();
+    var file = std.Io.Dir.createFile(cwd, io, path, .{}) catch return;
+    defer std.Io.File.close(file, io);
+    file.writeStreamingAll(io, json) catch {};
+}
 
 pub const Error = error{ LoadFailed, ScanFailed };
 

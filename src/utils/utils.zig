@@ -96,45 +96,57 @@ pub fn demerauLevenshteinDistance(
 }
 
 pub fn execute(cmd: []const u8, allocator: std.mem.Allocator) !void {
-    var buf: [1024:0]u8 = undefined;
+    if (comptime builtin.os.tag == .windows) {
+        return @import("windows.zig").openCommandLine(allocator, cmd);
+    } else {
+        var buf: [1024:0]u8 = undefined;
 
-    if (cmd.len >= buf.len) {
-        return error.CommandTooLong;
+        if (cmd.len >= buf.len) {
+            return error.CommandTooLong;
+        }
+
+        @memcpy(buf[0..cmd.len], cmd);
+        buf[cmd.len] = 0;
+
+        const argv = [_:null]?[*:0]const u8{
+            "sh",
+            "-c",
+            @as([*:0]const u8, @ptrCast(&buf)),
+            null,
+        };
+
+        const pid = std.c.fork();
+        if (pid < 0) {
+            return error.ForkFailed;
+        }
+
+        if (pid == 0) {
+            _ = std.c.execve("/bin/sh", &argv, environ);
+            std.c._exit(1);
+        }
+
+        const thread_data = try allocator.create(ThreadData);
+        thread_data.* = .{
+            .pid = @as(i32, @intCast(pid)),
+            .allocator = allocator,
+        };
+
+        const thread = std.Thread.spawn(.{}, reapChild, .{thread_data}) catch |err| {
+            allocator.destroy(thread_data);
+            var status: u32 = 0;
+            _ = std.c.waitpid(@as(i32, @intCast(pid)), &status, 0);
+            return err;
+        };
+        thread.detach();
     }
+}
 
-    @memcpy(buf[0..cmd.len], cmd);
-    buf[cmd.len] = 0;
-
-    const argv = [_:null]?[*:0]const u8{
-        "sh",
-        "-c",
-        @as([*:0]const u8, @ptrCast(&buf)),
-        null,
-    };
-
-    const pid = std.c.fork();
-    if (pid < 0) {
-        return error.ForkFailed;
+pub fn openTarget(target: []const u8, allocator: std.mem.Allocator) !void {
+    if (comptime builtin.os.tag == .windows) {
+        return @import("windows.zig").open(allocator, target);
+    } else {
+        return error.UnsupportedPlatform;
     }
-
-    if (pid == 0) {
-        _ = std.c.execve("/bin/sh", &argv, environ);
-        std.c._exit(1);
-    }
-
-    const thread_data = try allocator.create(ThreadData);
-    thread_data.* = .{
-        .pid = @as(i32, @intCast(pid)),
-        .allocator = allocator,
-    };
-
-    const thread = std.Thread.spawn(.{}, reapChild, .{thread_data}) catch |err| {
-        allocator.destroy(thread_data);
-        var status: u32 = 0;
-        _ = std.c.waitpid(@as(i32, @intCast(pid)), &status, 0);
-        return err;
-    };
-    thread.detach();
 }
 
 const ThreadData = struct {
@@ -274,10 +286,16 @@ pub fn tokenizeCommandLine(allocator: std.mem.Allocator, input: []const u8) ![]c
 }
 
 fn nowNs() u64 {
-    var ts: std.c.timespec = std.mem.zeroes(std.c.timespec);
-    _ = std.c.clock_gettime(std.c.CLOCK.MONOTONIC, &ts);
-    return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
+    if (comptime builtin.os.tag == .windows) {
+        return GetTickCount64() * std.time.ns_per_ms;
+    } else {
+        var ts: std.c.timespec = std.mem.zeroes(std.c.timespec);
+        _ = std.c.clock_gettime(std.c.CLOCK.MONOTONIC, &ts);
+        return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
+    }
 }
+
+extern "kernel32" fn GetTickCount64() callconv(.winapi) u64;
 
 pub extern "c" var environ: [*:null]?[*:0]u8;
 
@@ -372,32 +390,36 @@ fn reapChildC(data: *ThreadData) void {
 }
 
 pub fn spawnTool(name: []const u8, args: []const []const u8, allocator: std.mem.Allocator) !void {
-    const tool = toolPath(allocator, name) orelse return error.ToolNotFound;
-    defer allocator.free(tool);
+    if (comptime builtin.os.tag == .windows) {
+        return @import("windows.zig").openArgv(allocator, name, args);
+    } else {
+        const tool = toolPath(allocator, name) orelse return error.ToolNotFound;
+        defer allocator.free(tool);
 
-    var full_args = std.ArrayList([]const u8).empty;
-    defer full_args.deinit(allocator);
-    try full_args.append(allocator, tool);
-    for (args) |arg| {
-        if (full_args.items.len >= tool_arg_limit) return error.TooManyArgs;
-        try full_args.append(allocator, arg);
+        var full_args = std.ArrayList([]const u8).empty;
+        defer full_args.deinit(allocator);
+        try full_args.append(allocator, tool);
+        for (args) |arg| {
+            if (full_args.items.len >= tool_arg_limit) return error.TooManyArgs;
+            try full_args.append(allocator, arg);
+        }
+
+        var argv = try buildArgvC(allocator, full_args.items);
+        defer deinitArgvC(allocator, &argv);
+
+        const pid = forkExec(&argv.array);
+        if (pid < 0) return error.ForkFailed;
+
+        const thread_data = try allocator.create(ThreadData);
+        thread_data.* = .{ .pid = pid, .allocator = allocator };
+        const thread = std.Thread.spawn(.{}, reapChildC, .{thread_data}) catch |err| {
+            allocator.destroy(thread_data);
+            var status: c_int = 0;
+            _ = std.c.waitpid(pid, &status, 0);
+            return err;
+        };
+        thread.detach();
     }
-
-    var argv = try buildArgvC(allocator, full_args.items);
-    defer deinitArgvC(allocator, &argv);
-
-    const pid = forkExec(&argv.array);
-    if (pid < 0) return error.ForkFailed;
-
-    const thread_data = try allocator.create(ThreadData);
-    thread_data.* = .{ .pid = pid, .allocator = allocator };
-    const thread = std.Thread.spawn(.{}, reapChildC, .{thread_data}) catch |err| {
-        allocator.destroy(thread_data);
-        var status: c_int = 0;
-        _ = std.c.waitpid(pid, &status, 0);
-        return err;
-    };
-    thread.detach();
 }
 
 pub const RunResult = struct {
@@ -409,86 +431,90 @@ const POLL_IN: i16 = 0x1;
 const POLL_HUP: i16 = 0x10;
 
 pub fn runToolTimed(name: []const u8, args: []const []const u8, out: []u8, timeout_ms: u64, allocator: std.mem.Allocator) !RunResult {
-    const tool = toolPath(allocator, name) orelse return error.ToolNotFound;
-    defer allocator.free(tool);
+    if (comptime builtin.os.tag == .windows) {
+        return error.UnsupportedPlatform;
+    } else {
+        const tool = toolPath(allocator, name) orelse return error.ToolNotFound;
+        defer allocator.free(tool);
 
-    var full_args = std.ArrayList([]const u8).empty;
-    defer full_args.deinit(allocator);
-    try full_args.append(allocator, tool);
-    for (args) |arg| {
-        if (full_args.items.len >= tool_arg_limit) return error.TooManyArgs;
-        try full_args.append(allocator, arg);
-    }
+        var full_args = std.ArrayList([]const u8).empty;
+        defer full_args.deinit(allocator);
+        try full_args.append(allocator, tool);
+        for (args) |arg| {
+            if (full_args.items.len >= tool_arg_limit) return error.TooManyArgs;
+            try full_args.append(allocator, arg);
+        }
 
-    var argv = try buildArgvC(allocator, full_args.items);
-    defer deinitArgvC(allocator, &argv);
+        var argv = try buildArgvC(allocator, full_args.items);
+        defer deinitArgvC(allocator, &argv);
 
-    var pipefd: [2]c_int = undefined;
-    if (std.c.pipe(&pipefd) != 0) return error.PipeFailed;
+        var pipefd: [2]c_int = undefined;
+        if (std.c.pipe(&pipefd) != 0) return error.PipeFailed;
 
-    const pid = std.c.fork();
-    if (pid < 0) {
-        _ = std.c.close(pipefd[0]);
+        const pid = std.c.fork();
+        if (pid < 0) {
+            _ = std.c.close(pipefd[0]);
+            _ = std.c.close(pipefd[1]);
+            return error.ForkFailed;
+        }
+
+        if (pid == 0) {
+            _ = std.c.setpgid(0, 0);
+            _ = std.c.close(pipefd[0]);
+            _ = std.c.dup2(pipefd[1], 1);
+            if (pipefd[1] != 1) _ = std.c.close(pipefd[1]);
+            _ = std.c.execve(@ptrCast(argv.array[0].?), @as([*:null]const ?[*:0]const u8, @ptrCast(&argv.array)), environ);
+            std.c._exit(127);
+        }
+
         _ = std.c.close(pipefd[1]);
-        return error.ForkFailed;
-    }
 
-    if (pid == 0) {
-        _ = std.c.setpgid(0, 0);
+        var total: usize = 0;
+        var truncated = false;
+        var timed_out = false;
+        const scratch: [256]u8 = undefined;
+        const deadline = nowNs() + timeout_ms * std.time.ns_per_ms;
+
+        while (true) {
+            const now = nowNs();
+            if (now >= deadline) {
+                timed_out = true;
+                break;
+            }
+            var pollfd = std.c.pollfd{
+                .fd = pipefd[0],
+                .events = POLL_IN,
+                .revents = 0,
+            };
+            const remaining_ms: i32 = @intCast(@min((deadline - now) / std.time.ns_per_ms, 999));
+            const pr = std.c.poll(&pollfd, 1, remaining_ms);
+            if (pr < 0) break;
+            if (pr == 0) continue;
+
+            if ((pollfd.revents & (POLL_IN | POLL_HUP)) == 0) continue;
+            if (total < out.len) {
+                const n = std.c.read(pipefd[0], out[total..].ptr, out.len - total);
+                if (n <= 0) break;
+                total += @intCast(n);
+            } else {
+                truncated = true;
+                const n = std.c.read(pipefd[0], scratch.ptr, scratch.len);
+                if (n <= 0) break;
+            }
+        }
+
+        // The child runs in its own process group (setpgid above), so killing the
+        // negative pid also terminates any descendants it spawned. If the process
+        // group is already gone kill(-pid) simply fails harmlessly.
+        if (timed_out) _ = std.c.kill(-pid, 9);
         _ = std.c.close(pipefd[0]);
-        _ = std.c.dup2(pipefd[1], 1);
-        if (pipefd[1] != 1) _ = std.c.close(pipefd[1]);
-        _ = std.c.execve(@ptrCast(argv.array[0].?), @as([*:null]const ?[*:0]const u8, @ptrCast(&argv.array)), environ);
-        std.c._exit(127);
+
+        var status: c_int = 0;
+        _ = std.c.waitpid(pid, &status, 0);
+
+        if (timed_out) return error.RunTimeout;
+        return .{ .bytes = total, .truncated = truncated };
     }
-
-    _ = std.c.close(pipefd[1]);
-
-    var total: usize = 0;
-    var truncated = false;
-    var timed_out = false;
-    var scratch: [256]u8 = undefined;
-    const deadline = nowNs() + timeout_ms * std.time.ns_per_ms;
-
-    while (true) {
-        const now = nowNs();
-        if (now >= deadline) {
-            timed_out = true;
-            break;
-        }
-        var pollfd = std.c.pollfd{
-            .fd = pipefd[0],
-            .events = POLL_IN,
-            .revents = 0,
-        };
-        const remaining_ms: i32 = @intCast(@min((deadline - now) / std.time.ns_per_ms, 999));
-        const pr = std.c.poll(&pollfd, 1, remaining_ms);
-        if (pr < 0) break;
-        if (pr == 0) continue;
-
-        if ((pollfd.revents & (POLL_IN | POLL_HUP)) == 0) continue;
-        if (total < out.len) {
-            const n = std.c.read(pipefd[0], out[total..].ptr, out.len - total);
-            if (n <= 0) break;
-            total += @intCast(n);
-        } else {
-            truncated = true;
-            const n = std.c.read(pipefd[0], scratch.ptr, scratch.len);
-            if (n <= 0) break;
-        }
-    }
-
-    // The child runs in its own process group (setpgid above), so killing the
-    // negative pid also terminates any descendants it spawned. If the process
-    // group is already gone kill(-pid) simply fails harmlessly.
-    if (timed_out) _ = std.c.kill(-pid, 9);
-    _ = std.c.close(pipefd[0]);
-
-    var status: c_int = 0;
-    _ = std.c.waitpid(pid, &status, 0);
-
-    if (timed_out) return error.RunTimeout;
-    return .{ .bytes = total, .truncated = truncated };
 }
 
 test "utils: findBundleDir detects .app bundles for macOS launching" {

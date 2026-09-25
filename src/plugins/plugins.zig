@@ -211,7 +211,7 @@ fn tryLoadPluginConfig(self: *PluginManager, L: *lua.lua_State, path: []const u8
 }
 
 fn loadPluginConfig(self: *PluginManager, L: *lua.lua_State, plugins_base_dir: []const u8, dir_name: []const u8, plugin_name: []const u8) void {
-if (config.configDir(self.allocator) catch null) |cfg_dir| {
+    if (config.configDir(self.allocator) catch null) |cfg_dir| {
         defer self.allocator.free(cfg_dir);
         const user_file = std.fmt.allocPrint(self.allocator, "{s}.json", .{plugin_name}) catch return;
         defer self.allocator.free(user_file);
@@ -328,13 +328,20 @@ pub const PluginManager = struct {
         g_active_manager = self;
         const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
 
-        if (config.userPluginDataDir(self.allocator) catch null) |dir_path| {
-            defer self.allocator.free(dir_path);
-            scanPluginDir(self, io, dir_path, plugin_filter);
-        }
-        if (config.userPluginConfigDir(self.allocator) catch null) |dir_path| {
-            defer self.allocator.free(dir_path);
-            scanPluginDir(self, io, dir_path, plugin_filter);
+        if (comptime builtin.os.tag == .windows) {
+            if (config.userPluginConfigDir(self.allocator) catch null) |dir_path| {
+                defer self.allocator.free(dir_path);
+                scanPluginDir(self, io, dir_path, plugin_filter);
+            }
+        } else {
+            if (config.userPluginDataDir(self.allocator) catch null) |dir_path| {
+                defer self.allocator.free(dir_path);
+                scanPluginDir(self, io, dir_path, plugin_filter);
+            }
+            if (config.userPluginConfigDir(self.allocator) catch null) |dir_path| {
+                defer self.allocator.free(dir_path);
+                scanPluginDir(self, io, dir_path, plugin_filter);
+            }
         }
 
         for (loader.standard_plugin_dirs) |dir_path| {
@@ -518,23 +525,29 @@ pub const PluginManager = struct {
 
             if (url.len > 1023) return;
 
-            if (self.clipboard_cmd) |clip_cmd| {
-                if (clip_cmd.len > 0) {
-                    self.writeToClipboard(clip_cmd, url);
-                    return;
+            if (comptime builtin.os.tag == .windows) {
+                utils.openTarget(url, self.allocator) catch |err| {
+                    utils.log.info("plugin URL open failed: {}", .{err});
+                };
+            } else {
+                if (self.clipboard_cmd) |clip_cmd| {
+                    if (clip_cmd.len > 0) {
+                        self.writeToClipboard(clip_cmd, url);
+                        return;
+                    }
                 }
+
+                const handler: []const u8 = if (self.url_handler) |h|
+                    h
+                else if (builtin.os.tag == .macos)
+                    "open"
+                else
+                    "xdg-open";
+
+                utils.spawnTool(handler, &.{url}, self.allocator) catch |err| {
+                    utils.log.info("url open failed: {}", .{err});
+                };
             }
-
-            const handler: []const u8 = if (self.url_handler) |h|
-                h
-            else if (builtin.os.tag == .macos)
-                "open"
-            else
-                "xdg-open";
-
-            utils.spawnTool(handler, &.{url}, self.allocator) catch |err| {
-                utils.log.info("url open failed: {}", .{err});
-            };
         }
     }
 

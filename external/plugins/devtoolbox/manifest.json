@@ -4,5 +4,5 @@
     "main": "main.lua",
     "description": "Developer Swiss Army Knife — base64, URL, UUID, timestamps, color/case conversion, JSON formatting, hashing, string stats, and more",
     "author": "zenkai",
-    "disabled": false
+    "disabled": true
 }
