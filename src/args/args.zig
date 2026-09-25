@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const log = @import("utils").log;
 
 pub const help =
@@ -232,6 +233,10 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.eql(u8, arg, "--no-plugins")) {
             cfg.no_plugins = true;
         } else if (std.mem.eql(u8, arg, "--run")) {
+            if (comptime builtin.os.tag != .windows) {
+                std.debug.print("--run is only available on Windows\n", .{});
+                std.process.exit(1);
+            }
             cfg.run_mode = true;
         } else if (std.mem.startsWith(u8, arg, "--language=")) {
             const val = arg["--language=".len..];
