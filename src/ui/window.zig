@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const qt = @import("libqt6zig");
 const config = @import("config");
 const lang = @import("lang");
@@ -15,6 +16,7 @@ const QApp = qt.QApplication;
 const QWidget = qt.QWidget;
 const QVBoxLayout = qt.QVBoxLayout;
 const QCloseEvent = qt.QCloseEvent;
+extern "kernel32" fn GetTickCount64() callconv(.winapi) u64;
 
 var g_window: *Window = undefined;
 var g_close_on_focus_out: bool = false;
@@ -26,9 +28,13 @@ var g_backdrop: ?QWidget = null;
 var g_backdrop_geo: [4]i32 = .{ 0, 0, 0, 0 };
 
 fn nanoTimestamp() i64 {
-    var ts: std.c.timespec = undefined;
-    _ = std.c.clock_gettime(std.c.CLOCK.MONOTONIC, &ts);
-    return @as(i64, ts.sec) * std.time.ns_per_s + @as(i64, ts.nsec);
+    if (comptime builtin.os.tag == .windows) {
+        return @intCast(GetTickCount64() * std.time.ns_per_ms);
+    } else {
+        var ts: std.c.timespec = undefined;
+        _ = std.c.clock_gettime(std.c.CLOCK.MONOTONIC, &ts);
+        return @as(i64, ts.sec) * std.time.ns_per_s + @as(i64, ts.nsec);
+    }
 }
 
 pub fn clampMonitorIndex(idx: i32, count: usize) usize {
@@ -129,7 +135,7 @@ pub const Window = struct {
         List.setNoIcons(no_icons);
 
         const win_w: i32 = @max(vis.window_width, 200);
-        const win_h: i32 = @max(vis.window_height, 200);
+        const win_h: i32 = @max(vis.window_height, 120);
 
         const wt = qt.qnamespace_enums.WindowType;
 
@@ -290,6 +296,22 @@ pub const Window = struct {
     }
 
     pub fn setOwnedItems(self: *Window, items: []ListItem) void {
+        if (self.owned_items) |old_items| {
+            for (old_items) |item| {
+                self.allocator.free(item.icon);
+                self.allocator.free(item.cmd);
+                self.allocator.free(item.name);
+                if (item.actions.len > 0) {
+                    for (item.actions) |action| {
+                        self.allocator.free(action.name);
+                        self.allocator.free(action.exec);
+                        self.allocator.free(action.icon);
+                    }
+                    self.allocator.free(item.actions);
+                }
+            }
+            self.allocator.free(old_items);
+        }
         self.owned_items = items;
         self.list.source = .{ .items = items };
         self.list.setFilter("");

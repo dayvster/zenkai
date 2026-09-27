@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const fsutils = @import("utils").fsutils;
 const log = @import("utils").log;
 
@@ -58,6 +59,10 @@ pub const VisualConfig = struct {
 };
 
 pub fn xdgConfigHome(allocator: std.mem.Allocator) ?[]u8 {
+    if (comptime builtin.os.tag == .windows) {
+        const appdata = std.c.getenv("APPDATA") orelse return null;
+        return allocator.dupe(u8, std.mem.sliceTo(appdata, 0)) catch null;
+    }
     if (std.c.getenv("XDG_CONFIG_HOME")) |xdg| {
         if (std.mem.sliceTo(xdg, 0).len > 0) {
             return allocator.dupe(u8, std.mem.sliceTo(xdg, 0)) catch null;
@@ -145,7 +150,7 @@ pub fn deploy(io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
     if (std.Io.Dir.openFile(cwd, io, legacy_path, .{})) |file| {
         file.close(io);
         return legacy_path;
-    }
+    } else |_| {}
 
     allocator.free(legacy_path);
 

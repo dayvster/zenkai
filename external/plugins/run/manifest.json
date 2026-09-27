@@ -1,0 +1,9 @@
+{
+    "name": "run",
+    "version": "1.0.0",
+    "main": "main.lua",
+    "description": "Run commands using the Windows shell",
+    "author": "built-in",
+    "disabled": false,
+    "platforms": ["windows"]
+}

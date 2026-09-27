@@ -4,5 +4,6 @@
     "main": "main.lua",
     "description": "Hyprland command palette: workspaces, windows, monitors, floating, fullscreen, lock, screenshots, notifications, and more",
     "author": "zenkai",
-    "disabled": false
+    "disabled": false,
+    "platforms": ["linux"]
 }

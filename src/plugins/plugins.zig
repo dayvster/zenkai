@@ -25,6 +25,15 @@ var g_active_results: *std.ArrayList(PluginResult) = undefined;
 var g_next_result_identifier: usize = 0;
 var g_pending_open_url: ?[]const u8 = null;
 
+fn supportsCurrentPlatform(platforms: ?[][]const u8) bool {
+    const supported = platforms orelse return true;
+    const current_platform = @tagName(builtin.os.tag);
+    for (supported) |platform| {
+        if (std.ascii.eqlIgnoreCase(platform, current_platform)) return true;
+    }
+    return false;
+}
+
 fn apiAddResult(L: *lua.lua_State) callconv(.c) c_int {
     const title = if (lua.lua_tostring(L, 1)) |s| std.mem.sliceTo(s, 0) else "";
     const subtitle = if (lua.lua_tostring(L, 2)) |s| std.mem.sliceTo(s, 0) else "";
@@ -211,7 +220,7 @@ fn tryLoadPluginConfig(self: *PluginManager, L: *lua.lua_State, path: []const u8
 }
 
 fn loadPluginConfig(self: *PluginManager, L: *lua.lua_State, plugins_base_dir: []const u8, dir_name: []const u8, plugin_name: []const u8) void {
-if (config.configDir(self.allocator) catch null) |cfg_dir| {
+    if (config.configDir(self.allocator) catch null) |cfg_dir| {
         defer self.allocator.free(cfg_dir);
         const user_file = std.fmt.allocPrint(self.allocator, "{s}.json", .{plugin_name}) catch return;
         defer self.allocator.free(user_file);
@@ -328,13 +337,20 @@ pub const PluginManager = struct {
         g_active_manager = self;
         const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
 
-        if (config.userPluginDataDir(self.allocator) catch null) |dir_path| {
-            defer self.allocator.free(dir_path);
-            scanPluginDir(self, io, dir_path, plugin_filter);
-        }
-        if (config.userPluginConfigDir(self.allocator) catch null) |dir_path| {
-            defer self.allocator.free(dir_path);
-            scanPluginDir(self, io, dir_path, plugin_filter);
+        if (comptime builtin.os.tag == .windows) {
+            if (config.userPluginConfigDir(self.allocator) catch null) |dir_path| {
+                defer self.allocator.free(dir_path);
+                scanPluginDir(self, io, dir_path, plugin_filter);
+            }
+        } else {
+            if (config.userPluginDataDir(self.allocator) catch null) |dir_path| {
+                defer self.allocator.free(dir_path);
+                scanPluginDir(self, io, dir_path, plugin_filter);
+            }
+            if (config.userPluginConfigDir(self.allocator) catch null) |dir_path| {
+                defer self.allocator.free(dir_path);
+                scanPluginDir(self, io, dir_path, plugin_filter);
+            }
         }
 
         for (loader.standard_plugin_dirs) |dir_path| {
@@ -386,6 +402,10 @@ pub const PluginManager = struct {
         };
 
         const parsed_manifest = parsed.value;
+        if (!supportsCurrentPlatform(parsed_manifest.platforms)) {
+            parsed.deinit();
+            return;
+        }
         if ((parsed_manifest.disabled orelse false) or parsed_manifest.name.len == 0 or parsed_manifest.main.len == 0) {
             utils.log.info("plugin '{s}': disabled or missing name/main", .{dir_name});
             parsed.deinit();
@@ -518,23 +538,29 @@ pub const PluginManager = struct {
 
             if (url.len > 1023) return;
 
-            if (self.clipboard_cmd) |clip_cmd| {
-                if (clip_cmd.len > 0) {
-                    self.writeToClipboard(clip_cmd, url);
-                    return;
+            if (comptime builtin.os.tag == .windows) {
+                utils.openTarget(url, self.allocator) catch |err| {
+                    utils.log.info("plugin URL open failed: {}", .{err});
+                };
+            } else {
+                if (self.clipboard_cmd) |clip_cmd| {
+                    if (clip_cmd.len > 0) {
+                        self.writeToClipboard(clip_cmd, url);
+                        return;
+                    }
                 }
+
+                const handler: []const u8 = if (self.url_handler) |h|
+                    h
+                else if (builtin.os.tag == .macos)
+                    "open"
+                else
+                    "xdg-open";
+
+                utils.spawnTool(handler, &.{url}, self.allocator) catch |err| {
+                    utils.log.info("url open failed: {}", .{err});
+                };
             }
-
-            const handler: []const u8 = if (self.url_handler) |h|
-                h
-            else if (builtin.os.tag == .macos)
-                "open"
-            else
-                "xdg-open";
-
-            utils.spawnTool(handler, &.{url}, self.allocator) catch |err| {
-                utils.log.info("url open failed: {}", .{err});
-            };
         }
     }
 

@@ -10,6 +10,7 @@ const QAction = qt.QAction;
 const QMessageBox = qt.QMessageBox;
 const QPixmap = qt.QPixmap;
 const QIcon = qt.QIcon;
+const icon_loader = @import("icon_loader.zig");
 
 var g_list: *applist.List = undefined;
 var g_parent: qt.QWidget = undefined;
@@ -44,7 +45,7 @@ fn currentApp() ?*const de.DesktopApp {
 fn loadAppIcon(icon_name: ?[]const u8) QIcon {
     if (icon_name) |name| {
         if (name.len > 0) {
-            const icon = if (name[0] == '/') QIcon.new4(name) else QIcon.fromTheme(name);
+            const icon = icon_loader.load(name);
             if (!icon.isNull()) return icon;
             icon.delete();
         }

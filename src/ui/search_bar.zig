@@ -94,3 +94,7 @@ pub const SearchBar = struct {
         self.widget.setFocus();
     }
 };
+
+pub fn currentText() []const u8 {
+    return g_buffer[0..g_buffer_len];
+}
