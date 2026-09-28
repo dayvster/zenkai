@@ -607,7 +607,7 @@ pub const PluginManager = struct {
         };
         const thread = std.Thread.spawn(.{}, reapChild, .{thread_data}) catch |err| {
             self.allocator.destroy(thread_data);
-            var status: u32 = 0;
+            var status: c_int = 0;
             _ = std.c.waitpid(@as(i32, @intCast(pid)), &status, 0);
             utils.log.info("clipboard reap thread failed: {}", .{err});
             return;
@@ -678,7 +678,7 @@ const ThreadData = struct {
 };
 
 fn reapChild(data: *ThreadData) void {
-    var status: u32 = 0;
+    var status: c_int = 0;
     _ = std.c.waitpid(data.pid, &status, 0);
     data.allocator.destroy(data);
 }

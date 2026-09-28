@@ -133,7 +133,7 @@ pub fn execute(cmd: []const u8, allocator: std.mem.Allocator) !void {
 
         const thread = std.Thread.spawn(.{}, reapChild, .{thread_data}) catch |err| {
             allocator.destroy(thread_data);
-            var status: u32 = 0;
+            var status: c_int = 0;
             _ = std.c.waitpid(@as(i32, @intCast(pid)), &status, 0);
             return err;
         };
@@ -155,7 +155,7 @@ const ThreadData = struct {
 };
 
 fn reapChild(data: *ThreadData) void {
-    var status: u32 = 0;
+    var status: c_int = 0;
     _ = std.c.waitpid(data.pid, &status, 0);
     data.allocator.destroy(data);
 }
@@ -476,7 +476,7 @@ pub fn runToolTimed(name: []const u8, args: []const []const u8, out: []u8, timeo
         var total: usize = 0;
         var truncated = false;
         var timed_out = false;
-        const scratch: [256]u8 = undefined;
+        var scratch: [256]u8 = undefined;
         const deadline = nowNs() + timeout_ms * std.time.ns_per_ms;
 
         while (true) {
@@ -485,24 +485,24 @@ pub fn runToolTimed(name: []const u8, args: []const []const u8, out: []u8, timeo
                 timed_out = true;
                 break;
             }
-            var pollfd = std.c.pollfd{
+            var pollfds = [_]std.c.pollfd{.{
                 .fd = pipefd[0],
                 .events = POLL_IN,
                 .revents = 0,
-            };
+            }};
             const remaining_ms: i32 = @intCast(@min((deadline - now) / std.time.ns_per_ms, 999));
-            const pr = std.c.poll(&pollfd, 1, remaining_ms);
+            const pr = std.c.poll(&pollfds, 1, remaining_ms);
             if (pr < 0) break;
             if (pr == 0) continue;
 
-            if ((pollfd.revents & (POLL_IN | POLL_HUP)) == 0) continue;
+            if ((pollfds[0].revents & (POLL_IN | POLL_HUP)) == 0) continue;
             if (total < out.len) {
                 const n = std.c.read(pipefd[0], out[total..].ptr, out.len - total);
                 if (n <= 0) break;
                 total += @intCast(n);
             } else {
                 truncated = true;
-                const n = std.c.read(pipefd[0], scratch.ptr, scratch.len);
+                const n = std.c.read(pipefd[0], &scratch, scratch.len);
                 if (n <= 0) break;
             }
         }
@@ -510,7 +510,7 @@ pub fn runToolTimed(name: []const u8, args: []const []const u8, out: []u8, timeo
         // The child runs in its own process group (setpgid above), so killing the
         // negative pid also terminates any descendants it spawned. If the process
         // group is already gone kill(-pid) simply fails harmlessly.
-        if (timed_out) _ = std.c.kill(-pid, 9);
+        if (timed_out) _ = std.c.kill(-pid, std.c.SIG.KILL);
         _ = std.c.close(pipefd[0]);
 
         var status: c_int = 0;

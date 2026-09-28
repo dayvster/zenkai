@@ -58,8 +58,8 @@ pub const AppReader = struct {
             const apps_dir = std.fs.path.join(self.allocator, &.{ xdg, "applications" }) catch return error.OutOfMemory;
             defer self.allocator.free(apps_dir);
 
-            const found = fsutils.readDir(self.allocator, apps_dir, options) catch null;
-            if (found) |found_list| {
+            var found = fsutils.readDir(self.allocator, apps_dir, options) catch null;
+            if (found) |*found_list| {
                 defer {
                     for (found_list.items) |p| self.allocator.free(p);
                     found_list.deinit(self.allocator);
