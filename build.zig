@@ -5,6 +5,9 @@ const configureQtExeRootModule = @import("libqt6zig").configureQtExeRootModule;
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const qt_win_root = b.option([]const u8, "qt-win-root", "Windows Qt installation root") orelse "C:/Qt/6.8.3/llvm-mingw_64";
+    // Timing instrumentation is compiled out unless asked for. Benchmarks
+    // still run against ReleaseFast: zig build -Dbench=true
+    const bench = b.option(bool, "bench", "Compile in timing instrumentation (--benchmark-all, --quit-when-shown)") orelse false;
 
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -18,6 +21,10 @@ pub fn build(b: *std.Build) !void {
         .root_module = module,
     });
     if (target.result.os.tag == .windows) exe.subsystem = .windows;
+
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "bench", bench);
+    exe.root_module.addOptions("build_options", build_options);
 
     const qt6zig = b.dependency("libqt6zig", .{
         .target = target,

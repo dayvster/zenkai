@@ -34,6 +34,8 @@ pub const help =
     \\  --run                     Windows: open Run mode and execute the typed command
     \\  --language=CODE           Translation language code (e.g. fr, de)
     \\  --no-animations           Disable window animations
+    \\  --quit-when-shown        Close automatically on the first paint (benchmarking)
+    \\  --quit-after-rescan      Close once the deferred rescan finishes (benchmarking)
     \\  --animation-interval=MS   Animation duration in milliseconds (default: 200)
     \\  --animation-easing=TYPE   Easing curve (linear, out-cubic, out-back, etc.)
     \\  --help, -h                Show this help and exit
@@ -64,6 +66,8 @@ pub const Config = struct {
     run_mode: bool,
     language: ?[]const u8,
     no_animations: bool,
+    quit_when_shown: bool,
+    quit_after_rescan: bool,
     animation_interval: ?i32,
     animation_easing: ?[]const u8,
 };
@@ -176,6 +180,8 @@ pub fn parse(args: [][:0]u8) Config {
         .run_mode = false,
         .language = null,
         .no_animations = false,
+        .quit_when_shown = false,
+        .quit_after_rescan = false,
         .animation_interval = null,
         .animation_easing = null,
     };
@@ -204,6 +210,10 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.eql(u8, arg, "--benchmark-all")) {
             cfg.benchmark_all = true;
             log.verbose = true;
+        } else if (std.mem.eql(u8, arg, "--quit-when-shown")) {
+            cfg.quit_when_shown = true;
+        } else if (std.mem.eql(u8, arg, "--quit-after-rescan")) {
+            cfg.quit_after_rescan = true;
         } else if (std.mem.eql(u8, arg, "--no-icons")) {
             cfg.no_icons = true;
         } else if (std.mem.eql(u8, arg, "--no-bottom-bar")) {

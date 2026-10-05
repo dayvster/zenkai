@@ -19,6 +19,8 @@ pub const VisualConfig = struct {
     clipboard: ?[]const u8 = null,
     url_handler: ?[]const u8 = null,
     no_animations: bool = false,
+    quit_when_shown: bool = false,
+    quit_after_rescan: bool = false,
     animation_interval: i32 = 200,
     animation_easing: ?[]const u8 = null,
 
@@ -50,6 +52,8 @@ pub const VisualConfig = struct {
             self.url_handler = if (v.len > 0) allocator.dupe(u8, v) catch null else null;
         }
         if (cfg.no_animations) self.no_animations = true;
+        if (cfg.quit_when_shown) self.quit_when_shown = true;
+        if (cfg.quit_after_rescan) self.quit_after_rescan = true;
         if (cfg.animation_interval) |v| self.animation_interval = v;
         if (cfg.animation_easing) |v| {
             if (self.animation_easing) |old| allocator.free(old);

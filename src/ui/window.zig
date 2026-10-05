@@ -11,6 +11,8 @@ const Keyboard = @import("keyboard.zig").Keyboard;
 const BottomBar = @import("bottombar.zig").BottomBar;
 const SearchBar = @import("search_bar.zig").SearchBar;
 const animation = @import("animation.zig");
+const log = @import("utils").log;
+const debug = @import("../debug/debug.zig");
 
 const QApp = qt.QApplication;
 const QWidget = qt.QWidget;
@@ -106,6 +108,20 @@ fn onItemFocused(_: usize, actions: []const ListItemAction) void {
 
 fn onWindowClose(_: QWidget, _: QCloseEvent) callconv(.c) void {
     QApp.quit();
+}
+
+// Fires once. show() only queues the paint, and the fade signal does not
+// exist when animations are off, so this is the first real "visible" marker.
+var g_first_paint_logged = false;
+
+fn onFirstPaint(w: QWidget, event: qt.QPaintEvent) callconv(.c) void {
+    if (comptime debug.instrumentation) {
+        if (!g_first_paint_logged) {
+            g_first_paint_logged = true;
+            log.info("first paint in {d:.2}ms", .{debug.elapsedMs()});
+        }
+    }
+    w.superPaintEvent(event);
 }
 
 fn closeBackdrop() void {
@@ -281,6 +297,7 @@ pub const Window = struct {
             var anim_cfg = animation.AnimationConfig{
                 .enabled = !vis.no_animations,
                 .interval_ms = vis.animation_interval,
+                .quit_when_shown = vis.quit_when_shown,
             };
             if (vis.animation_easing) |easing_name| {
                 anim_cfg.easing = animation.EasingType.fromName(easing_name);
@@ -291,6 +308,8 @@ pub const Window = struct {
 
         window.onCloseEvent(onWindowClose);
         window.onLeaveEvent(onLeaveWidget);
+        // Replaces the paint handler, so bench builds only.
+        if (comptime debug.instrumentation) window.onPaintEvent(onFirstPaint);
         app.onApplicationStateChanged(onAppStateChanged);
         Keyboard.setup(window, &self.list, self.search_bar.widget);
     }
