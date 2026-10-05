@@ -20,11 +20,16 @@ var g_app_refresh_window: ?*ui.Window = null;
 var g_app_refresh_timer: ?qt.QTimer = null;
 var g_app_refresh_allocator: std.mem.Allocator = undefined;
 var g_app_refresh_benchmark = false;
+var g_quit_after_rescan = false;
 var g_app_refresh_actions = false;
 var g_app_refresh_actions_bar = false;
 
 fn onAppsRefresh(timer: qt.QTimer) callconv(.c) void {
     timer.stop();
+    if (g_app_refresh_benchmark) {
+        debug.resetBenchmarks();
+        debug.resetPhases();
+    }
     if (g_app_refresh_window) |window| {
         const started = debug.monotonicNs();
         const loaded = desktop_loader.load(g_app_refresh_allocator, g_app_refresh_benchmark, g_app_refresh_actions, g_app_refresh_actions_bar) catch |err| {
@@ -35,13 +40,37 @@ fn onAppsRefresh(timer: qt.QTimer) callconv(.c) void {
         };
         const items = loaded;
         window.setOwnedItems(items);
+        if (g_app_refresh_benchmark) benchFilter(window);
         if (!g_app_refresh_actions and !g_app_refresh_actions_bar and items.len > 0) {
             desktop_loader.saveCache(g_app_refresh_allocator, items);
         }
         log.info("app list refreshed in {d:.2}ms", .{@as(f64, @floatFromInt(debug.monotonicNs() - started)) / std.time.ns_per_ms});
+        if (g_app_refresh_benchmark) {
+            debug.printBenchmarks();
+            debug.printPhases();
+        }
+        if (g_quit_after_rescan) QApp.quit();
     }
     timer.delete();
     g_app_refresh_timer = null;
+}
+
+// setFilter cost on the real model. One debounced keystroke burst, not a
+// per-character cost. Bench builds only.
+fn benchFilter(window: *ui.Window) void {
+    if (comptime !debug.instrumentation) return;
+    const queries = [_][]const u8{ "", "f", "fi", "fir", "fire", "term", "zzzz" };
+    log.info("filter latency (setFilter, {} items):", .{window.list.indices.items.len});
+    for (queries) |q| {
+        const t = debug.tick();
+        window.list.setFilter(q);
+        const ns = debug.tick() - t;
+        log.info("  {s: <8} {d:.3}ms  -> {d} rows", .{
+            if (q.len == 0) "<empty>" else q,
+            @as(f64, @floatFromInt(ns)) / std.time.ns_per_ms,
+            window.list.indices.items.len,
+        });
+    }
 }
 
 extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
@@ -122,6 +151,7 @@ pub fn main(init: std.process.Init) !void {
     const plugin_names = try args.parsePluginNames(init.gpa, ctx.argv);
     defer args.deinitPluginNames(init.gpa, plugin_names);
 
+    if (ctx.cfg.benchmark_all) debug.mark("plugins");
     var pm: ?plugins.PluginManager = if (ctx.cfg.no_plugins or ctx.cfg.run_mode) null else plugins.setup(init.gpa, plugin_names);
     defer if (pm) |*p| p.deinit();
 
@@ -185,30 +215,37 @@ pub fn main(init: std.process.Init) !void {
 
     if (ctx.cfg.benchmark_all) debug.mark("window setup");
     var window: ui.Window = undefined;
+    const t_win = debug.tick();
     ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons, ctx.app);
+    debug.done("Window.init: widget tree (Qt)", .qt, t_win);
     window.list.plugin_manager = if (pm) |*p| p else null;
     window.list.run_mode = ctx.cfg.run_mode;
     if (ctx.cfg.run_mode) window.search_bar.setPlaceholder("Type a command to run...");
     defer window.deinit();
 
+    if (ctx.cfg.benchmark_all) debug.mark("cache load");
     const can_use_app_cache = !skip_desktop and !ctx.cfg.show_actions and !ctx.cfg.actions_bottombar;
     var refresh_apps = !skip_desktop;
     if (can_use_app_cache) {
+        const t_cache = debug.tick();
         if (desktop_loader.loadCache(init.gpa)) |cached| {
             window.setOwnedItems(cached);
             log.info("loaded {d} apps from cache", .{cached.len});
             refresh_apps = cached.len == 0 or !desktop_loader.cacheIsFresh(init.gpa);
         }
+        debug.done("cache load + setFilter (fs+app)", .os, t_cache);
     }
 
     var freq_store = core_freq.FrequencyStore.init(init.gpa);
     defer freq_store.deinit();
     var cfg_dir_opt: ?[]u8 = null;
+    const t_freq = debug.tick();
     if (config.configDir(init.gpa)) |cfg_dir| {
         freq_store.load(cfg_dir);
         window.list.frequency_store = &freq_store;
         cfg_dir_opt = cfg_dir;
     } else |_| {}
+    debug.done("frequency.dat load (fs)", .os, t_freq);
     defer {
         if (cfg_dir_opt) |cfg_dir| init.gpa.free(cfg_dir);
     }
@@ -227,13 +264,16 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (ctx.cfg.benchmark_all) debug.mark("show window");
+    const t_show = debug.tick();
     window.show();
+    debug.done("window.show (Qt map request)", .qt, t_show);
     if (ctx.cfg.run_mode) window.search_bar.focus();
 
     if (refresh_apps) {
         g_app_refresh_window = &window;
         g_app_refresh_allocator = init.gpa;
         g_app_refresh_benchmark = ctx.cfg.benchmark_all;
+        g_quit_after_rescan = ctx.visual.quit_after_rescan;
         g_app_refresh_actions = ctx.cfg.show_actions;
         g_app_refresh_actions_bar = ctx.cfg.actions_bottombar;
         g_app_refresh_timer = qt.QTimer.new();
@@ -241,12 +281,17 @@ pub fn main(init: std.process.Init) !void {
         g_app_refresh_timer.?.start(50);
     }
 
-    if (ctx.cfg.start_timer) {
-        const elapsed = @as(f64, @floatFromInt(debug.monotonicNs() - ctx.start_ns)) / std.time.ns_per_ms;
-        log.info("appeared on screen in {d:.2}ms", .{elapsed});
+    if (comptime debug.instrumentation) {
+        if (ctx.cfg.start_timer) {
+            const elapsed = @as(f64, @floatFromInt(debug.monotonicNs() - ctx.start_ns)) / std.time.ns_per_ms;
+            log.info("appeared on screen in {d:.2}ms", .{elapsed});
+        }
     }
 
-    if (ctx.cfg.benchmark_all) debug.printBenchmarks();
+    if (ctx.cfg.benchmark_all) {
+        debug.printBenchmarks();
+        debug.printPhases();
+    }
 
     if (ctx.cfg.start_timer and ctx.cfg.theme_reloader) styles_watcher.start(init.gpa);
     ui.Window.exec();

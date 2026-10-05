@@ -92,10 +92,14 @@ pub fn freeDesktopApps() void {
 
 fn parseAndStoreActions(allocator: std.mem.Allocator, da: *const de.DesktopApp, actions_out: *std.ArrayList(ui.ListItemAction)) !void {
     if (da.file_path) |fp| {
+        const t_read = debug.tick();
         const content = fsutils.readFile(allocator, fp, 2 * 1024 * 1024) catch return;
+        debug.done("actions: readFile (fs)", .os, t_read);
         defer allocator.free(content);
 
+        const t_parse = debug.tick();
         const parsed = actions_mod.parseActions(allocator, content, da.actions) catch return;
+        debug.done("actions: parseActions", .app, t_parse);
         defer actions_mod.deinitActions(allocator, parsed);
 
         for (parsed) |action| {
@@ -173,6 +177,7 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
             parseAndStoreActions(allocator, da, &action_list) catch {};
             const action_slice = try action_list.toOwnedSlice(allocator);
 
+            const t_item = debug.tick();
             {
                 const item = try makeListItem(allocator, da, action_slice, app_idx);
                 errdefer {
@@ -200,7 +205,9 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
                     });
                 }
             }
+            debug.accSpan("makeListItem + expandExecString", .app, t_item);
         } else {
+            const t_item = debug.tick();
             {
                 const item = try makeListItem(allocator, da, &.{}, app_idx);
                 errdefer {
@@ -210,6 +217,7 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
                 }
                 try all_items.append(allocator, item);
             }
+            debug.accSpan("makeListItem + expandExecString", .app, t_item);
         }
     }
 

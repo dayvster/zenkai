@@ -37,36 +37,48 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     lang.init(allocator, cfg.language);
 
     const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const t_cfg = debug.tick();
     const config_path = try config.deploy(io, allocator);
     defer allocator.free(config_path);
 
     var visual = try config.loadConfig(allocator, config_path);
     visual.applyOverrides(allocator, cfg);
+    debug.done("config deploy+parse (fs)", .os, t_cfg);
     if (visual.theme == null and builtin.os.tag == .windows) {
         visual.theme = try allocator.dupe(u8, "native");
     }
 
     if (cfg.benchmark_all) debug.mark("qt init");
     const start_ns = if (cfg.start_timer) debug.monotonicNs() else 0;
+    if (cfg.start_timer) debug.process_start_ns = start_ns;
 
     var argc: i32 = @intCast(argv.len);
+    const t_qapp = debug.tick();
     const app = QApp.new(std.heap.page_allocator, &argc, argv);
+    debug.done("QApplication ctor (platform+display)", .qt, t_qapp);
     errdefer app.delete();
     ui.theme.setApp(app);
 
+    const t_theme = debug.tick();
     const theme_resolved = if (visual.theme) |theme_name|
         if (std.mem.eql(u8, theme_name, "native")) theme.resolveNative(allocator) else theme.resolve(allocator, visual.theme)
     else
         theme.resolve(allocator, null);
+    debug.done("theme resolve (embed/replace)", .app, t_theme);
     defer if (theme_resolved.allocation) |m| allocator.free(m);
 
     if (cfg.benchmark_all) debug.mark("theme apply");
+    const t_qss = debug.tick();
     const main_qss_loaded = theme.readMainQss(allocator);
     const base_qss = main_qss_loaded orelse theme.main_qss;
     defer if (main_qss_loaded) |m| allocator.free(m);
+    debug.done("read main.qss (fs)", .os, t_qss);
+    const t_apply = debug.tick();
     ui.theme.apply(allocator, base_qss, theme_resolved.qss);
+    debug.done("QSS parse+apply (Qt)", .qt, t_apply);
 
     if (cfg.benchmark_all) debug.mark("icon theme");
+    const t_icon = debug.tick();
     if (config.detectIconTheme(allocator)) |icon_theme| {
         log.info("icon theme: {s}", .{icon_theme});
         QIcon.setThemeName(icon_theme);
@@ -74,6 +86,7 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     } else {
         log.info("icon theme: default (Qt resolved)", .{});
     }
+    debug.done("detect icon theme (fs)", .os, t_icon);
 
     return .{
         .allocator = allocator,

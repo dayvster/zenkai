@@ -3,6 +3,7 @@ const de = @import("desktopapp");
 const dapp_parser = @import("dapp_parser");
 const fsutils = @import("utils").fsutils;
 const log = @import("utils").log;
+const debug = @import("../debug/debug.zig");
 
 pub const AppReader = struct {
     apps: std.ArrayList(de.DesktopApp),
@@ -105,11 +106,23 @@ pub const AppReader = struct {
         var desktops_buf: [dapp_parser.MaxDesktops][]const u8 = undefined;
         const desktops = dapp_parser.readCurrentDesktops(&desktops_buf);
 
+        // Summed into locals: the loop runs 300+ times.
+        var ns_read: u64 = 0;
+        var ns_parse: u64 = 0;
+        var n_read: usize = 0;
+        var n_parse: usize = 0;
+
         for (self.desktop_files.items) |file_path| {
+            const t_read = debug.tick();
             const content = fsutils.readFile(self.arena.allocator(), file_path, 2 * 1024 * 1024) catch |err| {
                 log.info("skipping unreadable desktop file '{s}': {}", .{ file_path, err });
                 continue;
             };
+            const now_read = debug.tick();
+            ns_read += now_read - t_read;
+            n_read += 1;
+
+            const t_parse = debug.tick();
             var app = dapp_parser.DappParser.parseDesktopFile(self.arena.allocator(), content) catch |err| {
                 log.info("skipping unparsable desktop file '{s}': {}", .{ file_path, err });
                 continue;
@@ -118,7 +131,12 @@ pub const AppReader = struct {
             if (!dapp_parser.shouldListApp(&app, desktops)) continue;
             app.file_path = self.arena.allocator().dupe(u8, file_path) catch continue;
             self.apps.append(self.allocator, app) catch |err| return err;
+            ns_parse += debug.tick() - t_parse;
+            n_parse += 1;
         }
+
+        debug.accCount("scan: readFile", .os, ns_read, n_read);
+        debug.accCount("scan: parseDesktopFile", .app, ns_parse, n_parse);
     }
 
     fn computeChecksum(self: *AppReader) void {

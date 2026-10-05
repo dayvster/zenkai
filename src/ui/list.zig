@@ -20,6 +20,7 @@ const QFont = qt.QFont;
 const QApp = qt.QApplication;
 const animation = @import("animation.zig");
 const icon_loader = @import("icon_loader.zig");
+const debug = @import("../debug/debug.zig");
 
 pub const ListItemAction = struct {
     name: []const u8,
@@ -221,12 +222,15 @@ fn onData(
             }
             if (role == 1) {
                 if (g_no_icons) return QVariant.new();
+                const t_icon = debug.tick();
                 const icon = switch (list.source) {
                     .desktop_apps => |apps| tryLoadIcon(apps[idx]),
                     .items => |items| loadItemIcon(items[idx]),
                 };
                 defer icon.delete();
-                return icon.toQVariant();
+                const out = icon.toQVariant();
+                debug.accSpan("onData icon load", .qt, t_icon);
+                return out;
             }
         },
         .plugin => |plugin_idx| {
@@ -234,9 +238,12 @@ fn onData(
             if (role == 0) return QVariant.new24(plugin_result.title);
             if (role == 1) {
                 if (g_no_icons) return QVariant.new();
+                const t_icon = debug.tick();
                 const icon = tryLoadPluginIcon(plugin_result.icon);
                 defer icon.delete();
-                return icon.toQVariant();
+                const out = icon.toQVariant();
+                debug.accSpan("onData plugin icon", .qt, t_icon);
+                return out;
             }
         },
     }
@@ -359,6 +366,8 @@ pub const List = struct {
     }
 
     pub fn setFilter(self: *List, text: []const u8) void {
+        const t_filter = debug.tick();
+        defer debug.done("setFilter (match+sort+model reset)", .app, t_filter);
         freePluginResults(self.allocator, &self.plugin_results);
         self.indices.clearRetainingCapacity();
 
