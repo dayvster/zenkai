@@ -9,8 +9,13 @@ const lang = @import("lang");
 const config = @import("config");
 const startup_benchmark = @import("../debug/startup_benchmark.zig");
 
-const CachedItem = struct { name: []const u8, cmd: []const u8, icon: []const u8 };
-const cache_version: u32 = 2;
+const CachedItem = struct {
+    name: []const u8,
+    cmd: []const u8,
+    icon: []const u8,
+    desktop_app_idx: ?usize = null,
+};
+const cache_version: u32 = 3;
 const CachedItems = struct {
     version: u32 = 0,
     items: []CachedItem,
@@ -67,7 +72,7 @@ pub fn loadCache(allocator: std.mem.Allocator) ?[]ui.ListItem {
             .name = allocator.dupe(u8, item.name) catch return null,
             .cmd = allocator.dupe(u8, item.cmd) catch return null,
             .icon = allocator.dupe(u8, item.icon) catch return null,
-            .desktop_app_idx = 0,
+            .desktop_app_idx = item.desktop_app_idx orelse 0,
         };
         initialized += 1;
     }
@@ -79,7 +84,12 @@ pub fn saveCache(allocator: std.mem.Allocator, items: []const ui.ListItem) void 
     defer startup_benchmark.workEnd(.cache_write, work);
     const cached = allocator.alloc(CachedItem, items.len) catch return;
     defer allocator.free(cached);
-    for (items, 0..) |item, i| cached[i] = .{ .name = item.name, .cmd = item.cmd, .icon = item.icon };
+    for (items, 0..) |item, i| cached[i] = .{
+        .name = item.name,
+        .cmd = item.cmd,
+        .icon = item.icon,
+        .desktop_app_idx = item.desktop_app_idx,
+    };
     const json = std.json.Stringify.valueAlloc(allocator, CachedItems{ .version = cache_version, .items = cached }, .{}) catch return;
     defer allocator.free(json);
     const path = cachePath(allocator) catch return;
@@ -98,6 +108,24 @@ var g_reader: ?platform.AppReader = null;
 pub fn getDesktopApps() []const de.DesktopApp {
     if (g_reader) |*r| return r.apps.items;
     return &.{};
+}
+
+/// Load the desktop reader without building the UI item list. The startup
+/// cache can populate the launcher before any app has been scanned; features
+/// that need the full desktop entry call this on demand.
+pub fn ensureAppsLoaded(allocator: std.mem.Allocator) bool {
+    if (g_reader != null) return true;
+    var reader = platform.AppReader.init(allocator);
+    reader.load() catch {
+        reader.deinit();
+        return false;
+    };
+    reader.scan() catch {
+        reader.deinit();
+        return false;
+    };
+    g_reader = reader;
+    return true;
 }
 
 pub fn freeDesktopApps() void {

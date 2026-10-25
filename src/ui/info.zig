@@ -20,6 +20,12 @@ pub fn setup(list: *applist.List, parent: qt.QWidget) void {
     g_parent = parent;
 }
 
+fn itemMatchesApp(item_name: []const u8, app_name: []const u8) bool {
+    if (std.mem.eql(u8, item_name, app_name)) return true;
+    if (item_name.len <= app_name.len or !std.mem.startsWith(u8, item_name, app_name)) return false;
+    return std.mem.startsWith(u8, item_name[app_name.len..], ": ");
+}
+
 fn currentApp() ?*const de.DesktopApp {
     var idx = g_list.view.currentIndex();
     defer idx.delete();
@@ -31,15 +37,28 @@ fn currentApp() ?*const de.DesktopApp {
         .item => |i| i,
         .plugin, .window, .window_message => return null,
     };
-    const da_idx = switch (g_list.source) {
-        .desktop_apps => |apps| {
-            return &apps[item_idx];
-        },
-        .items => |items| items[item_idx].desktop_app_idx orelse return null,
+    const item = switch (g_list.source) {
+        .desktop_apps => |apps| return &apps[item_idx],
+        .items => |items| items[item_idx],
     };
-    const apps = desktop_loader.getDesktopApps();
-    if (da_idx < apps.len) return &apps[da_idx];
-    return null;
+    const da_idx = item.desktop_app_idx orelse return null;
+
+    var apps = desktop_loader.getDesktopApps();
+    if (apps.len == 0 and desktop_loader.ensureAppsLoaded(g_list.allocator)) {
+        apps = desktop_loader.getDesktopApps();
+    }
+
+    // Cached lists do not keep the desktop reader around, and their saved
+    // indices may not match a fresh scan. Prefer the index when it agrees with
+    // the row, then fall back to matching the application name.
+    if (da_idx < apps.len and itemMatchesApp(item.name, apps[da_idx].name)) return &apps[da_idx];
+    var best: ?*const de.DesktopApp = null;
+    for (apps) |*app| {
+        if (itemMatchesApp(item.name, app.name)) {
+            if (best == null or app.name.len > best.?.name.len) best = app;
+        }
+    }
+    return best;
 }
 
 fn loadAppIcon(icon_name: ?[]const u8) QIcon {
@@ -198,4 +217,44 @@ pub fn showInfoPanel() void {
     mb.setTextFormat(qt.qnamespace_enums.TextFormat.RichText);
     mb.setMinimumSize2(440, 350);
     _ = mb.exec();
+}
+
+test "cached item resolves to a desktop app for the info panel" {
+    if (!desktop_loader.ensureAppsLoaded(std.heap.page_allocator)) return error.SkipZigTest;
+    const apps = desktop_loader.getDesktopApps();
+    if (apps.len == 0) return error.SkipZigTest;
+
+    var argc: i32 = 1;
+    var arg = [_:0]u8{ 'z', 'e', 'n', 'k', 'a', 'i' };
+    var argv = [_][:0]u8{arg[0.. :0]};
+    const app = qt.QApplication.new(std.heap.page_allocator, &argc, &argv);
+    defer app.delete();
+
+    // Cache entries all used to be written with index 0. Resolution must fall
+    // back to the name when the cached index no longer matches the scan.
+    const target = if (apps.len > 1) &apps[1] else &apps[0];
+    const items = [_]applist.ListItem{.{
+        .name = target.name,
+        .cmd = "",
+        .icon = "",
+        .desktop_app_idx = 0,
+    }};
+    var list = applist.List.fromItems(std.testing.allocator, &items, 32);
+    defer list.view.delete();
+    defer list.deinit();
+    list.adoptGList();
+    applist.List.setOnItemFocused(null);
+    list.setFilter("");
+    list.selectFirst();
+    g_list = &list;
+
+    const resolved = currentApp() orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(target.name, resolved.name);
+}
+
+test "item names match the desktop app they belong to" {
+    try std.testing.expect(itemMatchesApp("Firefox", "Firefox"));
+    try std.testing.expect(itemMatchesApp("Firefox: New Window", "Firefox"));
+    try std.testing.expect(!itemMatchesApp("Firefox Developer Edition", "Firefox"));
+    try std.testing.expect(!itemMatchesApp("Fire", "Firefox"));
 }
