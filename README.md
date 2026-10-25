@@ -26,13 +26,13 @@ Thanks to [rcalixte](https://github.com/rcalixte) for [libqt6zig](https://github
 
 ## Requirements
 
-- **Zig 0.16.0** - the compiler and build system. Download from [ziglang.org/download](https://ziglang.org/download/) or use your distro's package manager if it has a recent enough version.
-- **Qt 6.8.2 development libraries** (Core, Gui, Widgets) - the GUI toolkit. Install `qt6-base-dev` or equivalent for your distro.
+- **Zig 0.17.0** - the compiler and build system. Download from [ziglang.org/download](https://ziglang.org/download/) or use your distro's package manager if it has a recent enough version.
+- **Qt 6.8.2 development libraries** (Core, Gui, Widgets, Svg) - the GUI toolkit. Install `qt6-base-dev` and `libqt6svg6-dev` or equivalent for your distro.
 - **GCC or Clang** - used by Zig to link C++ code (Qt is written in C++).
 - **libstdc++ or libc++** - the C++ standard library, comes with your compiler.
 - **pkg-config** - helps the build system find Qt headers and libraries.
 
-Windows builds also require Zig 0.16.0 and a Qt 6.8.2 development installation for the Windows target. Use the deployment build step to bundle the Qt and LLVM MinGW runtimes plus the platform plugin beside the executable:
+Windows builds also require Zig 0.17.0 and a Qt 6.8.2 development installation for the Windows target. Use the deployment build step to bundle the Qt and LLVM MinGW runtimes plus the platform plugin beside the executable:
 
 ```powershell
 zig build deploy-windows -Dtarget=x86_64-windows-gnu
@@ -57,7 +57,7 @@ Binary at `zig-out/bin/zenkai`.
 
 #### Zig
 
-Download the tarball for your architecture from [ziglang.org/download](https://ziglang.org/download/), extract it, and put the `zig` binary somewhere in your `PATH`. Most distro repositories lag behind and 0.16.0 is required.
+Download the tarball for your architecture from [ziglang.org/download](https://ziglang.org/download/), extract it, and put the `zig` binary somewhere in your `PATH`. Most distro repositories lag behind and 0.17.0 is required.
 
 #### FreeBSD
 

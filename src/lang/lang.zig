@@ -181,9 +181,9 @@ fn unescape(a: std.mem.Allocator, s: []const u8) ![]const u8 {
 }
 
 fn applyField(tr: *translations.Translations, key: []const u8, val: []const u8) void {
-    inline for (std.meta.fields(translations.Translations)) |field| {
-        if (std.mem.eql(u8, key, field.name)) {
-            @field(tr, field.name) = val;
+    inline for (@typeInfo(translations.Translations).@"struct".field_names) |field_name| {
+        if (std.mem.eql(u8, key, field_name)) {
+            @field(tr, field_name) = val;
             return;
         }
     }

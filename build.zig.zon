@@ -2,15 +2,15 @@
     .name = .zenkai,
     .version = "1.0.0",
     .fingerprint = 0x9d5a50d25624ae70,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .libqt6zig = .{
-            .url = "git+https://github.com/rcalixte/libqt6zig#3bf26786dbdeb5980a442f5fff2d6f49ccff2277",
-            .hash = "libqt6zig-6.8.2-OSXtXHTCGx9Et4IOaIsCHzTt-_eMiKZKy_SnvtVeCoDW",
+            .url = "git+https://github.com/rcalixte/libqt6zig#76fbd35d3b4d67721e5ca5cd323c06cd83afeaad",
+            .hash = "libqt6zig-6.8.2-OSXtXJRx4BxEkhok6OWmDklZGRHmnWFVTag8HX66JGuq",
         },
         .zlua = .{
-            .url = "git+https://github.com/natecraddock/ziglua#d59103e257b25ae892cdede9a671366e8d4f3e51",
-            .hash = "zlua-0.1.0-hGRpC4aUBQCOTE7WgTqCz0YBVUUaIpqDu1cNBu8nN6jH",
+            .url = "git+https://github.com/natecraddock/ziglua#4aab3aff0f6dd3f2b96410b6d8ca118ce69d339e",
+            .hash = "zlua-0.1.0-hGRpC-OdBQAcwrYy6quE4SKpa2b9Zt-J6q5vD46RntgC",
         },
     },
     .paths = .{

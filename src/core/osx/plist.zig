@@ -65,9 +65,10 @@ pub const InfoPlist = struct {
 
     pub fn deinit(self: *InfoPlist) void {
         const a = self.allocator;
-        inline for (@typeInfo(@TypeOf(self.*)).Struct.fields) |field| {
-            if (field.type == ?[]const u8) {
-                if (@field(self, field.name)) |s| a.free(s);
+        const info = @typeInfo(@TypeOf(self.*)).@"struct";
+        inline for (info.field_names, info.field_types) |field_name, field_type| {
+            if (field_type == ?[]const u8) {
+                if (@field(self, field_name)) |s| a.free(s);
             }
         }
         for (self.document_types) |s| a.free(s);

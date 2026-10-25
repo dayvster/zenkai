@@ -22,7 +22,7 @@ pub fn monotonicNs() u64 {
     }
 }
 
-const bench_enabled = @import("builtin").mode == .Debug;
+const bench_enabled = @import("builtin").mode == .debug;
 
 const Bench = struct { label: []const u8, ns: u64 };
 var bench_entries: [32]Bench = undefined;

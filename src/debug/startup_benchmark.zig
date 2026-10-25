@@ -37,14 +37,14 @@ var input: ?qt.QLineEdit = null;
 // Disjoint wall-clock scopes around data work. These deliberately exclude Qt
 // calls, but include allocation, filesystem I/O, Lua and Windows APIs where used.
 pub const WorkPhase = enum { config, cli_setup, cache_read, cache_decode, cache_stat, frequency, list_prepare, discovery, item_conversion, cache_write, plugins };
-var work_ns = [_]u64{0} ** @typeInfo(WorkPhase).@"enum".fields.len;
+var work_ns: [@typeInfo(WorkPhase).@"enum".field_names.len]u64 = @splat(0);
 var work_first_paint_ns: u64 = 0;
 var work_ready_paint_ns: u64 = 0;
 pub fn workStart() u64 {
     return if (enabled) clock.monotonicNs() else 0;
 }
 pub fn workEnd(phase: WorkPhase, start: u64) void {
-    if (start != 0) work_ns[@intFromEnum(phase)] += clock.monotonicNs() - start;
+    if (start != 0) work_ns[@backingInt(phase)] += clock.monotonicNs() - start;
 }
 fn workTotal() u64 {
     var total: u64 = 0;

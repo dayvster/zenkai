@@ -120,12 +120,20 @@ pub const Snapshot = struct {
             var buf: [128]u8 = undefined;
             const output = switch (self.backend) {
                 .x11 => try capture(allocator, "wmctrl", &.{ "-ia", id }),
-                .hyprland => try capture(allocator, "hyprctl", &.{ "dispatch", "focuswindow", try std.fmt.bufPrint(&buf, "address:{s}", .{id}) }),
+                .hyprland => blk: {
+                    const lua = try std.fmt.allocPrint(allocator, "hl.dsp.focus({{ window = 'address:{s}' }})", .{id});
+                    defer allocator.free(lua);
+                    const selector = try std.fmt.bufPrint(&buf, "address:{s}", .{id});
+                    break :blk hyprlandDispatch(allocator, lua, &.{ "dispatch", "focuswindow", selector }) catch |err| switch (err) {
+                        error.BackendFailed => return error.FocusFailed,
+                        else => return err,
+                    };
+                },
                 .sway => try capture(allocator, "swaymsg", &.{ "-r", try std.fmt.bufPrint(&buf, "[con_id={s}] focus", .{id}) }),
                 .windows, .macos => return error.UnsupportedPlatform,
             };
             defer allocator.free(output);
-            if (self.backend == .hyprland and !std.mem.eql(u8, std.mem.trim(u8, output, " \r\n"), "ok")) return error.FocusFailed;
+            if (self.backend == .hyprland and !hyprlandAcknowledged(output)) return error.FocusFailed;
             if (self.backend == .sway) {
                 const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output, .{});
                 defer parsed.deinit();
@@ -224,6 +232,25 @@ fn integerField(value: std.json.Value, key: []const u8) ?i64 {
     if (value != .object) return null;
     const field = value.object.get(key) orelse return null;
     return if (field == .integer) field.integer else null;
+}
+
+pub fn hyprlandDispatch(allocator: std.mem.Allocator, lua_expression: []const u8, legacy_args: []const []const u8) ![]u8 {
+    // Hyprland 0.5x can run a Lua configuration, and its dispatcher parser then
+    // rejects the classic `dispatcher arg` syntax. Try the Lua form first and
+    // fall back so older or non-Lua configurations keep working.
+    var lua_args = [_][]const u8{ "dispatch", lua_expression };
+    if (capture(allocator, "hyprctl", &lua_args)) |output| {
+        if (hyprlandAcknowledged(output)) return output;
+        allocator.free(output);
+    } else |_| {}
+    const output = try capture(allocator, "hyprctl", legacy_args);
+    errdefer allocator.free(output);
+    if (!hyprlandAcknowledged(output)) return error.BackendFailed;
+    return output;
+}
+
+fn hyprlandAcknowledged(output: []const u8) bool {
+    return std.mem.eql(u8, std.mem.trim(u8, output, " \r\n"), "ok");
 }
 
 pub fn capture(allocator: std.mem.Allocator, executable: []const u8, args: []const []const u8) ![]u8 {

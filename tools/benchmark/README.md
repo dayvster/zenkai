@@ -1,6 +1,6 @@
 # Startup benchmark
 
-The runner and work summarizer use Zig 0.16. Run from the repository root.
+The runner and work summarizer use Zig 0.17. Run from the repository root.
 To summarize measured non-Qt work:
 
 ```sh
@@ -20,7 +20,7 @@ keep their existing workload and scheduling.
 
 ## Build and run
 
-Use Zig 0.16.0 and the project's Qt dependencies. The checked-in build selects
+Use Zig 0.17.0 and the project's Qt dependencies. The checked-in build selects
 ReleaseFast. Build once, then stop build/test jobs before measuring.
 
 Linux:

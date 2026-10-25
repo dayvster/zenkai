@@ -56,6 +56,7 @@ pub fn build(b: *std.Build) !void {
         "qimage",
         "qpixmap",
         "qicon",
+        "qsvgrenderer",
         "qfileinfo",
         "qfileiconprovider",
         "qrect",
@@ -101,8 +102,10 @@ pub fn build(b: *std.Build) !void {
     });
     if (target.result.os.tag == .macos) {
         exe.root_module.linkFramework("QtNetwork", .{});
+        exe.root_module.linkFramework("QtSvg", .{});
     } else {
         exe.root_module.linkSystemLibrary("Qt6Network", .{});
+        exe.root_module.linkSystemLibrary("Qt6Svg", .{});
     }
 
     if (target.result.os.tag == .windows) {
@@ -266,9 +269,7 @@ pub fn build(b: *std.Build) !void {
 
     run_cmd.step.dependOn(b.getInstallStep());
 
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const check_step = b.step("check", "Check code compiles");
     check_step.dependOn(&exe.step);
@@ -276,14 +277,14 @@ pub fn build(b: *std.Build) !void {
     const benchmark_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tools/benchmark/startup.zig"),
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
     }) });
     b.step("test-benchmark", "Run benchmark statistics tests").dependOn(&b.addRunArtifact(benchmark_tests).step);
 
     const window_test_module = b.createModule(.{
         .root_source_file = b.path("src/core/window_search.zig"),
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
         .imports = &.{.{ .name = "utils", .module = utils_module }},
         .link_libc = true,
     });
@@ -330,7 +331,7 @@ pub fn build(b: *std.Build) !void {
     const plugin_runtime_test_module = b.createModule(.{
         .root_source_file = b.path("src/plugins/plugins.zig"),
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
         .imports = &.{
             .{ .name = "lua_capi", .module = lua_capi_module },
             .{ .name = "utils", .module = utils_module },

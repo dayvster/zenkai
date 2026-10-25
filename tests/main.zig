@@ -18,9 +18,9 @@ test "args: no_dapps and no_plugins flags" {
         argv.deinit(allocator);
     }
 
-    try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--no-dapps"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--no-plugins"));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "zenkai", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--no-dapps", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--no-plugins", 0));
 
     const cfg = args.parse(argv.items);
     try std.testing.expect(cfg.no_dapps);
@@ -35,9 +35,9 @@ test "args: theme and size flags" {
         argv.deinit(allocator);
     }
 
-    try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--theme=dracula"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--size=48"));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "zenkai", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--theme=dracula", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--size=48", 0));
 
     const cfg = args.parse(argv.items);
     try std.testing.expectEqualStrings("dracula", cfg.theme.?);
@@ -61,7 +61,7 @@ test "args: fuzzed inputs don't crash" {
             while (i < bytes.len) {
                 const end = i + 1 + @as(usize, @intCast(smith.valueWithHash(u8, @intCast(i))));
                 const slice = bytes[i..@min(end, bytes.len)];
-                const dup = try allocator.dupeZ(u8, slice);
+                const dup = try allocator.dupeSentinel(u8, slice, 0);
                 try fuzz_args.append(allocator, dup);
                 i = end;
             }
@@ -81,8 +81,8 @@ test "args: parsePluginNames" {
             for (argv.items) |a| allocator.free(a);
             argv.deinit(allocator);
         }
-        try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
-        try argv.append(allocator, try allocator.dupeZ(u8, "--plugin=calculator"));
+        try argv.append(allocator, try allocator.dupeSentinel(u8, "zenkai", 0));
+        try argv.append(allocator, try allocator.dupeSentinel(u8, "--plugin=calculator", 0));
         const names = try args.parsePluginNames(allocator, argv.items);
         defer args.deinitPluginNames(allocator, names);
         try std.testing.expectEqual(@as(usize, 1), names.len);
@@ -95,9 +95,9 @@ test "args: parsePluginNames" {
             for (argv.items) |a| allocator.free(a);
             argv.deinit(allocator);
         }
-        try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
-        try argv.append(allocator, try allocator.dupeZ(u8, "--plugin=a"));
-        try argv.append(allocator, try allocator.dupeZ(u8, "--plugin=b"));
+        try argv.append(allocator, try allocator.dupeSentinel(u8, "zenkai", 0));
+        try argv.append(allocator, try allocator.dupeSentinel(u8, "--plugin=a", 0));
+        try argv.append(allocator, try allocator.dupeSentinel(u8, "--plugin=b", 0));
         const names = try args.parsePluginNames(allocator, argv.items);
         defer args.deinitPluginNames(allocator, names);
         try std.testing.expectEqual(@as(usize, 2), names.len);
@@ -111,7 +111,7 @@ test "args: parsePluginNames" {
             for (argv.items) |a| allocator.free(a);
             argv.deinit(allocator);
         }
-        try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
+        try argv.append(allocator, try allocator.dupeSentinel(u8, "zenkai", 0));
         const names = try args.parsePluginNames(allocator, argv.items);
         defer args.deinitPluginNames(allocator, names);
         try std.testing.expectEqual(@as(usize, 0), names.len);
@@ -292,12 +292,12 @@ test "args: negative numeric flags are rejected" {
         argv.deinit(allocator);
     }
 
-    try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--size=-5"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--width=-100"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--height=-1"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--monitor=-2"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--animation-interval=-3"));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "zenkai", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--size=-5", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--width=-100", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--height=-1", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--monitor=-2", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--animation-interval=-3", 0));
 
     const cfg = args.parse(argv.items);
     try std.testing.expect(cfg.icon_size == null);
@@ -315,10 +315,10 @@ test "args: non-numeric numeric flags are rejected" {
         argv.deinit(allocator);
     }
 
-    try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--size=abc"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--monitor="));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--width=12.5"));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "zenkai", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--size=abc", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--monitor=", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--width=12.5", 0));
 
     const cfg = args.parse(argv.items);
     try std.testing.expect(cfg.icon_size == null);
@@ -334,9 +334,9 @@ test "dapp_parser: positive numeric flags still parse" {
         argv.deinit(allocator);
     }
 
-    try argv.append(allocator, try allocator.dupeZ(u8, "zenkai"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--size=0"));
-    try argv.append(allocator, try allocator.dupeZ(u8, "--monitor=3"));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "zenkai", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--size=0", 0));
+    try argv.append(allocator, try allocator.dupeSentinel(u8, "--monitor=3", 0));
 
     const cfg = args.parse(argv.items);
     try std.testing.expectEqual(@as(i32, 0), cfg.icon_size.?);
@@ -701,7 +701,7 @@ test "args: startup benchmark keeps workload flags independent" {
     const a = std.testing.allocator;
     const flags = [_][]const u8{ "zenkai", "--benchmark-startup", "--no-plugins", "--no-icons" };
     var argv: [flags.len][:0]u8 = undefined;
-    for (flags, 0..) |flag, i| argv[i] = try a.dupeZ(u8, flag);
+    for (flags, 0..) |flag, i| argv[i] = try a.dupeSentinel(u8, flag, 0);
     defer for (argv) |arg| a.free(arg);
     const cfg = args.parse(&argv);
     try std.testing.expect(cfg.benchmark_startup);

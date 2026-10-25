@@ -12,10 +12,10 @@ pub fn class(name: [*:0]const u8) Object {
 
 /// All messages here return scalars or pointers, so no structure-return ABI is needed.
 pub fn send(comptime Return: type, receiver: Object, name: [*:0]const u8, args: anytype) Return {
-    const fields = @typeInfo(@TypeOf(args)).@"struct".fields;
-    const Function = switch (fields.len) {
+    const field_types = @typeInfo(@TypeOf(args)).@"struct".field_types;
+    const Function = switch (field_types.len) {
         0 => fn (Object, Selector) callconv(.c) Return,
-        1 => fn (Object, Selector, fields[0].type) callconv(.c) Return,
+        1 => fn (Object, Selector, field_types[0]) callconv(.c) Return,
         else => @compileError("Unsupported Objective-C message arity"),
     };
     const function: *const Function = @ptrCast(&objc_msgSend);

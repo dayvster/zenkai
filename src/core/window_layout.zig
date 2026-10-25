@@ -34,6 +34,17 @@ pub const Action = enum {
             .next_display => "Move to Next Display",
         };
     }
+    pub fn icon(self: Action) []const u8 {
+        return switch (self) {
+            .left => "window-left-half",
+            .right => "window-right-half",
+            .top => "window-top-half",
+            .bottom => "window-bottom-half",
+            .maximize => "window-maximize",
+            .center => "window-center",
+            .next_display => "window-next-display",
+        };
+    }
 };
 pub fn destination(current: Rect, screens: []const Rect, action: Action) !Rect {
     if (screens.len == 0) return error.NoDisplay;

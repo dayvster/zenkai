@@ -168,7 +168,7 @@ const X_OK: c_int = 1;
 // execve() remains the ultimate authority, but checking X_OK here lets
 // resolution report a precise error instead of failing later.
 fn isExecutableFile(allocator: std.mem.Allocator, path: []const u8) bool {
-    const z = allocator.dupeZ(u8, path) catch return false;
+    const z = allocator.dupeSentinel(u8, path, 0) catch return false;
     defer allocator.free(z);
     return std.c.access(z.ptr, X_OK) == 0;
 }
@@ -367,7 +367,7 @@ fn buildArgvC(allocator: std.mem.Allocator, args: []const []const u8) !ArgvC {
         allocator.free(owned);
     }
     for (args, 0..) |arg, i| {
-        owned[i] = try allocator.dupeZ(u8, arg);
+        owned[i] = try allocator.dupeSentinel(u8, arg, 0);
         count += 1;
         array[i] = owned[i].ptr;
     }

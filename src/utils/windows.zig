@@ -12,7 +12,7 @@ extern "shell32" fn ShellExecuteW(
 fn toWideZ(allocator: std.mem.Allocator, value: []const u8) ![:0]u16 {
     const wide = try std.unicode.utf8ToUtf16LeAlloc(allocator, value);
     defer allocator.free(wide);
-    return try allocator.dupeZ(u16, wide);
+    return try allocator.dupeSentinel(u16, wide, 0);
 }
 
 /// Open a file, URL, executable, or Windows shortcut through its registered handler.

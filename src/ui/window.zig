@@ -79,9 +79,7 @@ test "footer stays visible after rebuilding actions and is omitted only when req
             try std.testing.expectEqual(BottomBar.minimum_height, bar.container.height());
             for (bar.items) |item| try std.testing.expect(item.isVisible());
 
-            const actions = [_]ListItemAction{
-                .{ .name = "An action with a long descriptive label", .exec = "", .icon = "" },
-            } ** 10;
+            const actions: [10]ListItemAction = @splat(.{ .name = "An action with a long descriptive label", .exec = "", .icon = "" });
             bar.setItemActions(&actions);
             QApp.processEvents();
             try std.testing.expect(bar.menu_button != null);

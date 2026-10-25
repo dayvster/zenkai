@@ -111,3 +111,44 @@ QWidget {
                                  stop: 0 transparent,
                                  stop: 1 #191724);
 }
+
+#actionMenu {
+    background-color: #191724;
+    color: #e0def4;
+    border-color: #26233a;
+}
+
+#actionMenuSearch {
+    background-color: #1f1d2e;
+    color: #e0def4;
+    border-color: #26233a;
+    selection-background-color: #c4a7e7;
+    selection-color: #191724;
+}
+
+#actionMenuSearch:focus {
+    border-color: #9ccfd8;
+}
+
+#actionMenuSearch::placeholder {
+    color: #6e6a86;
+}
+
+#actionMenuTitle {
+    color: #e0def4;
+}
+
+#actionMenuContext,
+#actionMenuHint,
+#actionMenuEmpty {
+    color: #6e6a86;
+}
+
+#actionMenu::item:selected {
+    background-color: #c4a7e7;
+    color: #191724;
+}
+
+#actionMenu::separator {
+    background-color: #26233a;
+}

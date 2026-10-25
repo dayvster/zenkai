@@ -43,6 +43,13 @@ fn command(a: std.mem.Allocator, kind: backend.Backend, tool: []const u8, args: 
         }
     }
 }
+fn hyprlandCommand(a: std.mem.Allocator, lua: []const u8, legacy: []const []const u8) !void {
+    const output = backend.hyprlandDispatch(a, lua, legacy) catch |err| switch (err) {
+        error.BackendFailed => return error.WindowManagementFailed,
+        else => return err,
+    };
+    a.free(output);
+}
 fn parseXrandrGeometry(value: []const u8) !Rect {
     const x = std.mem.indexOfScalar(u8, value, 'x') orelse return error.InvalidGeometry;
     const offset_start = (std.mem.indexOfAny(u8, value[x + 1 ..], "+-") orelse return error.InvalidGeometry) + x + 1;
@@ -188,9 +195,15 @@ pub fn manage(a: std.mem.Allocator, kind: backend.Backend, id: []const u8, actio
         .hyprland => {
             const selector = try std.fmt.allocPrint(a, "address:{s}", .{id});
             defer a.free(selector);
-            try command(a, kind, "hyprctl", &.{ "dispatch", "setfloating", selector });
-            try command(a, kind, "hyprctl", &.{ "dispatch", "resizewindowpixel", try std.fmt.bufPrint(&buffer, "exact {d} {d},{s}", .{ target.width, target.height, selector }) });
-            try command(a, kind, "hyprctl", &.{ "dispatch", "movewindowpixel", try std.fmt.bufPrint(&buffer, "exact {d} {d},{s}", .{ target.x, target.y, selector }) });
+            const float = try std.fmt.allocPrint(a, "hl.dsp.window.float({{ action = 'enable', window = '{s}' }})", .{selector});
+            defer a.free(float);
+            try hyprlandCommand(a, float, &.{ "dispatch", "setfloating", selector });
+            const resize = try std.fmt.allocPrint(a, "hl.dsp.window.resize({{ x = {d}, y = {d}, window = '{s}' }})", .{ target.width, target.height, selector });
+            defer a.free(resize);
+            try hyprlandCommand(a, resize, &.{ "dispatch", "resizewindowpixel", try std.fmt.bufPrint(&buffer, "exact {d} {d},{s}", .{ target.width, target.height, selector }) });
+            const move = try std.fmt.allocPrint(a, "hl.dsp.window.move({{ x = {d}, y = {d}, window = '{s}' }})", .{ target.x, target.y, selector });
+            defer a.free(move);
+            try hyprlandCommand(a, move, &.{ "dispatch", "movewindowpixel", try std.fmt.bufPrint(&buffer, "exact {d} {d},{s}", .{ target.x, target.y, selector }) });
         },
         .sway => try command(a, kind, "swaymsg", &.{ "-r", try std.fmt.bufPrint(&buffer, "[con_id={s}] fullscreen disable, floating enable, resize set {d} px {d} px, move absolute position {d} px {d} px", .{ id, target.width, target.height, target.x, target.y }) }),
         else => unreachable,

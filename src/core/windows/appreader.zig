@@ -151,7 +151,7 @@ pub const AppReader = struct {
         };
         const env_names = [_][]const u8{ "APPDATA", "PROGRAMDATA" };
         for (env_names) |env_name| {
-            const env_name_z = try self.allocator.dupeZ(u8, env_name);
+            const env_name_z = try self.allocator.dupeSentinel(u8, env_name, 0);
             defer self.allocator.free(env_name_z);
             const raw = std.c.getenv(env_name_z) orelse continue;
             const base = std.mem.sliceTo(raw, 0);

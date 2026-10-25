@@ -1231,7 +1231,7 @@ test "bundled productivity plugins filter, encode URLs and copy exact text" {
         );
         const source = try loader.readFile(a, "external/plugins/" ++ case[0] ++ "/main.lua");
         defer a.free(source);
-        const terminated = try a.dupeZ(u8, source);
+        const terminated = try a.dupeSentinel(u8, source, 0);
         defer a.free(terminated);
         try runLuaTest(L, terminated);
         try runLuaTest(L, case[1]);
@@ -1316,7 +1316,7 @@ test "files plugin browses native paths and dispatches actions without shell par
     try runLuaTest(L, "plugin_config = { roots = {fixture_root} }");
     const source = try loader.readFile(a, "external/plugins/files/main.lua");
     defer a.free(source);
-    const terminated = try a.dupeZ(u8, source);
+    const terminated = try a.dupeSentinel(u8, source, 0);
     defer a.free(terminated);
     try runLuaTest(L, terminated);
     var results: std.ArrayList(PluginResult) = .empty;

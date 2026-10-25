@@ -2,10 +2,10 @@
 
 ## Prerequisites
 
-- Zig 0.16.0
+- Zig 0.17.0
 - GCC / Clang (for linking C++ code)
 - libstdc++ (or libc++)
-- Qt 6.8.2 development libraries (Core, Gui, Widgets)
+- Qt 6.8.2 development libraries (Core, Gui, Widgets, Svg)
 - pkg-config
 
 ## Building

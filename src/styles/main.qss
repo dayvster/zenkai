@@ -63,6 +63,8 @@ QWidget {
     padding: 8px;
     border: 1px solid palette(mid);
     border-radius: 12px;
+    /* Matches the padded icon canvas in action_menu.zig. */
+    icon-size: 24px;
     menu-scrollable: 1;
 }
 
@@ -94,8 +96,12 @@ QWidget {
     border-color: palette(highlight);
 }
 
+#actionMenuSearch::placeholder {
+    color: palette(placeholder-text);
+}
+
 #actionMenu::item {
-    padding: 10px 16px 10px 12px;
+    padding: 8px 16px 8px 8px;
     margin: 2px 4px;
     border-radius: 7px;
 }

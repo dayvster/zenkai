@@ -4,7 +4,7 @@ pub const MaxCapture = 64 * 1024;
 
 pub extern "c" var environ: [*:null]?[*:0]u8;
 
-pub const OsError = error{CaptureFailed, SpawnFailed};
+pub const OsError = error{ CaptureFailed, SpawnFailed };
 
 pub fn print(comptime fmt: []const u8, args: anytype) void {
     const buf = std.fmt.allocPrint(std.heap.page_allocator, fmt, args) catch return;
@@ -39,7 +39,7 @@ pub fn buildArgv(allocator: std.mem.Allocator, parts: []const []const u8) !Argv 
     var count: usize = 0;
     errdefer for (owned[0..count]) |z| allocator.free(z);
     for (parts, 0..) |part, i| {
-        owned[i] = try allocator.dupeZ(u8, part);
+        owned[i] = try allocator.dupeSentinel(u8, part, 0);
         sentinel[i] = owned[i].ptr;
         count += 1;
     }
