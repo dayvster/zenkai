@@ -99,6 +99,10 @@ Kick it off:
 
 Type to filter through your apps. Enter to launch. That's it.
 
+Up and Down cycle through results. Ctrl+L selects the search text so you can
+start a new query. Home and End move within the query; Ctrl+Home and Ctrl+End
+jump to the first and last results. Escape closes the launcher.
+
 ### `--theme=<theme>`
 
 Use `native` to follow system light/dark appearance and accent color. It selects a macOS-style surface on macOS and a Windows-style surface on Windows. Windows defaults to `native`; an explicit config or `--theme` selection overrides it.
@@ -303,6 +307,20 @@ On Nvidia or if you just want a lighter footprint, the included `zenkai.sh` wrap
 
 Drop a directory into `external/plugins/` with a `manifest.json` and a `main.lua` and the launcher picks it up automatically. No flags needed.
 
+Plugin discovery and ordinary plugin initialization are queued after the list's first paint. If a query arrives first, initialization happens before that query is dispatched so its results are not lost. Plugins run on the GUI thread; this defers their cost rather than moving it to a worker thread.
+
+Plugins used only for specific queries can opt into lazy loading with an optional manifest field:
+
+```json
+"activation_prefixes": ["run:"]
+```
+
+The manifest is discovered after the first paint, but the Lua script and its configuration are not loaded until a query starts with one of these prefixes (ASCII case-insensitive). Prefix matching is literal: `run:` matches `RUN: echo hello`, but not `run`. Once activated, the plugin keeps its Lua state until the launcher exits. Its `on_startup` hook runs once, before its first query. Other hooks only begin participating after activation; a plugin that needs lifecycle events from startup should omit this field. Empty lists or lists containing an empty prefix fall back to ordinary initialization. Plugins that never activate do not receive close/shutdown hooks. The bundled run, Hyprland, and macOS palettes opt in; the calculator initializes after the first paint because its queries have no dedicated prefix.
+
+`--plugin=NAME` still restricts discovery to the named directories, and `--no-plugins` skips plugin work entirely.
+
+Application icons are resolved and cached when a row is actually painted. Layout uses a transparent placeholder of the configured icon size, so measuring offscreen rows does not load their icons. Scrolling resolves newly visible icons on demand; there is no eager pass over the remaining list. Application refresh invalidates the cache, and new plugin results discard their previous icons.
+
 #### manifest.json
 
 ```json
@@ -347,3 +365,251 @@ end
 ```
 
 See `external/plugins/calculator/` for a full working example.
+
+### Productivity plugins
+
+These use the same Lua hooks and plugin configuration as the other bundled
+plugins. `--no-plugins` disables them; `--plugin=NAME` can select them individually.
+
+| Query | Action |
+| --- | --- |
+| `2 + 3 * 4` | Show the calculator answer; Enter copies it and keeps the launcher open. |
+| `link: zig allocator` | Search Google or GitHub for the query. Enter opens the selected result. |
+| `link: docs` | Find a saved link by its title. |
+| `snip: greeting` | Find a saved snippet by title or description. Enter copies its full text. |
+| `www.google.com` | Suggest opening `https://www.google.com` in the system default browser. |
+| `win: editor` | Find an open window by title or application name; Enter switches to it. |
+
+Quicklinks and snippets load only when their prefixes are used. Prefixes are
+case-insensitive. Snippets copy text; they do not type it into another app.
+
+Copy the plugin's `config.example.json` to
+`<config directory>/<plugin name>.json`, then edit it. On Windows,
+the config directory is `%APPDATA%/zenkai`; on Linux it is
+`${XDG_CONFIG_HOME:-~/.config}/zenkai`. Restart the launcher after changing it.
+A `config.json` beside the plugin's `main.lua` is also supported as a fallback.
+
+Quicklinks use `commands` entries with a `title` and an HTTP(S) `url`. A
+`{query}` placeholder is replaced with URL-encoded search text. Set `"replace":
+true` to omit the bundled Google and GitHub searches. Snippets use `title`,
+optional `subtitle`, and `text`; JSON `\n` escapes preserve line breaks.
+
+```lua
+-- Copy text through the launcher's native clipboard.
+-- Returns true when a clipboard handler is available.
+api.copy_text("Text to copy")
+```
+
+`on_open(id)` runs for both result types. `"NoReturn"` keeps the launcher open
+after the hook, so plugins can copy a value without closing the search.
+
+The bottom bar is visible by default, including when the search has no results.
+Only `--no-bottom-bar` omits it. **Ctrl+K** opens the searchable Actions menu
+for the selected result, including when the footer is hidden. Type to filter,
+use Up/Down to select, Enter to run, and Escape to dismiss. Application actions
+loaded with `--actions-bottombar` and plugin actions keep Ctrl+1…Ctrl+0 shortcuts
+for their first ten entries; the menu displays all actions.
+
+### Files and folders
+
+The bundled `files` Lua plugin browses explicit paths and searches filenames:
+
+| Query | Behavior |
+| --- | --- |
+| `/home/dayvster/workspace` | Browse the directory on Linux. |
+| `~/Documents` | Browse a home directory path on Linux or macOS. |
+| `C:\Users\dayvi\Workspace` or `C:/Users/dayvi/Workspace` | Browse a Windows directory. |
+| `~\Workspace` | Browse a Windows home directory path. |
+| `~/Documents/repo` | Show an exact path, or filter its parent by the partial filename. |
+| `file: report` | Search filenames recursively under the configured roots (home by default). |
+| `file:` | Browse home. |
+
+Enter browses folders inside Zenkai and opens files with their default app.
+The `..` row navigates up. Directories show folders first and page in groups of
+128. Explicit browsing includes hidden entries. File and folder icons come from
+Qt's native file icon provider on Windows, macOS, and Linux; `--no-icons` still
+hides them. Linux opening requires `xdg-open`.
+
+Search is incremental, not indexed: select **Continue searching** to scan the
+next folders. Each step scans up to four directory pages and returns up to 100
+matches. Matches use case-insensitive ASCII substring matching. Search skips
+symlink directories and common dependency/cache directories; unavailable folders
+are reported. Individual directories larger than 100,000 entries are rejected.
+Network and large directories can still take time to enumerate.
+
+Copy `external/plugins/files/config.example.json` to the config directory as
+`files.json` and customize it. Windows uses `%APPDATA%\zenkai\files.json`;
+Linux and macOS use `${XDG_CONFIG_HOME:-~/.config}/zenkai/files.json`.
+Use forward slashes or escaped backslashes in JSON Windows paths:
+
+```json
+{
+  "roots": ["~/Workspace", "~/Documents"],
+  "exclude": [".git", "node_modules", ".cache", ".zig-cache", "zig-pkg", "Library", "AppData"],
+  "include_hidden": false
+}
+```
+
+Restart after changing configuration. Explicit paths work outside the search
+roots. Use `--plugin=files` to load only this plugin or `--no-plugins` to disable it.
+
+### Result actions
+
+The Actions menu includes common actions such as Copy Name and Copy Launch
+Command, plus actions supplied by the selected result:
+
+- Files: Open with Default App, Copy Path, Browse Containing Folder, Refresh.
+- Folders: Open in File Manager, Copy Path, Browse Folder, Refresh.
+- Windows: Switch to Window, Copy Window Title, Refresh Windows.
+- URLs and quicklinks: Copy URL.
+- Snippets: Copy Snippet.
+- Calculator: Copy Result and Copy Expression.
+- Browser applications: New Window and New Private Window (InPrivate for Edge).
+
+Browser actions are detected when opening the menu, without adding startup work.
+Supported executables include Chrome, Chromium, Brave, Vivaldi, Edge, Firefox,
+and LibreWolf, including recognized Flatpak/Snap application IDs. Windows resolves
+ordinary named browser shortcuts to their executable; shortcut-specific arguments
+are not inherited. Direct launch commands retain profile/package arguments.
+macOS invokes the browser's bundle executable so a running browser receives the
+window request. Safari, opaque shell wrappers, and recognized web-app/kiosk entries
+do not receive these actions. These actions apply to application results.
+
+Launch options follow the browsers' implementations:
+[Chromium switches](https://chromium.googlesource.com/chromium/src/+/main/chrome/common/chrome_switches.cc),
+[Brave flags](https://support.brave.com/hc/en-us/articles/360044860011-How-Do-I-Use-Command-Line-Flags-in-Brave),
+and [Firefox parameters](https://firefox-source-docs.mozilla.org/browser/CommandLineParameters.html).
+
+Lua plugins register actions during `on_query` and handle them separately:
+
+```lua
+local id = api.add_result("Example", "Description", "edit-copy", "NoReturn")
+api.add_action(id, "Copy Value", 1, "edit-copy")
+
+function on_action(result_id, action_id)
+    if action_id == 1 then api.copy_text("Value") end
+end
+```
+
+Up to 64 actions may be attached to each result. Actions keep the launcher open
+unless the hook calls `api.close()`. `api.set_query(text)` from `on_open` or
+`on_action` changes the query after the hook returns, so plugins can navigate
+without rebuilding results during a Lua callback. Calls from `on_query` are
+ignored.
+
+Filesystem primitives are available to plugins; traversal policy stays in Lua:
+
+```lua
+local entry, err = api.path_info("~/Documents")
+-- entry: path, name, parent, is_dir, is_link, icon
+local page, err = api.read_dir("~/Documents", 0, "report")
+-- page: path, parent, entries, more; offset and filename filter are optional
+local ok, err = api.open_path("~/Documents/report.pdf")
+```
+
+Paths are passed as native paths/arguments, not shell commands. Missing paths
+and filesystem errors return `nil, message`.
+
+### Scientific calculator and conversions
+
+The bundled `calculator` Lua plugin accepts expressions directly in the search bar:
+
+| Example | Result |
+| --- | --- |
+| `sqrt(144) + max(2, 3)` | `15` |
+| `sin(pi / 2)` | `1` (trigonometry uses radians) |
+| `1e3 / 4` | `250` |
+| `15% of 80` | `12` |
+| `100 cm to m` | `1 m` |
+| `32 f to c` | `0 c` |
+| `2 GiB to MiB` | `2048 MiB` |
+| `100 USD to EUR` | Latest available reference rate, with its date |
+
+Functions include `sqrt`, `abs`, `floor`, `ceil`, `round`, `min`, `max`,
+`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `ln`, `log` (base 10), `exp`,
+`rad`, and `deg`; constants are `pi`, `tau`, and `e`. Conversions support
+length, mass, time, volume, speed, temperature, angles, and data sizes.
+Data units distinguish bits (`Mb`) from bytes (`MB`) and decimal from binary (`MiB`).
+Enter copies the result; Ctrl+K also offers Copy Expression.
+
+Currency requests and parsing are implemented in Lua using the asynchronous native
+`api.http_get` bridge. [Frankfurter](https://frankfurter.dev/) supplies daily
+reference rates without an API key; these are not intraday trading quotes.
+Only currency codes are sent, never the amount. The dated rate is cached for the
+launcher session. Offline failures show an unavailable result; restart to retry.
+Normal calculations and unit conversions work offline.
+
+For plugin authors, `api.http_get(https_url)` returns `nil, "pending"` while
+fetching, then `body, "ok"`, or `nil, error_message`. Completion dispatches
+`on_idle`, where the plugin can request a query refresh with `api.set_query`.
+Responses are cached until exit, capped at 64 KiB each and 32 distinct URLs per
+session, with a five-second transfer inactivity timeout. TLS certificates are
+validated by Qt. No external interpreter or command-line HTTP tool is required.
+
+### Window switcher
+
+Window switching is built into the Zig core. Type `win:` to list open windows,
+filter by title or application name, and focus the selected window. It omits
+Zenkai itself. It is enabled by default, works with `--no-plugins`, and can be
+disabled independently with `--no-window-switcher`. Run mode does not use it.
+Clear back to `win:` to refresh the window list; typing a filter searches the
+snapshot without repeatedly starting desktop tools. Failed focus keeps the
+launcher open and displays the error; changing the query refreshes the list.
+
+Select a window result and press **Ctrl+K** for Left/Right/Top/Bottom Half,
+Maximize, Center Window, and Move to Next Display. Layouts use monitor work
+areas, including negative monitor coordinates and desktop scaling. Center and
+Next Display preserve the window size when it fits. Applications may enforce a
+minimum size. On macOS, Maximize fills the desktop rather than creating a new
+fullscreen Space. Hyprland and Sway actions make tiled windows floating; leave
+Hyprland fullscreen mode before arranging a window.
+
+Window results display the owning application's icon: executable icons on
+Windows, application bundle icons on macOS, and desktop entry `Icon` values on
+Linux (matched by app ID or `StartupWMClass`). Missing metadata falls back to
+the usual launcher icon. Linux searches the XDG data directories, including
+user-installed desktop entries.
+
+| Platform | Backend and requirements |
+| --- | --- |
+| Windows | Native Win32 enumeration and focus; minimized windows are restored. No helper installation. |
+| macOS | Native AppKit and Accessibility APIs called from Zig. Allow Zenkai Accessibility access in System Settings → Privacy & Security. |
+| Linux / X11 | Install `wmctrl` and `xrandr` for window layouts; the window manager must support EWMH. |
+| Linux / Hyprland | `hyprctl` in PATH and the compositor's session environment. |
+| Linux / Sway | `swaymsg` in PATH and the compositor's session environment. |
+
+Other Wayland compositors, including GNOME and KDE Wayland, currently show an
+unsupported-session message. They require their own compositor integration;
+XWayland alone cannot enumerate their native Wayland windows. macOS retains the
+exact native window reference until the list is refreshed. The macOS and Linux
+backends have not been tested on a live desktop
+from this Windows development environment.
+
+### Automatic URL suggestions
+
+URL suggestions display the system default browser's icon, separately for HTTP
+and HTTPS. Windows uses protocol associations, macOS uses NSWorkspace, and Linux
+uses `xdg-mime` plus the handler's desktop entry. The URL plugin caches those
+descriptors for its lifetime; restart Zenkai after changing your default browser.
+Native icons are loaded through Qt only when their result row is painted, and
+`--no-icons` still hides them.
+
+The `url` Lua plugin uses anchored Lua patterns and host/port validation to
+recognize HTTP(S) URLs, bare domains, IPv4 addresses, and `localhost:PORT`.
+Bare domains default to HTTPS; localhost with a port defaults to HTTP. Paths,
+queries, and fragments are preserved. Ordinary multiword searches, email
+addresses, unsupported schemes, and malformed hosts are ignored. Unicode
+domains should be entered in their ASCII/punycode form; IPv6 literals are not
+currently recognized.
+
+Opening requires selecting the suggestion and pressing Enter. This plugin uses
+the system default browser, independent of `--clipboard` and `--url-handler`.
+Disable it with `--no-plugins`, or use `--plugin=NAME` to select other plugins.
+
+The native services are also available to other Lua plugins:
+
+```lua
+api.open_browser("https://example.com") -- system browser; HTTP(S) only
+local icon = api.browser_icon("https") -- default handler's icon; also accepts "http"
+api.close() -- request closing after on_open, including for NoReturn results
+```
