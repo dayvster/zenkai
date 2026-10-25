@@ -8,6 +8,9 @@ test {
 /// Owns the native snapshot independently of Lua and application discovery.
 pub const Search = struct {
     enabled: bool = true,
+    /// Treat every non-prefixed query as a window search. Used by the
+    /// dedicated `--window-switcher` launch mode.
+    standalone: bool = false,
     active: bool = false,
     cached: bool = false,
     snapshot: backend.Snapshot = .{},
@@ -21,7 +24,8 @@ pub const Search = struct {
     }
 
     pub fn query(self: *Search, allocator: std.mem.Allocator, text: []const u8) !bool {
-        self.active = self.enabled and text.len >= 4 and std.ascii.eqlIgnoreCase(text[0..4], "win:");
+        const has_prefix = text.len >= 4 and std.ascii.eqlIgnoreCase(text[0..4], "win:");
+        self.active = self.enabled and (self.standalone or has_prefix);
         self.matches.clearRetainingCapacity();
         self.message = null;
         if (!self.active) {
@@ -29,7 +33,7 @@ pub const Search = struct {
             self.snapshot.deinit(allocator);
             return false;
         }
-        const term = std.mem.trim(u8, text[4..], " \t\r\n");
+        const term = std.mem.trim(u8, if (has_prefix) text[4..] else text, " \t\r\n");
         if (!self.cached or term.len == 0) {
             self.snapshot.refresh(allocator) catch |err| {
                 self.cached = false;
@@ -83,9 +87,31 @@ test "core window search filters titles and apps without plugins" {
     try std.testing.expect(!search.cached and search.snapshot.windows.items.len == 0);
 }
 
+test "standalone core window search claims ordinary queries" {
+    const a = std.testing.allocator;
+    var search: Search = .{ .standalone = true };
+    defer search.deinit(a);
+    try search.snapshot.add(a, "one", "Code [work]", "Editor");
+    try search.snapshot.add(a, "two", "Documentation", "Browser");
+    search.cached = true;
+    try std.testing.expect(try search.query(a, "browser"));
+    try std.testing.expectEqual(@as(usize, 1), search.matches.items[0]);
+    try std.testing.expect(try search.query(a, "WIN: [WORK]"));
+    try std.testing.expectEqual(@as(usize, 0), search.matches.items[0]);
+    try std.testing.expect(try search.query(a, "win: editor"));
+    try std.testing.expectEqual(@as(usize, 0), search.matches.items[0]);
+    try std.testing.expect(try search.query(a, "not found"));
+    try std.testing.expectEqualStrings("No matching windows", search.message.?);
+}
+
 test "disabled core window search never claims the prefix" {
     var search: Search = .{ .enabled = false };
     defer search.deinit(std.testing.allocator);
     try std.testing.expect(!try search.query(std.testing.allocator, "win:"));
     try std.testing.expect(!search.cached);
+
+    var standalone: Search = .{ .enabled = false, .standalone = true };
+    defer standalone.deinit(std.testing.allocator);
+    try std.testing.expect(!try standalone.query(std.testing.allocator, "editor"));
+    try std.testing.expect(!standalone.active);
 }

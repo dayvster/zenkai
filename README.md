@@ -178,6 +178,14 @@ Skips `.desktop` file scanning. Use this when you only want plugins or `--menu` 
 
 Skips loading plugins.
 
+### `--window-switcher`
+
+Starts as a dedicated window switcher. Open windows are listed immediately, and typing filters them without the `win:` prefix. Desktop application scanning is skipped.
+
+```sh
+./zig-out/bin/zenkai --window-switcher
+```
+
 ### `--run`
 
 Opens Zenkai in Windows Run mode. Type a command or URL and press Enter to open it with the Windows shell, without a `run:` prefix.
@@ -551,10 +559,13 @@ validated by Qt. No external interpreter or command-line HTTP tool is required.
 Window switching is built into the Zig core. Type `win:` to list open windows,
 filter by title or application name, and focus the selected window. It omits
 Zenkai itself. It is enabled by default, works with `--no-plugins`, and can be
-disabled independently with `--no-window-switcher`. Run mode does not use it.
-Clear back to `win:` to refresh the window list; typing a filter searches the
-snapshot without repeatedly starting desktop tools. Failed focus keeps the
-launcher open and displays the error; changing the query refreshes the list.
+disabled independently with `--no-window-switcher`. Pass `--window-switcher` to
+start directly in this mode with the window list already populated and the
+`win:` prefix optional. Run mode does not use it.
+Clear back to `win:` (or clear the search in window-switcher mode) to refresh
+the window list; typing a filter searches the snapshot without repeatedly
+starting desktop tools. Failed focus keeps the launcher open and displays the
+error; changing the query refreshes the list.
 
 Select a window result and press **Ctrl+K** for Left/Right/Top/Bottom Half,
 Maximize, Center Window, and Move to Next Display. Layouts use monitor work

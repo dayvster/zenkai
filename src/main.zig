@@ -169,7 +169,8 @@ pub fn main(init: std.process.Init) !void {
     dapp_parser.setLocale(ctx.cfg.language);
 
     const use_menus = menu_entries.len > 0;
-    const skip_desktop = use_menus or ctx.cfg.no_dapps or ctx.cfg.run_mode;
+    const window_switcher = ctx.cfg.window_switcher and !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode;
+    const skip_desktop = use_menus or ctx.cfg.no_dapps or ctx.cfg.run_mode or window_switcher;
 
     var items: []ui.ListItem = undefined;
     if (use_menus) {
@@ -220,6 +221,7 @@ pub fn main(init: std.process.Init) !void {
     ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons, ctx.app);
     window.list.plugin_manager = if (pm) |*p| p else null;
     window.list.window_search.enabled = !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode;
+    window.list.window_search.standalone = window_switcher;
     if (pm) |*p| {
         g_plugin_manager = p;
         g_plugin_timer = qt.QTimer.new();
@@ -236,7 +238,11 @@ pub fn main(init: std.process.Init) !void {
         g_plugin_manager = null;
     }
     window.list.run_mode = ctx.cfg.run_mode;
-    if (ctx.cfg.run_mode) window.search_bar.setPlaceholder("Type a command to run...");
+    if (ctx.cfg.run_mode) {
+        window.search_bar.setPlaceholder("Type a command to run...");
+    } else if (window_switcher) {
+        window.search_bar.setPlaceholder("Search windows...");
+    }
     defer window.deinit();
     benchmark.attach(ctx.app, window.widget, window.list.view.viewport(), window.search_bar.widget);
     defer benchmark.deinit();
@@ -285,7 +291,7 @@ pub fn main(init: std.process.Init) !void {
     if (ctx.cfg.benchmark_all) debug.mark("show window");
     window.show();
     if (ctx.cfg.benchmark_startup) window.widget.activateWindow();
-    if (ctx.cfg.run_mode or ctx.cfg.benchmark_startup) window.search_bar.focus();
+    if (ctx.cfg.run_mode or window_switcher or ctx.cfg.benchmark_startup) window.search_bar.focus();
     benchmark.showReturned();
 
     if (refresh_apps) {

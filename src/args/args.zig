@@ -31,6 +31,7 @@ pub const help =
     \\  --url-handler=CMD         URL handler for plugin open_url results (e.g. xdg-open, firefox)
     \\  --no-dapps                Skip scanning desktop applications (useful for plugin-only usage)
     \\  --no-plugins              Skip loading plugins
+    \\  --window-switcher         Start in window switcher mode (windows preloaded)
     \\  --no-window-switcher      Disable the built-in win: window search
     \\  --plugin=NAME             Only load the specified plugin (may be repeated)
     \\  --run                     Windows: open Run mode and execute the typed command
@@ -64,6 +65,7 @@ pub const Config = struct {
     url_handler: ?[]const u8,
     no_dapps: bool,
     no_plugins: bool,
+    window_switcher: bool = false,
     no_window_switcher: bool = false,
     run_mode: bool,
     language: ?[]const u8,
@@ -239,6 +241,8 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.no_dapps = true;
         } else if (std.mem.eql(u8, arg, "--no-plugins")) {
             cfg.no_plugins = true;
+        } else if (std.mem.eql(u8, arg, "--window-switcher")) {
+            cfg.window_switcher = true;
         } else if (std.mem.eql(u8, arg, "--no-window-switcher")) {
             cfg.no_window_switcher = true;
         } else if (std.mem.eql(u8, arg, "--run")) {
@@ -278,5 +282,12 @@ test "window switching can be disabled independently of plugins" {
     var window_args = [_][:0]u8{&no_windows};
     const windows_disabled = parse(&window_args);
     try std.testing.expect(windows_disabled.no_window_switcher);
+    try std.testing.expect(!windows_disabled.window_switcher);
     try std.testing.expect(!windows_disabled.no_plugins);
+
+    var switcher = "--window-switcher".*;
+    var switcher_args = [_][:0]u8{&switcher};
+    const switcher_mode = parse(&switcher_args);
+    try std.testing.expect(switcher_mode.window_switcher);
+    try std.testing.expect(!switcher_mode.no_window_switcher);
 }
