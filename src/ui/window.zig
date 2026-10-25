@@ -57,6 +57,52 @@ test "clampMonitorIndex" {
     try std.testing.expectEqual(@as(usize, 0), clampMonitorIndex(2, 0));
 }
 
+test "footer stays visible after rebuilding actions and is omitted only when requested" {
+    var argc: i32 = 1;
+    var arg = [_:0]u8{ 'z', 'e', 'n', 'k', 'a', 'i' };
+    var argv = [_][:0]u8{arg[0.. :0]};
+    const app = QApp.new(std.heap.page_allocator, &argc, &argv);
+    defer app.delete();
+    app.setStyleSheet(@embedFile("../styles/main.qss") ++ @embedFile("../styles/dark.theme.qss"));
+
+    for ([_]bool{ false, true }) |hide_bar| {
+        var window: Window = undefined;
+        window.init(std.testing.allocator, &.{}, .{ .no_animations = true }, hide_bar, true, app);
+        defer window.deinit();
+        window.widget.show();
+        QApp.processEvents();
+        try std.testing.expectEqual(!hide_bar, window.bottom_bar != null);
+        if (window.bottom_bar) |*bar| {
+            bar.setDefaultActions();
+            QApp.processEvents();
+            try std.testing.expect(bar.container.isVisible());
+            try std.testing.expectEqual(BottomBar.minimum_height, bar.container.height());
+            for (bar.items) |item| try std.testing.expect(item.isVisible());
+
+            const actions = [_]ListItemAction{
+                .{ .name = "An action with a long descriptive label", .exec = "", .icon = "" },
+            } ** 10;
+            bar.setItemActions(&actions);
+            QApp.processEvents();
+            try std.testing.expect(bar.menu_button != null);
+            try std.testing.expectEqual(@as(usize, 2), bar.items.len);
+            for (bar.items) |item| {
+                try std.testing.expect(item.isVisible());
+                try std.testing.expect(item.x() + item.width() <= bar.container.width());
+            }
+            if (std.c.getenv("ZENKAI_UI_PREVIEW")) |path| {
+                const preview = window.widget.grab();
+                defer preview.delete();
+                try std.testing.expect(preview.save(std.mem.sliceTo(path, 0)));
+            }
+            bar.setDefaultActions();
+            QApp.processEvents();
+            try std.testing.expect(bar.menu_button != null);
+            for (bar.items) |item| try std.testing.expect(item.isVisible());
+        }
+    }
+}
+
 fn onAppStateChanged(_: QApp, state: i32) callconv(.c) void {
     if (!g_close_on_focus_out) return;
     if (state == 2) {
@@ -74,6 +120,7 @@ fn onLeaveWidget(_: QWidget, _: qt.QEvent) callconv(.c) void {
 }
 
 fn onBlurTimerTimeout(_: qt.QTimer) callconv(.c) void {
+    if (@import("action_menu.zig").isOpen()) return;
     QApp.quit();
 }
 
@@ -92,6 +139,25 @@ fn onSearchDebounced(text: []const u8) void {
     if (g_window.list.plugin_manager) |pm| {
         pm.dispatchIdle();
     }
+}
+
+fn onHttpComplete() void {
+    if (g_window.list.plugin_manager) |pm| {
+        pm.dispatchIdle();
+        if (pm.pending_query) |query| {
+            pm.pending_query = null;
+            defer pm.allocator.free(query);
+            onQueryRequested(query);
+        }
+    }
+}
+
+fn onQueryRequested(text: []const u8) void {
+    g_window.search_bar.setText(text);
+    if (g_window.search_bar.debounce_timer) |timer| timer.stop();
+    onSearchDebounced(text);
+    g_window.list.selectFirst();
+    g_window.search_bar.focus();
 }
 
 fn onItemFocused(_: usize, actions: []const ListItemAction) void {
@@ -236,6 +302,7 @@ pub const Window = struct {
         };
 
         self.list.adoptGList();
+        self.list.on_query_requested = onQueryRequested;
         self.search_bar.setup();
 
         if (!no_bottom_bar) {
@@ -264,12 +331,13 @@ pub const Window = struct {
         if (no_bottom_bar) {
             fade.setGeometry(0, win_h - fade_h, win_w, fade_h);
         } else {
-            fade.setGeometry(vis.layout_margin, win_h - vis.layout_margin - 28 - fade_h, win_w - 2 * vis.layout_margin, fade_h);
+            fade.setGeometry(vis.layout_margin, win_h - vis.layout_margin - BottomBar.minimum_height - fade_h, win_w - 2 * vis.layout_margin, fade_h);
         }
         fade.raise();
         fade.setAttribute2(wa.WA_TransparentForMouseEvents, true);
 
         g_window = self;
+        @import("http.zig").on_complete = onHttpComplete;
         g_close_on_focus_out = vis.close_on_focus_out;
         g_fullscreen = vis.fullscreen;
         g_monitor = vis.monitor;
@@ -296,6 +364,7 @@ pub const Window = struct {
     }
 
     pub fn setOwnedItems(self: *Window, items: []ListItem) void {
+        self.list.invalidateIcons();
         if (self.owned_items) |old_items| {
             for (old_items) |item| {
                 self.allocator.free(item.icon);
@@ -345,6 +414,8 @@ pub const Window = struct {
     }
 
     pub fn deinit(self: *Window) void {
+        @import("http.zig").deinit();
+        List.setOnItemFocused(null);
         g_blur_timer.stop();
         g_blur_timer.delete();
         closeBackdrop();

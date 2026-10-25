@@ -1,7 +1,7 @@
 const std = @import("std");
 const qt = @import("libqt6zig");
 const config = @import("config");
-const utils = @import("utils");
+
 const applist = @import("list.zig");
 const ListItemAction = @import("list.zig").ListItemAction;
 const info = @import("info.zig");
@@ -16,7 +16,6 @@ const QIcon = qt.QIcon;
 const QLabel = qt.QLabel;
 const QWidget = qt.QWidget;
 const QResizeEvent = qt.QResizeEvent;
-const QApp = qt.QApplication;
 
 var g_app_list: *applist.List = undefined;
 var g_bar: *BottomBar = undefined;
@@ -32,34 +31,8 @@ fn onOpen(_: QAction) callconv(.c) void {
     g_app_list.launchSelected();
 }
 
-fn loadActionIcon(icon_name: []const u8) QIcon {
-    if (icon_name.len == 0) return QIcon.new();
-    if (icon_name[0] == '/') return QIcon.new4(icon_name);
-    return QIcon.fromTheme(icon_name);
-}
-
-fn makeItemActionHandler(comptime n: usize) *const fn (QAction) callconv(.c) void {
-    return struct {
-        fn handler(_: QAction) callconv(.c) void {
-            const actions = applist.List.currentItemActions();
-            if (n >= actions.len) return;
-            const exec = actions[n].exec;
-            if (exec.len == 0) return;
-            const argv = utils.tokenizeCommandLine(g_app_list.allocator, exec) catch |err| {
-                utils.log.info("action exec parse failed: {}", .{err});
-                QApp.quit();
-                return;
-            };
-            defer {
-                for (argv) |arg| g_app_list.allocator.free(arg);
-                g_app_list.allocator.free(argv);
-            }
-            utils.executeArgv(g_app_list.allocator, argv) catch |err| {
-                utils.log.info("failed to launch action: {}", .{err});
-            };
-            QApp.quit();
-        }
-    }.handler;
+fn onActions(_: QAction) callconv(.c) void {
+    @import("action_menu.zig").show(g_app_list, g_bar.parent);
 }
 
 fn onContainerResize(_: QWidget, _: QResizeEvent) callconv(.c) void {
@@ -67,18 +40,21 @@ fn onContainerResize(_: QWidget, _: QResizeEvent) callconv(.c) void {
 }
 
 pub const BottomBar = struct {
+    pub const minimum_height = 44;
+
     allocator: std.mem.Allocator,
     container: QWidget,
     actions: []QAction,
     items: []QWidget,
     parent: QWidget,
     info_shortcut: QShortcut,
+    menu_button: ?QToolButton = null,
 
     pub fn init(allocator: std.mem.Allocator, parent: qt.QWidget, vis: config.VisualConfig) BottomBar {
         _ = vis;
         const container = QWidget.new2();
         container.setObjectName("bottomBar");
-        container.setMinimumHeight(28);
+        container.setFixedHeight(minimum_height);
         return .{
             .allocator = allocator,
             .container = container,
@@ -108,13 +84,18 @@ pub const BottomBar = struct {
     fn layoutItems(self: *BottomBar) void {
         const cr = self.container.contentsRect();
         const ch = cr.height();
-        var x = cr.left();
-        for (self.items) |item| {
-            item.setFixedHeight(ch);
+        var x = cr.left() + 8;
+        for (self.items, 0..) |item, i| {
+            item.setFixedHeight(@max(ch - 12, 0));
             item.adjustSize();
             const iw = item.width();
-            item.setGeometry(x, cr.top(), iw, ch);
-            x += iw + 4;
+            const item_x = if (i == self.items.len - 1 and i > 0)
+                @max(x, cr.right() - iw - 8)
+            else
+                x;
+            item.setGeometry(item_x, cr.top() + 6, iw, @max(ch - 12, 0));
+            item.show();
+            x += iw + 12;
         }
     }
 
@@ -125,6 +106,7 @@ pub const BottomBar = struct {
     }
 
     fn removeItems(self: *BottomBar) void {
+        self.menu_button = null;
         for (self.items) |item| {
             item.delete();
         }
@@ -146,11 +128,13 @@ pub const BottomBar = struct {
         el.setObjectName("actionItem");
         var row = HBoxLayout.new(el);
         row.setContentsMargins(0, 0, 0, 0);
-        row.setSpacing(0);
+        row.setSpacing(6);
 
         const button = QToolButton.new2();
         button.setObjectName("actionButton");
         button.setDefaultAction(action);
+        self.menu_button = button;
+        button.setFocusPolicy(qt.qnamespace_enums.FocusPolicy.NoFocus);
         button.setToolButtonStyle(qt.qnamespace_enums.ToolButtonStyle.ToolButtonTextBesideIcon);
         row.addWidget(button);
 
@@ -174,57 +158,8 @@ pub const BottomBar = struct {
     }
 
     pub fn setItemActions(self: *BottomBar, actions: []const ListItemAction) void {
-        self.removeItems();
-        self.removeActions();
-
-        const n = @min(actions.len, 10);
-        if (n == 0) {
-            self.setDefaultActions();
-            return;
-        }
-
-        self.actions = self.allocator.alloc(QAction, n) catch return;
-        self.items = self.allocator.alloc(QWidget, n) catch {
-            self.allocator.free(self.actions);
-            self.actions = &.{};
-            return;
-        };
-
-        inline for (0..10) |i| {
-            if (i >= n) break;
-            const a = actions[i];
-
-            const el = QWidget.new2();
-            el.setObjectName("actionItem");
-            var row = HBoxLayout.new(el);
-            row.setContentsMargins(0, 0, 0, 0);
-            row.setSpacing(4);
-
-            var buf: [8]u8 = undefined;
-            const shortcut_str = if (i < 9)
-                std.fmt.bufPrint(&buf, "Ctrl+{d}", .{i + 1}) catch "?"
-            else
-                std.fmt.bufPrint(&buf, "Ctrl+0", .{}) catch "?";
-            const shortcut_label = QLabel.new3(shortcut_str);
-            shortcut_label.setObjectName("actionShortcut");
-            row.addWidget(shortcut_label);
-
-            const icon = loadActionIcon(a.icon);
-            defer icon.delete();
-            self.actions[i] = QAction.new6(icon, a.name, self.parent);
-            self.actions[i].onTriggered(makeItemActionHandler(i));
-
-            const button = QToolButton.new2();
-            button.setObjectName("actionButton");
-            button.setDefaultAction(self.actions[i]);
-            button.setToolButtonStyle(qt.qnamespace_enums.ToolButtonStyle.ToolButtonTextBesideIcon);
-            row.addWidget(button);
-
-            el.setParent(self.container);
-            self.items[i] = el;
-        }
-
-        self.layoutItems();
+        _ = actions;
+        self.setDefaultActions();
     }
 
     pub fn setActions(self: *BottomBar, actions: []const Action) void {
@@ -254,8 +189,8 @@ pub const BottomBar = struct {
             {
                 const icon = QIcon.fromTheme("dialog-information");
                 defer icon.delete();
-                self.actions[1] = self.buildAction(icon, lang.get().bottom_bar_info, "", info.onInfo);
-                self.items[1] = self.buildItem(self.actions[1], lang.get().bottom_bar_ctrl_i);
+                self.actions[1] = self.buildAction(icon, lang.get().bottom_bar_actions, "", onActions);
+                self.items[1] = self.buildItem(self.actions[1], "Ctrl+K");
             }
         }
 

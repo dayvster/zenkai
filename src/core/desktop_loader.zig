@@ -7,6 +7,7 @@ const actions_mod = @import("actions.zig");
 const fsutils = @import("utils").fsutils;
 const lang = @import("lang");
 const config = @import("config");
+const startup_benchmark = @import("../debug/startup_benchmark.zig");
 
 const CachedItem = struct { name: []const u8, cmd: []const u8, icon: []const u8 };
 const cache_version: u32 = 2;
@@ -16,12 +17,18 @@ const CachedItems = struct {
 };
 
 fn cachePath(allocator: std.mem.Allocator) ![]u8 {
+    if (startup_benchmark.enabled) {
+        const path = std.c.getenv("ZENKAI_BENCHMARK_CACHE") orelse return error.NoBenchmarkCache;
+        return try allocator.dupe(u8, std.mem.sliceTo(path, 0));
+    }
     const dir = try config.configDir(allocator);
     defer allocator.free(dir);
     return try std.fmt.allocPrint(allocator, "{s}/apps-{s}.json", .{ dir, @tagName(@import("builtin").os.tag) });
 }
 
 pub fn cacheIsFresh(allocator: std.mem.Allocator) bool {
+    const work = startup_benchmark.workStart();
+    defer startup_benchmark.workEnd(.cache_stat, work);
     const path = cachePath(allocator) catch return false;
     defer allocator.free(path);
     const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
@@ -32,10 +39,16 @@ pub fn cacheIsFresh(allocator: std.mem.Allocator) bool {
 }
 
 pub fn loadCache(allocator: std.mem.Allocator) ?[]ui.ListItem {
+    var work = startup_benchmark.workStart();
+    var phase: startup_benchmark.WorkPhase = .cache_read;
+    defer startup_benchmark.workEnd(phase, work);
     const path = cachePath(allocator) catch return null;
     defer allocator.free(path);
     const content = fsutils.readFile(allocator, path, 8 * 1024 * 1024) catch return null;
     defer allocator.free(content);
+    startup_benchmark.workEnd(.cache_read, work);
+    phase = .cache_decode;
+    work = startup_benchmark.workStart();
     const parsed = std.json.parseFromSlice(CachedItems, allocator, content, .{ .allocate = .alloc_always }) catch return null;
     defer parsed.deinit();
     if (parsed.value.version != cache_version) return null;
@@ -62,6 +75,8 @@ pub fn loadCache(allocator: std.mem.Allocator) ?[]ui.ListItem {
 }
 
 pub fn saveCache(allocator: std.mem.Allocator, items: []const ui.ListItem) void {
+    const work = startup_benchmark.workStart();
+    defer startup_benchmark.workEnd(.cache_write, work);
     const cached = allocator.alloc(CachedItem, items.len) catch return;
     defer allocator.free(cached);
     for (items, 0..) |item, i| cached[i] = .{ .name = item.name, .cmd = item.cmd, .icon = item.icon };
@@ -132,6 +147,7 @@ fn makeListItem(allocator: std.mem.Allocator, da: *const de.DesktopApp, actions:
 }
 
 pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, actions_bottombar: bool) ![]ui.ListItem {
+    const discovery_work = startup_benchmark.workStart();
     if (benchmark) debug.mark("reader load");
     freeDesktopApps();
 
@@ -147,6 +163,9 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
         ui.showError(lang.get().error_parsing_desktop);
         return Error.ScanFailed;
     };
+    startup_benchmark.workEnd(.discovery, discovery_work);
+    const conversion_work = startup_benchmark.workStart();
+    defer startup_benchmark.workEnd(.item_conversion, conversion_work);
 
     if (benchmark) debug.mark("list init");
 

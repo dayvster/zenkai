@@ -45,6 +45,10 @@ pub fn build(b: *std.Build) !void {
         "qcolor",
         "qmimedata",
         "qurl",
+        "qnetworkaccessmanager",
+        "qnetworkrequest",
+        "qnetworkreply",
+        "qiodevice",
         "qstylehints",
         "qnamespace",
         "qabstractitemview",
@@ -65,7 +69,11 @@ pub fn build(b: *std.Build) !void {
         "qaction",
         "qmessagebox",
         "qtoolbutton",
+        "qabstractbutton",
+        "qmenu",
+        "qwidgetaction",
         "qlistview",
+        "qstyleditemdelegate",
         "qtimer",
         "qcursor",
         "qcoreevent",
@@ -91,8 +99,15 @@ pub fn build(b: *std.Build) !void {
         .linux_libraries = &.{"libgcc_eh.a"},
         .win_root = qt_win_root,
     });
+    if (target.result.os.tag == .macos) {
+        exe.root_module.linkFramework("QtNetwork", .{});
+    } else {
+        exe.root_module.linkSystemLibrary("Qt6Network", .{});
+    }
 
     if (target.result.os.tag == .windows) {
+        exe.root_module.linkSystemLibrary("user32", .{});
+        exe.root_module.linkSystemLibrary("dwmapi", .{});
         exe.root_module.linkSystemLibrary("shell32", .{});
         exe.root_module.linkSystemLibrary("advapi32", .{});
         exe.root_module.linkSystemLibrary("ole32", .{});
@@ -103,6 +118,12 @@ pub fn build(b: *std.Build) !void {
         });
     } else {
         exe.root_module.linkSystemLibrary("m", .{});
+    }
+    if (target.result.os.tag == .macos) {
+        exe.root_module.linkFramework("AppKit", .{});
+        exe.root_module.linkFramework("ApplicationServices", .{});
+        exe.root_module.linkFramework("CoreFoundation", .{});
+        exe.root_module.linkSystemLibrary("objc", .{});
     }
 
     const lua_capi_module = b.addModule("lua_capi", .{
@@ -154,12 +175,21 @@ pub fn build(b: *std.Build) !void {
 
     const plugins_module = b.addModule("plugins", .{
         .root_source_file = b.path("src/plugins/plugins.zig"),
+        .target = target,
         .imports = &.{
             .{ .name = "lua_capi", .module = lua_capi_module },
             .{ .name = "utils", .module = utils_module },
             .{ .name = "config", .module = config_module },
         },
     });
+
+    if (target.result.os.tag == .windows) {
+        plugins_module.linkSystemLibrary("shlwapi", .{});
+    } else if (target.result.os.tag == .macos) {
+        plugins_module.linkFramework("AppKit", .{});
+        plugins_module.linkFramework("CoreFoundation", .{});
+        plugins_module.linkSystemLibrary("objc", .{});
+    }
 
     const osx_module = if (target.result.os.tag == .macos) b.addModule("osx", .{
         .root_source_file = b.path("src/core/osx/osx.zig"),
@@ -202,6 +232,12 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("lang", lang_module);
     if (osx_module) |mod| exe.root_module.addImport("osx", mod);
     b.installArtifact(exe);
+    const install_plugins = b.addInstallDirectory(.{
+        .source_dir = b.path("external/plugins"),
+        .install_dir = .bin,
+        .install_subdir = "external/plugins",
+    });
+    b.getInstallStep().dependOn(&install_plugins.step);
 
     if (target.result.os.tag == .windows and builtin.target.os.tag == .windows) {
         const deploy_step = b.step("deploy-windows", "Build Zenkai and bundle its Qt runtime for Windows");
@@ -237,11 +273,44 @@ pub fn build(b: *std.Build) !void {
     const check_step = b.step("check", "Check code compiles");
     check_step.dependOn(&exe.step);
 
+    const benchmark_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tools/benchmark/startup.zig"),
+        .target = target,
+        .optimize = .Debug,
+    }) });
+    b.step("test-benchmark", "Run benchmark statistics tests").dependOn(&b.addRunArtifact(benchmark_tests).step);
+
+    const window_test_module = b.createModule(.{
+        .root_source_file = b.path("src/core/window_search.zig"),
+        .target = target,
+        .optimize = .Debug,
+        .imports = &.{.{ .name = "utils", .module = utils_module }},
+        .link_libc = true,
+    });
+    if (target.result.os.tag == .windows) {
+        window_test_module.linkSystemLibrary("user32", .{});
+        window_test_module.linkSystemLibrary("dwmapi", .{});
+    } else if (target.result.os.tag == .macos) {
+        window_test_module.linkFramework("AppKit", .{});
+        window_test_module.linkFramework("ApplicationServices", .{});
+        window_test_module.linkFramework("CoreFoundation", .{});
+        window_test_module.linkSystemLibrary("objc", .{});
+    }
+    const window_tests = b.addTest(.{ .root_module = window_test_module });
+    b.step("test-windows", "Run native window search and backend tests").dependOn(&b.addRunArtifact(window_tests).step);
+
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,
     });
 
     const run_exe_tests = b.addRunArtifact(exe_tests);
+    run_exe_tests.setEnvironmentVariable("QT_QPA_PLATFORM", "offscreen");
+    if (target.result.os.tag == .windows and builtin.target.os.tag == .windows) {
+        run_exe_tests.addPathDir(b.fmt("{s}/bin", .{qt_win_root}));
+        run_exe_tests.setEnvironmentVariable("QT_PLUGIN_PATH", b.fmt("{s}/plugins", .{qt_win_root}));
+    }
+    const ui_test_step = b.step("test-ui", "Run UI tests with the Qt offscreen backend");
+    ui_test_step.dependOn(&run_exe_tests.step);
 
     const plugin_test_module = b.createModule(.{
         .root_source_file = b.path("src/plugins/plugins.test.zig"),
@@ -249,6 +318,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = .ReleaseFast,
     });
     plugin_test_module.addImport("lua_capi", lua_capi_module);
+    plugin_test_module.addImport("plugins", plugins_module);
     plugin_test_module.addImport("zlua", lua_dep.module("zlua"));
     plugin_test_module.linkSystemLibrary("m", .{});
 
@@ -257,6 +327,30 @@ pub fn build(b: *std.Build) !void {
     });
 
     const run_plugin_tests = b.addRunArtifact(plugin_tests);
+    const plugin_runtime_test_module = b.createModule(.{
+        .root_source_file = b.path("src/plugins/plugins.zig"),
+        .target = target,
+        .optimize = .Debug,
+        .imports = &.{
+            .{ .name = "lua_capi", .module = lua_capi_module },
+            .{ .name = "utils", .module = utils_module },
+            .{ .name = "config", .module = config_module },
+            .{ .name = "zlua", .module = lua_dep.module("zlua") },
+        },
+    });
+    plugin_runtime_test_module.linkSystemLibrary("m", .{});
+    if (target.result.os.tag == .windows) {
+        plugin_runtime_test_module.linkSystemLibrary("shlwapi", .{});
+    } else if (target.result.os.tag == .macos) {
+        plugin_runtime_test_module.linkFramework("AppKit", .{});
+        plugin_runtime_test_module.linkFramework("CoreFoundation", .{});
+        plugin_runtime_test_module.linkSystemLibrary("objc", .{});
+    }
+    const plugin_runtime_tests = b.addTest(.{ .root_module = plugin_runtime_test_module });
+    const run_plugin_runtime_tests = b.addRunArtifact(plugin_runtime_tests);
+    const plugin_test_step = b.step("test-plugins", "Run plugin runtime and lazy activation tests");
+    plugin_test_step.dependOn(&run_plugin_tests.step);
+    plugin_test_step.dependOn(&run_plugin_runtime_tests.step);
 
     const fuzz_test_module = b.createModule(.{
         .root_source_file = b.path("tests/main.zig"),
@@ -278,5 +372,6 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_exe_tests.step);
     test_step.dependOn(&run_plugin_tests.step);
+    test_step.dependOn(&run_plugin_runtime_tests.step);
     test_step.dependOn(&run_fuzz_tests.step);
 }

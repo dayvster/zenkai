@@ -1,0 +1,9 @@
+{
+    "commands": [
+        {
+            "title": "Review checklist",
+            "subtitle": "Copy a pull request checklist",
+            "text": "- [ ] Tests pass\n- [ ] Documentation updated\n- [ ] Changes reviewed"
+        }
+    ]
+}

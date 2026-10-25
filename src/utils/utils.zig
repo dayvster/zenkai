@@ -2,6 +2,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 pub const log = @import("log.zig");
 pub const fsutils = @import("fsutils.zig");
+pub const app_icons = @import("app_icons.zig");
+pub const macos = @import("macos.zig");
 pub const simd = @import("simd.zig");
 
 pub fn esc(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
@@ -429,6 +431,7 @@ pub fn spawnTool(name: []const u8, args: []const []const u8, allocator: std.mem.
 pub const RunResult = struct {
     bytes: usize,
     truncated: bool,
+    exit_code: ?u8,
 };
 
 const POLL_IN: i16 = 0x1;
@@ -517,7 +520,7 @@ pub fn runToolTimed(name: []const u8, args: []const []const u8, out: []u8, timeo
         _ = std.c.waitpid(pid, &status, 0);
 
         if (timed_out) return error.RunTimeout;
-        return .{ .bytes = total, .truncated = truncated };
+        return .{ .bytes = total, .truncated = truncated, .exit_code = if (status & 0x7f == 0) @intCast((status >> 8) & 0xff) else null };
     }
 }
 

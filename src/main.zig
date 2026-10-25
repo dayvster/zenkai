@@ -5,6 +5,7 @@ const QApp = qt.QApplication;
 const ui = @import("ui/ui.zig");
 const log = @import("utils").log;
 const debug = @import("debug/debug.zig");
+const benchmark = @import("debug/startup_benchmark.zig");
 const bootstrap = @import("core/bootstrap.zig");
 const desktop_loader = @import("core/desktop_loader.zig");
 const dapp_parser = @import("dapp_parser");
@@ -22,12 +23,28 @@ var g_app_refresh_allocator: std.mem.Allocator = undefined;
 var g_app_refresh_benchmark = false;
 var g_app_refresh_actions = false;
 var g_app_refresh_actions_bar = false;
+var g_plugin_manager: ?*plugins.PluginManager = null;
+var g_plugin_timer: ?qt.QTimer = null;
+
+fn onPluginsReady(timer: qt.QTimer) callconv(.c) void {
+    timer.stop();
+    const work = benchmark.workStart();
+    defer benchmark.workEnd(.plugins, work);
+    if (g_plugin_manager) |pm| pm.ensureInitialized();
+}
+
+fn afterFirstPaint() void {
+    // Queue initialization only after the viewport's paint handler completes.
+    if (g_plugin_timer) |timer| timer.start(0);
+}
 
 fn onAppsRefresh(timer: qt.QTimer) callconv(.c) void {
     timer.stop();
     if (g_app_refresh_window) |window| {
         const started = debug.monotonicNs();
+        benchmark.refreshStarted();
         const loaded = desktop_loader.load(g_app_refresh_allocator, g_app_refresh_benchmark, g_app_refresh_actions, g_app_refresh_actions_bar) catch |err| {
+            benchmark.failed();
             log.info("desktop load failed: {}", .{err});
             timer.delete();
             g_app_refresh_timer = null;
@@ -38,6 +55,7 @@ fn onAppsRefresh(timer: qt.QTimer) callconv(.c) void {
         if (!g_app_refresh_actions and !g_app_refresh_actions_bar and items.len > 0) {
             desktop_loader.saveCache(g_app_refresh_allocator, items);
         }
+        benchmark.dataReady(items.len);
         log.info("app list refreshed in {d:.2}ms", .{@as(f64, @floatFromInt(debug.monotonicNs() - started)) / std.time.ns_per_ms});
     }
     timer.delete();
@@ -48,10 +66,17 @@ extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
 extern fn setenv([*:0]const u8, [*:0]const u8, i32) i32;
 extern var __stderrp: *anyopaque;
 
+test {
+    std.testing.refAllDecls(@import("ui/list.zig"));
+    std.testing.refAllDecls(@import("ui/window.zig"));
+    std.testing.refAllDecls(@import("ui/action_menu.zig"));
+    std.testing.refAllDecls(@import("ui/browser_actions.zig"));
+    std.testing.refAllDecls(@import("ui/http.zig"));
+    std.testing.refAllDecls(@import("core/window_layout.zig"));
+}
+
 pub fn main(init: std.process.Init) !void {
-    if (builtin.os.tag == .macos) {
-        _ = freopen("/dev/null", "w", __stderrp);
-    }
+    benchmark.entry_ns = debug.monotonicNs();
 
     var debug_freq = false;
     if (comptime builtin.os.tag == .linux) {
@@ -88,6 +113,9 @@ pub fn main(init: std.process.Init) !void {
 
     var ctx = try bootstrap.init(init.gpa, init.minimal.args);
     defer ctx.deinit();
+    if (builtin.os.tag == .macos and !ctx.cfg.benchmark_startup) {
+        _ = freopen("/dev/null", "w", __stderrp);
+    }
     if (ctx.cfg.run_mode) ctx.visual.window_height = 140;
 
     {
@@ -116,6 +144,7 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
+    const cli_work = benchmark.workStart();
     const menu_entries = try args.parseMenus(init.gpa, ctx.argv);
     defer args.deinitMenuEntries(init.gpa, menu_entries);
 
@@ -127,14 +156,16 @@ pub fn main(init: std.process.Init) !void {
 
     if (pm) |*p| {
         plugins.setActiveManager(p);
+        p.copy_text = ui.copyText;
+        p.http_get = ui.http.get;
         if (ctx.visual.clipboard) |clip| {
             if (clip.len > 0) p.clipboard_cmd = init.gpa.dupe(u8, clip) catch null;
         }
         if (ctx.visual.url_handler) |handler| {
             if (handler.len > 0) p.url_handler = init.gpa.dupe(u8, handler) catch null;
         }
-        p.dispatchStartup();
     }
+    benchmark.pluginsDone(if (pm) |p| p.plugins.items.len else 0);
     dapp_parser.setLocale(ctx.cfg.language);
 
     const use_menus = menu_entries.len > 0;
@@ -183,24 +214,48 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
+    benchmark.workEnd(.cli_setup, cli_work);
     if (ctx.cfg.benchmark_all) debug.mark("window setup");
     var window: ui.Window = undefined;
     ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons, ctx.app);
     window.list.plugin_manager = if (pm) |*p| p else null;
+    window.list.window_search.enabled = !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode;
+    if (pm) |*p| {
+        g_plugin_manager = p;
+        g_plugin_timer = qt.QTimer.new();
+        g_plugin_timer.?.setSingleShot(true);
+        g_plugin_timer.?.onTimeout(onPluginsReady);
+        window.list.after_first_paint = afterFirstPaint;
+    }
+    defer {
+        if (g_plugin_timer) |timer| {
+            timer.stop();
+            timer.delete();
+        }
+        g_plugin_timer = null;
+        g_plugin_manager = null;
+    }
     window.list.run_mode = ctx.cfg.run_mode;
     if (ctx.cfg.run_mode) window.search_bar.setPlaceholder("Type a command to run...");
     defer window.deinit();
+    benchmark.attach(ctx.app, window.widget, window.list.view.viewport(), window.search_bar.widget);
+    defer benchmark.deinit();
 
     const can_use_app_cache = !skip_desktop and !ctx.cfg.show_actions and !ctx.cfg.actions_bottombar;
     var refresh_apps = !skip_desktop;
+    benchmark.cache_state = if (skip_desktop) "skipped" else "miss";
     if (can_use_app_cache) {
         if (desktop_loader.loadCache(init.gpa)) |cached| {
             window.setOwnedItems(cached);
             log.info("loaded {d} apps from cache", .{cached.len});
             refresh_apps = cached.len == 0 or !desktop_loader.cacheIsFresh(init.gpa);
+            benchmark.cache_state = if (refresh_apps) "stale" else "fresh";
         }
     }
 
+    if (!refresh_apps) benchmark.dataReady(if (window.owned_items) |owned| owned.len else items.len);
+
+    const frequency_work = benchmark.workStart();
     var freq_store = core_freq.FrequencyStore.init(init.gpa);
     defer freq_store.deinit();
     var cfg_dir_opt: ?[]u8 = null;
@@ -209,6 +264,7 @@ pub fn main(init: std.process.Init) !void {
         window.list.frequency_store = &freq_store;
         cfg_dir_opt = cfg_dir;
     } else |_| {}
+    benchmark.workEnd(.frequency, frequency_work);
     defer {
         if (cfg_dir_opt) |cfg_dir| init.gpa.free(cfg_dir);
     }
@@ -228,7 +284,9 @@ pub fn main(init: std.process.Init) !void {
 
     if (ctx.cfg.benchmark_all) debug.mark("show window");
     window.show();
-    if (ctx.cfg.run_mode) window.search_bar.focus();
+    if (ctx.cfg.benchmark_startup) window.widget.activateWindow();
+    if (ctx.cfg.run_mode or ctx.cfg.benchmark_startup) window.search_bar.focus();
+    benchmark.showReturned();
 
     if (refresh_apps) {
         g_app_refresh_window = &window;
@@ -258,5 +316,7 @@ pub fn main(init: std.process.Init) !void {
     }
     g_app_refresh_window = null;
 
-    if (cfg_dir_opt) |cfg_dir| freq_store.save(cfg_dir);
+    if (!ctx.cfg.benchmark_startup) {
+        if (cfg_dir_opt) |cfg_dir| freq_store.save(cfg_dir);
+    }
 }

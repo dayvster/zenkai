@@ -10,6 +10,14 @@ const appsfolder_icon_prefix = "windows-app:";
 pub fn load(icon_name: []const u8) QIcon {
     if (icon_name.len == 0) return QIcon.new();
 
+    if (std.mem.startsWith(u8, icon_name, "native-file:")) {
+        const info = qt.QFileInfo.new2(icon_name["native-file:".len..]);
+        defer info.delete();
+        const provider = qt.QFileIconProvider.new();
+        defer provider.delete();
+        return provider.icon2(info);
+    }
+
     if (comptime builtin.os.tag == .windows) {
         if (std.mem.startsWith(u8, icon_name, shell_icon_prefix)) {
             const QFileInfo = qt.QFileInfo;

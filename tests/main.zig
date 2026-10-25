@@ -696,3 +696,17 @@ test "utils: tokenizeCommandLine handles Exec grammar escapes in double quotes" 
     try std.testing.expectEqualStrings("`t`", tokens[4]);
     try std.testing.expectEqualStrings("plain", tokens[5]);
 }
+
+test "args: startup benchmark keeps workload flags independent" {
+    const a = std.testing.allocator;
+    const flags = [_][]const u8{ "zenkai", "--benchmark-startup", "--no-plugins", "--no-icons" };
+    var argv: [flags.len][:0]u8 = undefined;
+    for (flags, 0..) |flag, i| argv[i] = try a.dupeZ(u8, flag);
+    defer for (argv) |arg| a.free(arg);
+    const cfg = args.parse(&argv);
+    try std.testing.expect(cfg.benchmark_startup);
+    try std.testing.expect(cfg.no_plugins);
+    try std.testing.expect(cfg.no_icons);
+    try std.testing.expect(!cfg.no_dapps);
+    try std.testing.expect(!cfg.benchmark_all);
+}

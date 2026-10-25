@@ -5,5 +5,6 @@
     "description": "Hyprland command palette: workspaces, windows, monitors, floating, fullscreen, lock, screenshots, notifications, and more",
     "author": "zenkai",
     "disabled": false,
-    "platforms": ["linux"]
+    "platforms": ["linux"],
+    "activation_prefixes": ["hypr", "wm"]
 }

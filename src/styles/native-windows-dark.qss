@@ -12,18 +12,18 @@ QWidget {
 }
 
 #searchbarInput {
-    background-color: #2b2b2b;
+    background-color: #202020;
     color: #f3f3f3;
-    border: 1px solid #5f5f5f;
-    border-radius: 6px;
-    padding: 9px 12px;
+    border: none;
+    border-bottom: 1px solid #383838;
+    border-radius: 0;
+    padding: 18px 20px;
     selection-background-color: @ACCENT@;
     selection-color: #ffffff;
 }
 
 #searchbarInput:focus {
-    border: 2px solid @ACCENT@;
-    padding: 8px 11px;
+    border-bottom: 1px solid #383838;
 }
 
 #searchbarInput::placeholder {
@@ -36,8 +36,8 @@ QWidget {
 }
 
 #appList::item {
-    padding: 7px 10px;
-    margin: 1px 6px;
+    padding: 8px 12px;
+    margin: 2px 8px;
     border-radius: 6px;
 }
 
@@ -46,8 +46,8 @@ QWidget {
 }
 
 #appList::item:selected {
-    background-color: @ACCENT@;
-    color: #ffffff;
+    background-color: #383838;
+    color: #f3f3f3;
 }
 
 #appList QScrollBar:vertical {
@@ -104,3 +104,23 @@ QWidget {
     color: #f3f3f3;
     background: transparent;
 }
+
+#actionShortcut {
+    border-color: #383838;
+}
+
+#actionMenu {
+    background-color: #202020;
+    color: #f3f3f3;
+    border-color: #383838;
+}
+
+#actionMenuSearch {
+    background: #292929;
+    color: #f3f3f3;
+    border-color: #454545;
+}
+#actionMenuSearch:focus { border-color: @ACCENT@; }
+#actionMenuContext, #actionMenuHint, #actionMenuEmpty { color: #a0a0a0; }
+#actionMenu::separator { background: #383838; }
+#actionMenu::item:selected { background: #383838; color: #ffffff; }

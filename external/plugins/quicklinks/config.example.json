@@ -1,0 +1,13 @@
+{
+    "replace": false,
+    "commands": [
+        {
+            "title": "Project issues",
+            "url": "https://github.com/issues"
+        },
+        {
+            "title": "Search documentation",
+            "url": "https://doc.qt.io/qt-6/search-results.html?q={query}"
+        }
+    ]
+}

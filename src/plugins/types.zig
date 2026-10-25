@@ -9,11 +9,14 @@ pub const Manifest = struct {
     author: ?[]const u8,
     disabled: ?bool,
     platforms: ?[][]const u8 = null,
+    // Opt in to query-triggered loading. Omit for normal post-paint startup.
+    activation_prefixes: ?[][]const u8 = null,
 };
 
 pub const Hook = enum {
     on_query,
     on_open,
+    on_action,
     on_close,
     on_startup,
     on_shutdown,
@@ -27,6 +30,7 @@ pub const Plugin = struct {
     dir_path: []const u8,
     state: *lua.lua_State,
     hooks: std.EnumSet(Hook),
+    startup_delivered: bool = false,
 };
 
 pub const ResultType = enum {
@@ -42,16 +46,41 @@ pub const PluginResult = struct {
     icon: []const u8,
     exec: ?[]const u8 = null,
     result_type: ResultType = .ExecCmd,
+    actions: std.ArrayList(ResultAction) = .empty,
+
+    pub fn deinit(self: *PluginResult, allocator: std.mem.Allocator) void {
+        allocator.free(self.title);
+        allocator.free(self.subtitle);
+        allocator.free(self.icon);
+        if (self.exec) |exec| allocator.free(exec);
+        for (self.actions.items) |action| {
+            allocator.free(action.name);
+            allocator.free(action.icon);
+        }
+        self.actions.deinit(allocator);
+    }
+};
+
+pub const ResultAction = struct {
+    name: []const u8,
+    exec: []const u8 = "",
+    icon: []const u8 = "",
+    id: ?usize = null,
 };
 
 pub const PluginConfigCommand = struct {
     title: []const u8,
     subtitle: ?[]const u8 = null,
-    exec: []const u8,
+    exec: []const u8 = "",
     icon: ?[]const u8 = null,
+    url: ?[]const u8 = null,
+    text: ?[]const u8 = null,
 };
 
 pub const PluginConfig = struct {
     commands: ?[]PluginConfigCommand = null,
     replace: ?bool = null,
+    roots: ?[][]const u8 = null,
+    exclude: ?[][]const u8 = null,
+    include_hidden: ?bool = null,
 };

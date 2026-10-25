@@ -16,7 +16,8 @@ pub const help =
     \\  --debug                   Start debug timer
     \\  --theme-reloader          Enable live QSS reloading (requires --debug)
     \\  --verbose, -v             Verbose logging
-    \\  --benchmark-all           Benchmark all stages
+    \\  --benchmark-startup       Report startup JSON after list paint, then exit
+    \\  --benchmark-all           Benchmark all stages (Debug builds)
     \\  --no-icons                Hide icons
     \\  --no-bottom-bar           Hide bottom bar
     \\  --show-actions            Show item actions
@@ -30,6 +31,7 @@ pub const help =
     \\  --url-handler=CMD         URL handler for plugin open_url results (e.g. xdg-open, firefox)
     \\  --no-dapps                Skip scanning desktop applications (useful for plugin-only usage)
     \\  --no-plugins              Skip loading plugins
+    \\  --no-window-switcher      Disable the built-in win: window search
     \\  --plugin=NAME             Only load the specified plugin (may be repeated)
     \\  --run                     Windows: open Run mode and execute the typed command
     \\  --language=CODE           Translation language code (e.g. fr, de)
@@ -44,6 +46,7 @@ pub const Config = struct {
     start_timer: bool,
     theme_reloader: bool,
     benchmark_all: bool,
+    benchmark_startup: bool,
     no_bottom_bar: bool,
     no_icons: bool,
     theme: ?[]const u8,
@@ -61,6 +64,7 @@ pub const Config = struct {
     url_handler: ?[]const u8,
     no_dapps: bool,
     no_plugins: bool,
+    no_window_switcher: bool = false,
     run_mode: bool,
     language: ?[]const u8,
     no_animations: bool,
@@ -156,6 +160,7 @@ pub fn parse(args: [][:0]u8) Config {
         .start_timer = false,
         .theme_reloader = false,
         .benchmark_all = false,
+        .benchmark_startup = false,
         .no_bottom_bar = false,
         .no_icons = false,
         .theme = null,
@@ -201,6 +206,8 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.startsWith(u8, arg, "--theme=")) {
             const val = arg["--theme=".len..];
             cfg.theme = if (val.len > 0) val else null;
+        } else if (std.mem.eql(u8, arg, "--benchmark-startup")) {
+            cfg.benchmark_startup = true;
         } else if (std.mem.eql(u8, arg, "--benchmark-all")) {
             cfg.benchmark_all = true;
             log.verbose = true;
@@ -232,6 +239,8 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.no_dapps = true;
         } else if (std.mem.eql(u8, arg, "--no-plugins")) {
             cfg.no_plugins = true;
+        } else if (std.mem.eql(u8, arg, "--no-window-switcher")) {
+            cfg.no_window_switcher = true;
         } else if (std.mem.eql(u8, arg, "--run")) {
             if (comptime builtin.os.tag == .windows) {
                 cfg.run_mode = true;
@@ -257,4 +266,17 @@ pub fn parse(args: [][:0]u8) Config {
     }
 
     return cfg;
+}
+
+test "window switching can be disabled independently of plugins" {
+    var no_plugins = [_:0]u8{ '-', '-', 'n', 'o', '-', 'p', 'l', 'u', 'g', 'i', 'n', 's' };
+    var plugin_args = [_][:0]u8{&no_plugins};
+    const plugins_disabled = parse(&plugin_args);
+    try std.testing.expect(plugins_disabled.no_plugins);
+    try std.testing.expect(!plugins_disabled.no_window_switcher);
+    var no_windows = "--no-window-switcher".*;
+    var window_args = [_][:0]u8{&no_windows};
+    const windows_disabled = parse(&window_args);
+    try std.testing.expect(windows_disabled.no_window_switcher);
+    try std.testing.expect(!windows_disabled.no_plugins);
 }

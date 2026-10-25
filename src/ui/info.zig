@@ -29,7 +29,7 @@ fn currentApp() ?*const de.DesktopApp {
     const entry = g_list.indices.items[row];
     const item_idx = switch (entry) {
         .item => |i| i,
-        .plugin => return null,
+        .plugin, .window, .window_message => return null,
     };
     const da_idx = switch (g_list.source) {
         .desktop_apps => |apps| {

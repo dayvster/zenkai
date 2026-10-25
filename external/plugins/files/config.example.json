@@ -1,0 +1,5 @@
+{
+    "roots": ["~"],
+    "exclude": [".git", "node_modules", ".cache", ".zig-cache", "zig-pkg", "Library", "AppData"],
+    "include_hidden": false
+}

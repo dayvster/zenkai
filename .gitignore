@@ -34,3 +34,5 @@ notes/
 *.notes.md
 benchmark.sh
 *.txt
+
+benchmark-results/

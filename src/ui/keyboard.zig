@@ -1,7 +1,5 @@
-const std = @import("std");
 const qt = @import("libqt6zig");
 const List = @import("list.zig").List;
-const utils = @import("utils");
 
 const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;
@@ -12,6 +10,10 @@ const QKeyEvent = qt.QKeyEvent;
 const search_bar = @import("search_bar.zig");
 
 var L: *List = undefined;
+var action_parent: QWidget = undefined;
+fn onActions(_: QShortcut) callconv(.c) void {
+    @import("action_menu.zig").show(L, action_parent);
+}
 var search_widget: QLineEdit = undefined;
 
 fn currentRow() ?i32 {
@@ -44,7 +46,7 @@ fn onUp(_: QShortcut) callconv(.c) void {
     if (row > 0) {
         L.selectRow(row - 1);
     } else {
-        focusSearch();
+        L.selectRow(@intCast(L.indices.items.len - 1));
     }
 }
 
@@ -56,7 +58,7 @@ fn onDown(_: QShortcut) callconv(.c) void {
     if (row < L.indices.items.len - 1) {
         L.selectRow(row + 1);
     } else {
-        focusSearch();
+        L.selectRow(0);
     }
 }
 
@@ -76,6 +78,12 @@ fn scrollToEnd() void {
 }
 
 fn onSearchKeyPress(edit: QLineEdit, event: QKeyEvent) callconv(.c) void {
+    if (event.modifiers() & qt.qnamespace_enums.KeyboardModifier.ControlModifier == 0) {
+        if (event.key() == qt.qnamespace_enums.Key.Key_Home or event.key() == qt.qnamespace_enums.Key.Key_End) {
+            edit.superKeyPressEvent(event);
+            return;
+        }
+    }
     switch (event.key()) {
         qt.qnamespace_enums.Key.Key_Home => scrollToTop(),
         qt.qnamespace_enums.Key.Key_End => scrollToEnd(),
@@ -92,6 +100,11 @@ fn onSearchKeyPress(edit: QLineEdit, event: QKeyEvent) callconv(.c) void {
 
 fn onEscape(_: QShortcut) callconv(.c) void {
     QApp.quit();
+}
+
+fn onFocusSearch(_: QShortcut) callconv(.c) void {
+    search_widget.setFocus();
+    search_widget.selectAll();
 }
 
 fn onPageUp(_: QShortcut) callconv(.c) void {
@@ -127,25 +140,7 @@ fn onShiftTab(_: QShortcut) callconv(.c) void {
 fn makeActionHandler(comptime n: usize) *const fn (QShortcut) callconv(.c) void {
     const H = struct {
         fn handler(_: QShortcut) callconv(.c) void {
-            const actions = List.currentItemActions();
-            if (n < actions.len) {
-                const exec = actions[n].exec;
-                if (exec.len > 0) {
-                    const argv = utils.tokenizeCommandLine(L.allocator, exec) catch |err| {
-                        utils.log.info("action exec parse failed: {}", .{err});
-                        QApp.quit();
-                        return;
-                    };
-                    defer {
-                        for (argv) |arg| L.allocator.free(arg);
-                        L.allocator.free(argv);
-                    }
-                    utils.executeArgv(L.allocator, argv) catch |err| {
-                        utils.log.info("failed to launch action: {}", .{err});
-                    };
-                }
-                QApp.quit();
-            }
+            L.launchAction(n);
         }
     };
     return H.handler;
@@ -154,12 +149,15 @@ fn makeActionHandler(comptime n: usize) *const fn (QShortcut) callconv(.c) void 
 pub const Keyboard = struct {
     pub fn setup(window: QWidget, list: *List, search: QLineEdit) void {
         L = list;
+        action_parent = window;
+        bind(window, "Ctrl+K", onActions);
         search_widget = search;
         bind(window, "Return", onEnter);
         bind(window, "Enter", onEnter);
         bind(window, "Up", onUp);
         bind(window, "Down", onDown);
         bind(window, "Escape", onEscape);
+        bind(window, "Ctrl+L", onFocusSearch);
         bind(window, "PgUp", onPageUp);
         bind(window, "PgDown", onPageDown);
         search.onKeyPressEvent(onSearchKeyPress);

@@ -7,14 +7,13 @@ const QTimer = qt.QTimer;
 const QWidget = qt.QWidget;
 
 var g_self: *SearchBar = undefined;
-var g_buffer: [256]u8 = undefined;
-var g_buffer_len: usize = 0;
+var g_text: ?[]u8 = null;
 
 fn onTextChanged(_: QLineEdit, text_cstr: [*:0]const u8) callconv(.c) void {
     const text = std.mem.span(text_cstr);
-    const len = @min(text.len, g_buffer.len);
-    @memcpy(g_buffer[0..len], text[0..len]);
-    g_buffer_len = len;
+    const owned = std.heap.page_allocator.dupe(u8, text) catch return;
+    if (g_text) |old| std.heap.page_allocator.free(old);
+    g_text = owned;
     if (g_self.debounce_timer) |timer| {
         timer.stop();
         timer.start(@intCast(g_self.debounce_ms));
@@ -23,7 +22,7 @@ fn onTextChanged(_: QLineEdit, text_cstr: [*:0]const u8) callconv(.c) void {
 
 fn onDebounceTimeout(_: QTimer) callconv(.c) void {
     if (g_self.on_debounced) |cb| {
-        cb(g_buffer[0..g_buffer_len]);
+        cb(g_text orelse "");
     }
 }
 
@@ -66,20 +65,18 @@ pub const SearchBar = struct {
     }
 
     pub fn deinit(self: *SearchBar) void {
+        if (g_text) |text| std.heap.page_allocator.free(text);
+        g_text = null;
         if (self.debounce_timer) |timer| timer.delete();
         self.widget.delete();
     }
 
     pub fn getText(_: *SearchBar) []const u8 {
-        return g_buffer[0..g_buffer_len];
+        return g_text orelse "";
     }
 
     pub fn setText(self: *SearchBar, text: []const u8) void {
-        const len = @min(text.len, g_buffer.len - 1);
-        @memcpy(g_buffer[0..len], text[0..len]);
-        g_buffer[len] = 0;
-        g_buffer_len = len;
-        self.widget.setText(@ptrCast(&g_buffer[0]));
+        self.widget.setText(text);
     }
 
     pub fn setPlaceholder(self: *SearchBar, placeholder: []const u8) void {
@@ -96,5 +93,5 @@ pub const SearchBar = struct {
 };
 
 pub fn currentText() []const u8 {
-    return g_buffer[0..g_buffer_len];
+    return g_text orelse "";
 }

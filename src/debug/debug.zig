@@ -5,11 +5,16 @@ const log = @import("utils").log;
 const CLOCK_MONOTONIC: i32 = 1;
 const timespec = extern struct { tv_sec: i64, tv_nsec: i64 };
 extern "c" fn clock_gettime(clk_id: i32, ts: *timespec) callconv(.c) i32;
-extern "kernel32" fn GetTickCount64() callconv(.winapi) u64;
+extern "kernel32" fn QueryPerformanceCounter(*i64) callconv(.winapi) i32;
+extern "kernel32" fn QueryPerformanceFrequency(*i64) callconv(.winapi) i32;
 
 pub fn monotonicNs() u64 {
     if (comptime builtin.os.tag == .windows) {
-        return GetTickCount64() * std.time.ns_per_ms;
+        var ticks: i64 = 0;
+        var frequency: i64 = 0;
+        _ = QueryPerformanceCounter(&ticks);
+        _ = QueryPerformanceFrequency(&frequency);
+        return @intCast(@divTrunc(@as(i128, ticks) * std.time.ns_per_s, frequency));
     } else {
         var ts: timespec = undefined;
         _ = clock_gettime(CLOCK_MONOTONIC, &ts);

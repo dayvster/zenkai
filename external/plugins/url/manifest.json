@@ -1,0 +1,8 @@
+{
+    "name": "url",
+    "version": "1.0.0",
+    "main": "main.lua",
+    "description": "Recognize web addresses and open the default browser",
+    "author": "built-in",
+    "disabled": false
+}

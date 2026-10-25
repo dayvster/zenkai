@@ -1,76 +1,120 @@
 QWidget {
-    font-family: "Fira Sans", "Noto Sans", "DejaVu Sans", sans-serif;
+    font-family: "Fira Sans", "Segoe UI", "Noto Sans", "DejaVu Sans", sans-serif;
     font-size: 13px;
 }
 
 #searchbarInput {
-  padding: 8px 12px;
-}
-
-#searchbarInput:focus {
-}
-
-#searchbarInput::placeholder {
+    border: none;
+    border-bottom: 1px solid palette(mid);
+    border-radius: 0;
+    padding: 18px 20px;
+    font-size: 18px;
 }
 
 #appList {
-   
+    border: none;
+    padding: 8px 0;
+    outline: none;
 }
 
 #appList::item {
-    
-}
-
-#appList::item:selected {
+    padding: 8px 12px;
+    margin: 2px 8px;
+    border-radius: 6px;
 }
 
 #appList QScrollBar:vertical {
-  max-width:6px;
-    
+    background: transparent;
+    width: 6px;
 }
 
 #appList QScrollBar::handle:vertical {
-   
-}
-
-#appList QScrollBar::handle:vertical:hover {
+    border-radius: 3px;
+    min-height: 24px;
 }
 
 #appList QScrollBar::add-line:vertical,
 #appList QScrollBar::sub-line:vertical {
+    height: 0;
 }
 
 #appList QScrollBar::add-page:vertical,
 #appList QScrollBar::sub-page:vertical {
-}
-#bottomBar {
- 
-}
-#bottomBar QToolButton {
-   
+    background: transparent;
 }
 
-#bottomBar QToolButton:hover {
-    
-}
-
-#bottomBar QLabel {
-    
-}
-
-#actionButton {
-    
-}
-
-#actionButton:hover {
-    
+#actionItem {
+    background: transparent;
 }
 
 #actionShortcut {
-    
+    border: 1px solid palette(mid);
+    border-radius: 4px;
+    padding: 2px 5px;
+    font-size: 11px;
 }
 
-#actionName {
+#actionMenu::item:selected {
+    background: palette(highlight);
+    color: palette(highlighted-text);
 }
 
+#actionMenu {
+    padding: 8px;
+    border: 1px solid palette(mid);
+    border-radius: 12px;
+    menu-scrollable: 1;
+}
 
+#actionMenuTitle {
+    background: transparent;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 10px 12px 2px;
+}
+
+#actionMenuContext {
+    background: transparent;
+    color: palette(placeholder-text);
+    font-size: 12px;
+    padding: 0 12px 12px;
+}
+
+#actionMenuSearch {
+    background: transparent;
+    border: 1px solid palette(mid);
+    border-radius: 8px;
+    margin: 0 4px 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    selection-background-color: palette(highlight);
+}
+
+#actionMenuSearch:focus {
+    border-color: palette(highlight);
+}
+
+#actionMenu::item {
+    padding: 10px 16px 10px 12px;
+    margin: 2px 4px;
+    border-radius: 7px;
+}
+
+#actionMenu::separator {
+    height: 1px;
+    background: palette(mid);
+    margin: 7px 12px;
+}
+
+#actionMenuHint {
+    background: transparent;
+    color: palette(placeholder-text);
+    font-size: 11px;
+    padding: 12px 12px 6px;
+}
+
+#actionMenuEmpty {
+    background: transparent;
+    color: palette(placeholder-text);
+    padding: 22px 12px;
+}

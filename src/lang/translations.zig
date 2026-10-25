@@ -4,6 +4,7 @@ pub const Translations = struct {
     bottom_bar_info: []const u8,
     bottom_bar_return: []const u8,
     bottom_bar_ctrl_i: []const u8,
+    bottom_bar_actions: []const u8 = "Actions",
     error_loading_desktop: []const u8,
     error_parsing_desktop: []const u8,
     info_type: []const u8,

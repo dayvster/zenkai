@@ -1,0 +1,9 @@
+{
+    "name": "quicklinks",
+    "version": "1.0.0",
+    "main": "main.lua",
+    "description": "Open saved links and search the web",
+    "author": "built-in",
+    "disabled": false,
+    "activation_prefixes": ["link:"]
+}

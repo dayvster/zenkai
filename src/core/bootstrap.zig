@@ -6,6 +6,7 @@ const config = @import("config");
 const log = @import("utils").log;
 const theme = @import("../theme/theme.zig");
 const debug = @import("../debug/debug.zig");
+const benchmark = @import("../debug/startup_benchmark.zig");
 const args = @import("../args/args.zig");
 const lang = @import("lang");
 
@@ -32,7 +33,11 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     const argv = try qt.init(allocator, raw_args);
     errdefer qt.deinit(allocator, argv);
 
+    const config_work_start = debug.monotonicNs();
     const cfg = args.parse(argv);
+    benchmark.enabled = cfg.benchmark_startup;
+    benchmark.icons_enabled = !cfg.no_icons;
+    benchmark.run_mode = cfg.run_mode;
 
     lang.init(allocator, cfg.language);
 
@@ -42,10 +47,17 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
 
     var visual = try config.loadConfig(allocator, config_path);
     visual.applyOverrides(allocator, cfg);
+    if (cfg.benchmark_startup) {
+        visual.no_animations = true;
+        visual.close_on_focus_out = false;
+        visual.show_backdrop = false;
+    }
     if (visual.theme == null and builtin.os.tag == .windows) {
         visual.theme = try allocator.dupe(u8, "native");
     }
 
+    if (benchmark.enabled) benchmark.workEnd(.config, config_work_start);
+    benchmark.configDone();
     if (cfg.benchmark_all) debug.mark("qt init");
     const start_ns = if (cfg.start_timer) debug.monotonicNs() else 0;
 
@@ -75,6 +87,7 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
         log.info("icon theme: default (Qt resolved)", .{});
     }
 
+    benchmark.qtDone();
     return .{
         .allocator = allocator,
         .argv = argv,

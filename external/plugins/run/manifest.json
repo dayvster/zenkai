@@ -5,5 +5,6 @@
     "description": "Run commands using the Windows shell",
     "author": "built-in",
     "disabled": false,
-    "platforms": ["windows"]
+    "platforms": ["windows"],
+    "activation_prefixes": ["run:"]
 }

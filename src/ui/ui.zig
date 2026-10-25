@@ -11,8 +11,13 @@ pub const BottomBar = @import("bottombar.zig").BottomBar;
 pub const Window = @import("window.zig").Window;
 pub const theme = @import("theme_handler.zig");
 pub const SearchBar = @import("search_bar.zig").SearchBar;
+pub const http = @import("http.zig");
 
 const QApp = qt.QApplication;
+
+pub fn copyText(text: []const u8) void {
+    QApp.clipboard().setText(text);
+}
 
 pub fn showError(msg: []const u8) void {
     log.info("{s}", .{msg});
