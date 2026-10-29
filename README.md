@@ -518,6 +518,75 @@ local ok, err = api.open_path("~/Documents/report.pdf")
 Paths are passed as native paths/arguments, not shell commands. Missing paths
 and filesystem errors return `nil, message`.
 
+### File actions
+
+Select a files-plugin result and press **Ctrl+K** for:
+
+- **Reveal in File Manager**: select the item in Explorer or Finder. Linux uses
+  `org.freedesktop.FileManager1.ShowItems` via `dbus-send`; if unavailable, it opens
+  the containing folder with `xdg-open`.
+- **New File… / New Folder…**: enter a name to create an empty file or folder
+  inside the selected folder, or beside a selected file. Empty-folder results
+  also provide these actions.
+- **Rename…**: change the selected item's name in its existing directory.
+- **Move to Trash…**: confirm the specific path before moving it to the OS trash
+  or recycle bin. Cancel is the default button. There is no permanent-delete
+  fallback.
+
+Create and rename never replace existing destinations. Names must be a single
+component, not a path. Filesystem roots cannot be renamed or trashed. Errors keep
+the launcher open and appear in the results; successful changes refresh navigation.
+Dialog cancellation leaves the query and filesystem unchanged.
+
+Trash uses [Qt's native trash support](https://doc.qt.io/qt-6.8/qfile.html#moveToTrash):
+Windows/macOS APIs and the freedesktop trash specification on Linux. Some mounts
+cannot provide trash support; those return an error. Symlinks are trashed as links.
+Restore trashed items using your OS file manager.
+
+The Lua plugin chooses the actions and navigation. `api.file_action(operation, path)`
+is available only during `on_action`; operations are `reveal`, `new_file`,
+`new_folder`, `rename`, and `trash`. Native code provides dialogs and filesystem
+operations without shell interpolation. It returns the resulting path, or
+`nil, message` (`"cancelled"` when a dialog is dismissed).
+
+### File previews
+
+Enable the preview pane with `--file-previews`, or set `file_previews = true`
+in `zenkai.conf`. It is off by default. `--no-file-previews` overrides the config;
+if both flags are supplied, the last one wins.
+
+Press **Ctrl+P** (**Command+P** on macOS) to toggle previews for the current
+session, including when they were disabled at launch. This does not change the
+config file. The pane appears when a file result is selected.
+
+Code previews highlight comments, strings, numbers, and common keywords for
+Zig, Lua, C/C++, Rust, Go, JavaScript/TypeScript, Python, shell scripts, JSON,
+and other common code/config extensions. Colors adapt to the editor palette.
+This is lightweight lexical highlighting, not a full language parser; advanced
+constructs such as embedded languages and multiline string literals may be plain
+or imperfectly colored. Unknown extensions retain plain text previews.
+
+Select a result from `file:` search or explicit path browsing to preview it.
+The pane shows UTF-8 text up to 128 KiB, supported raster images up to 16 MiB
+and 16 megapixels, or the first 64 entries in a directory. Images keep their
+aspect ratio; animated images show a single frame. Binary files, unsupported
+encodings, and oversized images show metadata or an explanation instead.
+HTML is displayed as plain text. No document scripts or external viewers run.
+
+Previews use the same Qt implementation on Windows, macOS, and Linux. They also
+work with `--no-bottom-bar` and `--no-icons`. The pane uses part of the configured
+window width; `--width=900` provides more room. Other result types hide the pane.
+Rapid selection changes cancel the pending preview. Reading begins after a
+120 ms delay; slow network or removable filesystems can still delay the UI.
+
+Lua plugins can attach an absolute file path to a result during `on_query`:
+
+```lua
+api.set_preview(result_id, absolute_path)
+```
+
+The UI reads that path only when previews are enabled and the result is selected.
+
 ### Scientific calculator and conversions
 
 The bundled `calculator` Lua plugin accepts expressions directly in the search bar:

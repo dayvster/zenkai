@@ -39,6 +39,10 @@ fn afterFirstPaint() void {
 }
 
 fn onAppsRefresh(timer: qt.QTimer) callconv(.c) void {
+    if (@import("ui/file_actions.zig").isOpen()) {
+        timer.start(100);
+        return;
+    }
     timer.stop();
     if (g_app_refresh_window) |window| {
         const started = debug.monotonicNs();
@@ -72,6 +76,8 @@ test {
     std.testing.refAllDecls(@import("ui/action_menu.zig"));
     std.testing.refAllDecls(@import("ui/browser_actions.zig"));
     std.testing.refAllDecls(@import("ui/http.zig"));
+    std.testing.refAllDecls(@import("ui/file_preview.zig"));
+    std.testing.refAllDecls(@import("ui/file_actions.zig"));
     std.testing.refAllDecls(@import("core/window_layout.zig"));
 }
 
@@ -134,7 +140,7 @@ pub fn main(init: std.process.Init) !void {
                     defer init.gpa.free(manu);
                     const model = screen.model(init.gpa);
                     defer init.gpa.free(model);
-                    std.debug.print("  {d}: {s} {s} ({s}) — {d}x{d}+{d}+{d}\n", .{
+                    std.debug.print("  {d}: {s} {s} ({s}) - {d}x{d}+{d}+{d}\n", .{
                         i,           manu,         model,   name,
                         geo.width(), geo.height(), geo.x(), geo.y(),
                     });
@@ -158,6 +164,7 @@ pub fn main(init: std.process.Init) !void {
         plugins.setActiveManager(p);
         p.copy_text = ui.copyText;
         p.http_get = ui.http.get;
+        p.file_action = @import("ui/file_actions.zig").perform;
         if (ctx.visual.clipboard) |clip| {
             if (clip.len > 0) p.clipboard_cmd = init.gpa.dupe(u8, clip) catch null;
         }

@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 pub const log = @import("log.zig");
 pub const fsutils = @import("fsutils.zig");
+pub const image_extensions = @import("image_extensions.zig");
 pub const app_icons = @import("app_icons.zig");
 pub const macos = @import("macos.zig");
 pub const simd = @import("simd.zig");

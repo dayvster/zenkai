@@ -33,7 +33,7 @@ pub fn BinOrXML(input: []const u8) !PlistType {
 }
 
 /// macOS .app bundle model extracted from Info.plist.
-/// All fields are optional — only keys present in the plist are populated.
+/// Missing keys leave the corresponding fields unset.
 pub const InfoPlist = struct {
     allocator: std.mem.Allocator,
 

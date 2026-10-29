@@ -2,7 +2,7 @@
     "name": "devtoolbox",
     "version": "1.0.0",
     "main": "main.lua",
-    "description": "Developer Swiss Army Knife — base64, URL, UUID, timestamps, color/case conversion, JSON formatting, hashing, string stats, and more",
+    "description": "Developer tools for base64, URLs, UUIDs, timestamps, colors, text, JSON, and hashes",
     "author": "zenkai",
     "disabled": false
 }

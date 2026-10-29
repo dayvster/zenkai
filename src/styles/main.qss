@@ -124,3 +124,13 @@ QWidget {
     color: palette(placeholder-text);
     padding: 22px 12px;
 }
+QWidget#filePreview {
+    border-left: 1px solid palette(mid);
+}
+QWidget#filePreview QPlainTextEdit {
+    border: none;
+    background: transparent;
+    color: palette(text);
+    font-family: monospace;
+    font-size: 12px;
+}

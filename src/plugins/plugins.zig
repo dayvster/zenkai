@@ -23,6 +23,7 @@ const types = @import("types.zig");
 const sandbox = @import("sandbox.zig");
 const loader = @import("loader.zig");
 const filesystem = @import("filesystem.zig");
+pub const files = filesystem;
 
 test {
     std.testing.refAllDecls(utils.app_icons);
@@ -214,6 +215,23 @@ fn apiAddAction(L: *lua.lua_State) callconv(.c) c_int {
     return 0;
 }
 
+fn apiSetPreview(L: *lua.lua_State) callconv(.c) c_int {
+    const results = g_active_results orelse return 0;
+    const id = lua.lua_tointeger(L, 1);
+    const raw = lua.lua_tostring(L, 2) orelse return 0;
+    if (id < 0) return 0;
+    const path = std.mem.span(raw);
+    if (path.len == 0 or path.len > 32768 or !std.fs.path.isAbsolute(path)) return 0;
+    for (results.items) |*result| {
+        if (result.id != id or result.plugin_index != g_active_plugin_index) continue;
+        const owned = g_active_manager.allocator.dupe(u8, path) catch return 0;
+        if (result.preview_path) |old| g_active_manager.allocator.free(old);
+        result.preview_path = owned;
+        break;
+    }
+    return 0;
+}
+
 fn apiSetQuery(L: *lua.lua_State) callconv(.c) c_int {
     if (g_active_results != null) return 0;
     const raw = lua.lua_tostring(L, 1) orelse return 0;
@@ -281,6 +299,23 @@ fn apiOpenPath(L: *lua.lua_State) callconv(.c) c_int {
     filesystem.open(g_active_manager.allocator, std.mem.sliceTo(raw, 0)) catch |err| return pushFilesystemError(L, err);
     lua.lua_pushboolean(L, 1);
     return 1;
+}
+
+fn apiFileAction(L: *lua.lua_State) callconv(.c) c_int {
+    const pm = g_active_manager;
+    if (!pm.handling_action) return pushFilesystemError(L, error.ActionRequired);
+    const callback = pm.file_action orelse return pushFilesystemError(L, error.ActionUnavailable);
+    const action = lua.lua_tostring(L, 1) orelse return 0;
+    const path = lua.lua_tostring(L, 2) orelse return 0;
+    const result = callback(pm.allocator, std.mem.span(action), std.mem.span(path)) catch |err| return pushFilesystemError(L, err);
+    if (result) |value| {
+        defer pm.allocator.free(value);
+        _ = lua.lua_pushlstring(L, value.ptr, value.len);
+        return 1;
+    }
+    lua.lua_pushnil(L);
+    _ = lua.lua_pushstring(L, "cancelled");
+    return 2;
 }
 
 fn apiExec(L: *lua.lua_State) callconv(.c) c_int {
@@ -419,6 +454,10 @@ fn loadPluginConfig(self: *PluginManager, L: *lua.lua_State, plugins_base_dir: [
 
 fn setupAPI(L: *lua.lua_State) void {
     lua.lua_newtable(L);
+    lua.lua_pushcfunction(L, apiFileAction);
+    lua.lua_setfield(L, -2, "file_action");
+    lua.lua_pushcfunction(L, apiSetPreview);
+    lua.lua_setfield(L, -2, "set_preview");
     lua.lua_pushcfunction(L, apiHttpGet);
     lua.lua_setfield(L, -2, "http_get");
     lua.lua_pushcfunction(L, apiAddResult);
@@ -510,6 +549,8 @@ pub const PluginManager = struct {
     url_handler: ?[]const u8,
     copy_text: ?*const fn ([]const u8) void = null,
     http_get: ?*const fn ([]const u8) HttpResult = null,
+    file_action: ?*const fn (std.mem.Allocator, []const u8, []const u8) anyerror!?[]u8 = null,
+    handling_action: bool = false,
 
     close_requested: bool = false,
     pending_query: ?[]u8 = null,
@@ -876,6 +917,9 @@ pub const PluginManager = struct {
     }
 
     pub fn handleAction(self: *PluginManager, result: *const PluginResult, id: usize) void {
+        if (self.handling_action) return;
+        self.handling_action = true;
+        defer self.handling_action = false;
         setActiveManager(self);
         self.close_requested = false;
         const plugin = &self.plugins.items[result.plugin_index];
@@ -1329,13 +1373,22 @@ test "files plugin browses native paths and dispatches actions without shell par
     try std.testing.expectEqualStrings("..", results.items[0].title);
     try std.testing.expectEqualStrings("child folder", results.items[1].title);
     try std.testing.expectEqualStrings("a space & quote'.txt", results.items[2].title);
+    try std.testing.expect(results.items[0].preview_path == null);
+    try std.testing.expectEqualStrings(results.items[2].subtitle, results.items[2].preview_path.?);
     try std.testing.expect(std.mem.startsWith(u8, results.items[2].icon, "native-file:"));
-    try std.testing.expectEqual(@as(usize, 4), results.items[2].actions.items.len);
+    try std.testing.expectEqual(@as(usize, 9), results.items[2].actions.items.len);
     const Probe = struct {
         var expected: []const u8 = "";
         var copied = false;
+        var operation: []const u8 = "";
+        var cancel = true;
         fn copy(value: []const u8) void {
             copied = std.mem.eql(u8, expected, value);
+        }
+        fn fileAction(allocator: std.mem.Allocator, action: []const u8, path: []const u8) !?[]u8 {
+            try std.testing.expectEqualStrings(operation, action);
+            try std.testing.expectEqualStrings(expected, path);
+            return if (cancel) null else try allocator.dupe(u8, path);
         }
     };
     Probe.expected = results.items[2].subtitle;
@@ -1344,6 +1397,18 @@ test "files plugin browses native paths and dispatches actions without shell par
     pm.handleAction(&results.items[2], 2);
     try std.testing.expect(Probe.copied);
     try std.testing.expect(!pm.close_requested);
+    pm.file_action = Probe.fileAction;
+    Probe.operation = "new_file";
+    Probe.cancel = true;
+    pm.handleAction(&results.items[2], 6);
+    try std.testing.expect(pm.pending_query == null);
+    Probe.operation = "rename";
+    Probe.cancel = false;
+    pm.handleAction(&results.items[2], 8);
+    try std.testing.expectEqualStrings(Probe.expected, pm.pending_query.?);
+    a.free(pm.pending_query.?);
+    pm.pending_query = null;
+    try runLuaTest(L, "local result = api.file_action('trash', fixture_root); assert(result == nil)");
     pm.handleSelect(&results.items[1]);
     const next = pm.pending_query orelse return error.MissingQuery;
     pm.pending_query = null;
@@ -1353,6 +1418,7 @@ test "files plugin browses native paths and dispatches actions without shell par
     results.clearRetainingCapacity();
     pm.queryAll(next, &results);
     try std.testing.expectEqualStrings("Empty folder", results.items[1].title);
+    try std.testing.expectEqual(@as(usize, 2), results.items[1].actions.items.len);
     for (results.items) |*result| result.deinit(a);
     results.clearRetainingCapacity();
     pm.queryAll("file: SPACE", &results);

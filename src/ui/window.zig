@@ -67,11 +67,19 @@ test "footer stays visible after rebuilding actions and is omitted only when req
 
     for ([_]bool{ false, true }) |hide_bar| {
         var window: Window = undefined;
-        window.init(std.testing.allocator, &.{}, .{ .no_animations = true }, hide_bar, true, app);
+        window.init(std.testing.allocator, &.{}, .{ .no_animations = true, .file_previews = hide_bar }, hide_bar, true, app);
         defer window.deinit();
         window.widget.show();
         QApp.processEvents();
         try std.testing.expectEqual(!hide_bar, window.bottom_bar != null);
+        try std.testing.expectEqual(hide_bar, window.preview != null);
+        onItemFocused(0, &.{});
+        if (window.preview) |preview| try std.testing.expect(preview.widget.isHidden());
+        togglePreview();
+        try std.testing.expectEqual(!hide_bar, window.preview_enabled);
+        try std.testing.expect(window.preview != null);
+        togglePreview();
+        try std.testing.expectEqual(hide_bar, window.preview_enabled);
         if (window.bottom_bar) |*bar| {
             bar.setDefaultActions();
             QApp.processEvents();
@@ -119,6 +127,7 @@ fn onLeaveWidget(_: QWidget, _: qt.QEvent) callconv(.c) void {
 
 fn onBlurTimerTimeout(_: qt.QTimer) callconv(.c) void {
     if (@import("action_menu.zig").isOpen()) return;
+    if (@import("file_actions.zig").isOpen()) return;
     QApp.quit();
 }
 
@@ -133,6 +142,7 @@ fn onBackdropMove(_: qt.QWidget, _: qt.QMoveEvent) callconv(.c) void {
 }
 
 fn onSearchDebounced(text: []const u8) void {
+    if (@import("file_actions.zig").isOpen()) return;
     g_window.list.setFilter(text);
     if (g_window.list.plugin_manager) |pm| {
         pm.dispatchIdle();
@@ -140,6 +150,7 @@ fn onSearchDebounced(text: []const u8) void {
 }
 
 fn onHttpComplete() void {
+    if (@import("file_actions.zig").isOpen()) return;
     if (g_window.list.plugin_manager) |pm| {
         pm.dispatchIdle();
         if (pm.pending_query) |query| {
@@ -158,7 +169,26 @@ fn onQueryRequested(text: []const u8) void {
     g_window.search_bar.focus();
 }
 
+pub fn togglePreview() void {
+    g_window.preview_enabled = !g_window.preview_enabled;
+    if (g_window.preview_enabled and g_window.preview == null) {
+        const content = g_window.list.view.parentWidget();
+        g_window.preview = @import("file_preview.zig").Preview.init(content);
+        g_window.preview.?.widget.setFixedWidth(@min(270, @divTrunc(g_window.widget.width(), 2)));
+        content.layout().addWidget(g_window.preview.?.widget);
+    }
+    onItemFocused(0, List.currentItemActions());
+}
+
 fn onItemFocused(_: usize, actions: []const ListItemAction) void {
+    if (g_window.preview) |*preview| {
+        const entry = g_window.list.selectedEntry();
+        const path = if (entry != null and entry.? == .plugin)
+            g_window.list.plugin_results.items[entry.?.plugin].preview_path
+        else
+            null;
+        preview.select(if (g_window.preview_enabled) path else null);
+    }
     if (g_window.bottom_bar) |*bar| {
         if (actions.len > 0) {
             bar.setItemActions(actions);
@@ -185,6 +215,8 @@ pub const Window = struct {
     search_bar: SearchBar,
     list: List,
     bottom_bar: ?BottomBar,
+    preview: ?@import("file_preview.zig").Preview = null,
+    preview_enabled: bool = false,
     owned_items: ?[]ListItem = null,
 
     pub fn init(
@@ -289,7 +321,12 @@ pub const Window = struct {
         var list = List.fromItems(allocator, items, vis.icon_size);
         list.adoptGList();
 
-        main_layout.addWidget(list.view);
+        const content = QWidget.new(window);
+        const content_layout = qt.QHBoxLayout.new(content);
+        content_layout.setContentsMargins(0, 0, 0, 0);
+        content_layout.setSpacing(0);
+        content_layout.addWidget(list.view);
+        main_layout.addWidget(content);
 
         self.* = .{
             .allocator = allocator,
@@ -297,9 +334,16 @@ pub const Window = struct {
             .search_bar = search_bar,
             .list = list,
             .bottom_bar = null,
+            .preview_enabled = vis.file_previews,
         };
 
         self.list.adoptGList();
+        if (vis.file_previews) {
+            self.preview = @import("file_preview.zig").Preview.init(content);
+            self.preview.?.widget.setFixedWidth(@min(270, @divTrunc(win_w, 2)));
+            content_layout.addWidget(self.preview.?.widget);
+        }
+        List.setOnItemFocused(onItemFocused);
         self.list.on_query_requested = onQueryRequested;
         self.search_bar.setup();
 
@@ -335,6 +379,7 @@ pub const Window = struct {
         fade.setAttribute2(wa.WA_TransparentForMouseEvents, true);
 
         g_window = self;
+        @import("file_actions.zig").parent = window;
         @import("http.zig").on_complete = onHttpComplete;
         g_close_on_focus_out = vis.close_on_focus_out;
         g_fullscreen = vis.fullscreen;
@@ -412,6 +457,8 @@ pub const Window = struct {
     }
 
     pub fn deinit(self: *Window) void {
+        @import("file_actions.zig").parent = null;
+        if (self.preview) |*preview| preview.deinit();
         @import("http.zig").deinit();
         List.setOnItemFocused(null);
         g_blur_timer.stop();

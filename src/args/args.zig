@@ -19,6 +19,8 @@ pub const help =
     \\  --benchmark-startup       Report startup JSON after list paint, then exit
     \\  --benchmark-all           Benchmark all stages (Debug builds)
     \\  --no-icons                Hide icons
+    \\  --file-previews           Preview selected files and folders
+    \\  --no-file-previews        Disable previews, overriding config
     \\  --no-bottom-bar           Hide bottom bar
     \\  --show-actions            Show item actions
     \\  --actions-bottombar       Show actions in bottom bar
@@ -50,6 +52,7 @@ pub const Config = struct {
     benchmark_startup: bool,
     no_bottom_bar: bool,
     no_icons: bool,
+    file_previews: ?bool = null,
     theme: ?[]const u8,
     show_actions: bool,
     actions_bottombar: bool,
@@ -215,6 +218,10 @@ pub fn parse(args: [][:0]u8) Config {
             log.verbose = true;
         } else if (std.mem.eql(u8, arg, "--no-icons")) {
             cfg.no_icons = true;
+        } else if (std.mem.eql(u8, arg, "--file-previews")) {
+            cfg.file_previews = true;
+        } else if (std.mem.eql(u8, arg, "--no-file-previews")) {
+            cfg.file_previews = false;
         } else if (std.mem.eql(u8, arg, "--no-bottom-bar")) {
             cfg.no_bottom_bar = true;
         } else if (std.mem.eql(u8, arg, "--show-actions")) {
@@ -290,4 +297,14 @@ test "window switching can be disabled independently of plugins" {
     const switcher_mode = parse(&switcher_args);
     try std.testing.expect(switcher_mode.window_switcher);
     try std.testing.expect(!switcher_mode.no_window_switcher);
+}
+
+test "file preview flags preserve config unless explicitly overridden" {
+    var empty = [_][:0]u8{};
+    try std.testing.expect(parse(&empty).file_previews == null);
+    var enable = "--file-previews".*;
+    var disable = "--no-file-previews".*;
+    var flags = [_][:0]u8{ &enable, &disable };
+    try std.testing.expectEqual(true, parse(flags[0..1]).file_previews.?);
+    try std.testing.expectEqual(false, parse(&flags).file_previews.?);
 }

@@ -91,6 +91,13 @@ pub fn open(allocator: std.mem.Allocator, raw: []const u8) !void {
 
 pub fn errorMessage(err: anyerror) []const u8 {
     return switch (err) {
+        error.InvalidName => "Enter a single file or folder name, without path separators",
+        error.PathAlreadyExists => "A file or folder with that name already exists",
+        error.OperationUnsupported => "This filesystem does not support safe renaming",
+        error.TrashFailed => "Unable to move this item to trash. Nothing was permanently deleted",
+        error.ProtectedPath => "This action is not available for a filesystem root",
+        error.ActionRequired => "File actions must be selected from the action menu",
+        error.ActionUnavailable => "This file action is unavailable",
         error.FileNotFound => "Path not found",
         error.NotDir => "This path is not a folder",
         error.AccessDenied, error.PermissionDenied => "Permission denied",
@@ -98,6 +105,71 @@ pub fn errorMessage(err: anyerror) []const u8 {
         error.InvalidPath => "Enter an absolute path, ~/path, or ./path",
         else => "Unable to read or open this path",
     };
+}
+
+pub fn validateName(name: []const u8) !void {
+    for (name) |byte| if (byte < 32) return error.InvalidName;
+    if (name.len == 0 or name.len > 255 or std.mem.eql(u8, name, ".") or std.mem.eql(u8, name, "..") or
+        std.mem.indexOfAny(u8, name, "/\\\x00\r\n") != null) return error.InvalidName;
+    if (builtin.os.tag == .windows) {
+        if (std.mem.indexOfAny(u8, name, ":*?\"<>|") != null or name[name.len - 1] == '.' or name[name.len - 1] == ' ') return error.InvalidName;
+        const stem = name[0 .. std.mem.indexOfScalar(u8, name, '.') orelse name.len];
+        for ([_][]const u8{ "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" }) |reserved| {
+            if (std.ascii.eqlIgnoreCase(stem, reserved)) return error.InvalidName;
+        }
+    }
+}
+
+pub fn create(allocator: std.mem.Allocator, parent: []const u8, name: []const u8, directory: bool) ![]u8 {
+    try validateName(name);
+    const path = try std.fs.path.join(allocator, &.{ parent, name });
+    errdefer allocator.free(path);
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    if (directory) {
+        try std.Io.Dir.cwd().createDir(io, path, .default_dir);
+    } else {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{ .exclusive = true });
+        file.close(io);
+    }
+    return path;
+}
+
+pub fn rename(allocator: std.mem.Allocator, path: []const u8, name: []const u8) ![]u8 {
+    try validateName(name);
+    const parent = std.fs.path.dirname(path) orelse return error.ProtectedPath;
+    if (std.mem.eql(u8, parent, path)) return error.ProtectedPath;
+    const destination = try std.fs.path.join(allocator, &.{ parent, name });
+    errdefer allocator.free(destination);
+    if (std.mem.eql(u8, path, destination)) return destination;
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    try std.Io.Dir.cwd().renamePreserve(path, .cwd(), destination, io);
+    return destination;
+}
+
+test "file mutations preserve existing content and reject traversal" {
+    const a = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", a);
+    defer a.free(root);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "existing.txt", .data = "keep me" });
+    try std.testing.expectError(error.PathAlreadyExists, create(a, root, "existing.txt", false));
+    try std.testing.expectError(error.InvalidName, create(a, root, "../escape", false));
+    const file = try create(a, root, "a & 'quoted'.txt", false);
+    defer a.free(file);
+    try std.testing.expectError(error.PathAlreadyExists, rename(a, file, "existing.txt"));
+    const renamed = try rename(a, file, "renamed.txt");
+    defer a.free(renamed);
+    const folder = try create(a, root, "new folder", true);
+    defer a.free(folder);
+    const moved = try rename(a, folder, "renamed folder");
+    defer a.free(moved);
+    try std.testing.expect(try isDirectory(moved));
+    const existing = try std.fs.path.join(a, &.{ root, "existing.txt" });
+    defer a.free(existing);
+    const content = try utils.fsutils.readFile(a, existing, 100);
+    defer a.free(content);
+    try std.testing.expectEqualStrings("keep me", content);
 }
 
 test "directory listing sorts folders first, preserves names, filters and paginates" {

@@ -23,11 +23,19 @@ end
 local function add_entry(entry)
     local id = api.add_result(entry.name, entry.path, entry.icon, "NoReturn")
     if not id then return end
+    api.set_preview(id, entry.path)
     targets[id] = {entry = entry}
     api.add_action(id, entry.is_dir and "Open in File Manager" or "Open with Default App", 1, "document-open")
     api.add_action(id, "Copy Path", 2, "edit-copy")
     api.add_action(id, entry.is_dir and "Browse Folder" or "Browse Containing Folder", 3, "folder-open")
     api.add_action(id, "Refresh", 4, "view-refresh")
+    api.add_action(id, "Reveal in File Manager", 5, "folder-open")
+    api.add_action(id, "New File…", 6, "document-new")
+    api.add_action(id, "New Folder…", 7, "folder-new")
+    if entry.parent ~= entry.path then
+        api.add_action(id, "Rename…", 8, "edit-rename")
+        api.add_action(id, "Move to Trash…", 9, "user-trash")
+    end
 end
 
 local function navigation(title, subtitle, query, operation)
@@ -52,7 +60,14 @@ local function browse(path)
         navigation("..", "Browse " .. listing.parent, directory_query(listing.parent))
     end
     for _, item in ipairs(listing.entries) do add_entry(item) end
-    if #listing.entries == 0 then notice(filter == "" and "Empty folder" or "No matching files", listing.path) end
+    if #listing.entries == 0 then
+        local id = api.add_result(filter == "" and "Empty folder" or "No matching files", listing.path, "folder-open", "NoReturn")
+        if id then
+            targets[id] = {entry = {path = listing.path, parent = listing.parent, is_dir = true}}
+            api.add_action(id, "New File…", 6, "document-new")
+            api.add_action(id, "New Folder…", 7, "folder-new")
+        end
+    end
     if offset > 0 then navigation("Previous page", listing.path, current_query, "previous") end
     if listing.more then navigation("Next page", "Show more files and folders", current_query, "next") end
 end
@@ -144,5 +159,20 @@ function on_action(id, action)
         if ok then api.close() else last_error = message or "Unable to open path"; api.set_query(current_query) end
     elseif action == 2 then api.copy_text(entry.path)
     elseif action == 3 then api.set_query(directory_query(entry.is_dir and entry.path or entry.parent))
-    elseif action == 4 then offset = 0; search = nil; api.set_query(current_query) end
+    elseif action == 4 then offset = 0; search = nil; api.set_query(current_query)
+    elseif action >= 5 and action <= 9 then
+        local operations = {[5] = "reveal", [6] = "new_file", [7] = "new_folder", [8] = "rename", [9] = "trash"}
+        local result, message = api.file_action(operations[action], entry.path)
+        if not result then
+            if message ~= "cancelled" then last_error = message or "File action failed"; api.set_query(current_query) end
+            return
+        end
+        if action == 5 then return end
+        offset = 0; search = nil
+        local info = api.path_info(result)
+        if action == 9 then api.set_query(directory_query(result))
+        elseif action == 7 then api.set_query(directory_query(result))
+        elseif info then api.set_query(info.is_dir and directory_query(info.path) or info.path)
+        else api.set_query(current_query) end
+    end
 end
