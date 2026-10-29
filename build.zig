@@ -53,6 +53,8 @@ pub fn build(b: *std.Build) !void {
         "qnamespace",
         "qabstractitemview",
         "qabstractscrollarea",
+        "qscrollbar",
+        "qabstractslider",
         "qimage",
         "qimagereader",
         "qplaintextedit",

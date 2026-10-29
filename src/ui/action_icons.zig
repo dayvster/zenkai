@@ -6,10 +6,7 @@ const Asset = struct {
     svg: []const u8,
 };
 
-// These are empty placeholders in src/assets/icons/actions/. Replace a file
-// with any SVG; its contents are embedded at build time. SVGs may use
-// `currentColor` (or `inherit`) for fills/strokes to follow the active theme's
-// text color. Hard-coded colors are left untouched.
+// currentColor and inherit follow the active palette; other SVG colors are preserved.
 const assets = [_]Asset{
     .{ .name = "document-open", .svg = @embedFile("../assets/icons/actions/document-open.svg") },
     .{ .name = "preferences-system-windows", .svg = @embedFile("../assets/icons/actions/preferences-system-windows.svg") },
@@ -87,7 +84,7 @@ fn render(svg: []const u8, color: ?[]const u8, extent: i32, bounds: qt.QRectF) ?
 /// physical size keeps the glyph sharp on HiDPI screens without clipping it.
 /// `currentColor`/`inherit` resolves to the menu's text color; selected items
 /// use the highlighted text color.
-pub fn load(menu: qt.QMenu, name: []const u8) ?qt.QIcon {
+pub fn load(menu: anytype, name: []const u8) ?qt.QIcon {
     const svg = find(name) orelse return null;
     if (svg.len == 0) return null;
 

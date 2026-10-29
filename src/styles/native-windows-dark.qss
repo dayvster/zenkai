@@ -109,7 +109,7 @@ QWidget {
     border-color: #383838;
 }
 
-#actionMenu {
+#actionPanel {
     background-color: #202020;
     color: #f3f3f3;
     border-color: #383838;
@@ -122,5 +122,4 @@ QWidget {
 }
 #actionMenuSearch:focus { border-color: @ACCENT@; }
 #actionMenuContext, #actionMenuHint, #actionMenuEmpty { color: #a0a0a0; }
-#actionMenu::separator { background: #383838; }
-#actionMenu::item:selected { background: #383838; color: #ffffff; }
+#actionList::item:selected { background: #383838; color: #ffffff; }

@@ -112,7 +112,7 @@ QWidget {
                                  stop: 1 #383c4a);
 }
 
-#actionMenu {
+#actionPanel {
     background-color: #383c4a;
     color: #d3dae3;
     border-color: #2f343f;
@@ -144,11 +144,7 @@ QWidget {
     color: #7c818c;
 }
 
-#actionMenu::item:selected {
+#actionList::item:selected {
     background-color: #5294e2;
     color: #ffffff;
-}
-
-#actionMenu::separator {
-    background-color: #2f343f;
 }
