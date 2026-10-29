@@ -53,6 +53,61 @@ zig build
 
 Binary at `zig-out/bin/zenkai`.
 
+### Minimal launcher
+
+Build only the application launcher on Linux, macOS, or Windows:
+
+```sh
+zig build -Dminimal=true --prefix zig-out/launcher
+```
+
+On Windows, bundle the runtime alongside it:
+
+```powershell
+zig build deploy-windows -Dminimal=true -Dtarget=x86_64-windows-gnu --prefix zig-out/launcher
+```
+
+Run `zig-out/launcher/bin/zenkai` (`zenkai.exe` on Windows). A separate prefix
+keeps the full build and its plugin files separate from the minimal installation.
+Minimal builds do not link Lua or Qt Network, install Lua plugins, or build the
+macOS plugin helper tools. There are no file previews, plugin results, Ctrl+K
+action pane, calculator, URL detection, or window switcher/management.
+
+Application discovery, cached app lists, fuzzy search, custom `--menu` entries,
+themes, sizes, monitor/fullscreen selection, desktop application actions,
+`--no-bottom-bar`, focus behavior, and Windows `--run` remain available.
+`--show-actions` includes desktop actions in the list; `--actions-bottombar`
+shows their Ctrl+1…Ctrl+0 shortcuts in the footer. `--help` lists the supported
+options. Options that enable plugin features report that they require the full build.
+
+Icons and entrance animations are off by default. Use `--icons` to enable native
+app icons, or `--animation-interval=200` to request animations. `--no-icons` and
+`--no-animations` still override these. The last icon flag wins. Configuration
+comes from the same `zenkai.conf`; preview/plugin settings have no effect.
+
+The minimal list uses uniform row sizes, resolves icons only for painted rows,
+bounds the icon cache, and releases discovery data after building the list.
+Application discovery on a cache miss starts after the first paint. Cached
+startup and first-run discovery are measured separately; the latter still has
+to enumerate installed applications. Run the existing benchmark with:
+
+```sh
+zig run tools/benchmark/startup.zig -- --binary zig-out/launcher/bin/zenkai --scenario cached --runs 20 --warmups 3 --output startup.json
+```
+
+Use the `.exe` path on Windows and `--scenario uncached` for cache-miss results.
+These measure application paint completion and parent-observed readiness, not
+physical screen presentation. Runtime performance depends on the OS, cache,
+installed apps, theme, and whether native icons are enabled.
+
+Windows measurements with 129 cached applications, icons off, and the dark
+theme: 20 launches after 3 warmups gave 43 ms median / 47 ms p95 parent-observed
+readiness. Resident memory was about 32 MiB (9 MiB private). Without the app
+cache, the first paint took 31 ms from main entry and the complete list took
+306 ms median from process launch. These are local measurements, not guarantees
+for other machines or an OS-cold launch. Native Linux/macOS performance still
+needs measurement on those systems.
+
 ### Installing dependencies
 
 #### Zig

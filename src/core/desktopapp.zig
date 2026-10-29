@@ -2,6 +2,21 @@ const std = @import("std");
 
 pub const DesktopApp = DesktopEntry;
 
+pub const ListItemAction = struct {
+    name: []const u8,
+    exec: []const u8 = "",
+    icon: []const u8 = "",
+    id: ?usize = null,
+};
+
+pub const ListItem = struct {
+    icon: []const u8,
+    cmd: []const u8,
+    name: []const u8,
+    actions: []const ListItemAction = &.{},
+    desktop_app_idx: ?usize = null,
+};
+
 pub const DesktopEntry = struct {
     type: Type,
     name: []const u8,
