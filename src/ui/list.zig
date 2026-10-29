@@ -243,13 +243,7 @@ fn tryLoadPluginIcon(icon_name: []const u8) QIcon {
     return makeFallbackIcon("pl");
 }
 
-pub const ListItem = struct {
-    icon: []const u8,
-    cmd: []const u8,
-    name: []const u8,
-    actions: []const ListItemAction = &.{},
-    desktop_app_idx: ?usize = null,
-};
+pub const ListItem = de.ListItem;
 
 const DataSource = union(enum) {
     desktop_apps: []const de.DesktopApp,

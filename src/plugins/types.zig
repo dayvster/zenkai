@@ -63,12 +63,7 @@ pub const PluginResult = struct {
     }
 };
 
-pub const ResultAction = struct {
-    name: []const u8,
-    exec: []const u8 = "",
-    icon: []const u8 = "",
-    id: ?usize = null,
-};
+pub const ResultAction = @import("desktopapp").ListItemAction;
 
 pub const PluginConfigCommand = struct {
     title: []const u8,

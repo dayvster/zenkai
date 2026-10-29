@@ -1,7 +1,7 @@
 const std = @import("std");
 const platform = @import("platform.zig");
 const de = @import("desktopapp");
-const ui = @import("../ui/ui.zig");
+const ui = de;
 const debug = @import("../debug/debug.zig");
 const actions_mod = @import("actions.zig");
 const fsutils = @import("utils").fsutils;
@@ -182,13 +182,13 @@ pub fn load(allocator: std.mem.Allocator, benchmark: bool, show_actions: bool, a
     var reader = platform.AppReader.init(allocator);
     errdefer reader.deinit();
     reader.load() catch {
-        ui.showError(lang.get().error_loading_desktop);
+        @import("utils").log.info("{s}", .{lang.get().error_loading_desktop});
         return Error.LoadFailed;
     };
 
     if (benchmark) debug.mark("reader scan");
     reader.scan() catch {
-        ui.showError(lang.get().error_parsing_desktop);
+        @import("utils").log.info("{s}", .{lang.get().error_parsing_desktop});
         return Error.ScanFailed;
     };
     startup_benchmark.workEnd(.discovery, discovery_work);

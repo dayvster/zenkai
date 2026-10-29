@@ -4,10 +4,11 @@ const configureQtExeRootModule = @import("libqt6zig").configureQtExeRootModule;
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
+    const minimal = b.option(bool, "minimal", "Build only the lightweight application launcher") orelse false;
     const qt_win_root = b.option([]const u8, "qt-win-root", "Windows Qt installation root") orelse "C:/Qt/6.8.3/llvm-mingw_64";
 
     const module = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path(if (minimal) "src/minimal.zig" else "src/main.zig"),
         .target = target,
         .optimize = .ReleaseFast,
         .strip = true,
@@ -95,24 +96,25 @@ pub fn build(b: *std.Build) !void {
     };
 
     for (libs) |lib| {
+        if (minimal and !minimalQtLibrary(lib)) continue;
         const artifact = qt6zig.artifact(lib);
         exe.root_module.linkLibrary(artifact);
     }
 
-    const lua_dep = b.dependency("zlua", .{
+    const lua_dep = if (minimal) null else b.dependency("zlua", .{
         .target = target,
         .optimize = .ReleaseFast,
     });
-    exe.root_module.addImport("zlua", lua_dep.module("zlua"));
+    if (lua_dep) |lua| exe.root_module.addImport("zlua", lua.module("zlua"));
 
     try configureQtExeRootModule(b, exe, .{
         .linux_libraries = &.{"libgcc_eh.a"},
         .win_root = qt_win_root,
     });
-    if (target.result.os.tag == .macos) {
+    if (!minimal and target.result.os.tag == .macos) {
         exe.root_module.linkFramework("QtNetwork", .{});
         exe.root_module.linkFramework("QtSvg", .{});
-    } else {
+    } else if (!minimal) {
         exe.root_module.linkSystemLibrary("Qt6Network", .{});
         exe.root_module.linkSystemLibrary("Qt6Svg", .{});
     }
@@ -195,6 +197,7 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
+    plugins_module.addImport("desktopapp", desktopapp_module);
     if (target.result.os.tag == .windows) {
         plugins_module.linkSystemLibrary("shlwapi", .{});
     } else if (target.result.os.tag == .macos) {
@@ -214,7 +217,7 @@ pub fn build(b: *std.Build) !void {
 
     const osx_tools = [_][]const u8{ "zenkai-osx-power", "zenkai-osx-audio", "zenkai-osx-system" };
 
-    if (target.result.os.tag == .macos) {
+    if (!minimal and target.result.os.tag == .macos) {
         const osx_toolutil_module = b.addModule("osx_toolutil", .{
             .root_source_file = b.path("tools/osx/toolutil.zig"),
         });
@@ -238,8 +241,10 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("desktopapp", desktopapp_module);
     exe.root_module.addImport("dapp_parser", dapp_parser_module);
     exe.root_module.addImport("config", config_module);
-    exe.root_module.addImport("lua_capi", lua_capi_module);
-    exe.root_module.addImport("plugins", plugins_module);
+    if (!minimal) {
+        exe.root_module.addImport("lua_capi", lua_capi_module);
+        exe.root_module.addImport("plugins", plugins_module);
+    }
     exe.root_module.addImport("core_freq", frequency_module);
     exe.root_module.addImport("lang", lang_module);
     if (osx_module) |mod| exe.root_module.addImport("osx", mod);
@@ -249,7 +254,7 @@ pub fn build(b: *std.Build) !void {
         .install_dir = .bin,
         .install_subdir = "external/plugins",
     });
-    b.getInstallStep().dependOn(&install_plugins.step);
+    if (!minimal) b.getInstallStep().dependOn(&install_plugins.step);
 
     if (target.result.os.tag == .windows and builtin.target.os.tag == .windows) {
         const deploy_step = b.step("deploy-windows", "Build Zenkai and bundle its Qt runtime for Windows");
@@ -258,6 +263,7 @@ pub fn build(b: *std.Build) !void {
             "--no-translations",
         });
         deploy_cmd.addFileArg(.{ .relative = .{ .base = .install_bin, .sub_path = "zenkai.exe" } });
+        if (minimal) deploy_cmd.addArgs(&.{ "--skip-plugin-types", "generic,networkinformation,tls", "--no-opengl-sw" });
         const runtime_dlls = [_][]const u8{ "libc++.dll", "libunwind.dll" };
         for (runtime_dlls) |runtime_dll| {
             const install_runtime = b.addInstallFileWithDir(
@@ -323,6 +329,11 @@ pub fn build(b: *std.Build) !void {
     const ui_test_step = b.step("test-ui", "Run UI tests with the Qt offscreen backend");
     ui_test_step.dependOn(&run_exe_tests.step);
 
+    if (minimal) {
+        b.step("test", "Run minimal launcher tests").dependOn(&run_exe_tests.step);
+        return;
+    }
+
     const plugin_test_module = b.createModule(.{
         .root_source_file = b.path("src/plugins/plugins.test.zig"),
         .target = target,
@@ -330,7 +341,7 @@ pub fn build(b: *std.Build) !void {
     });
     plugin_test_module.addImport("lua_capi", lua_capi_module);
     plugin_test_module.addImport("plugins", plugins_module);
-    plugin_test_module.addImport("zlua", lua_dep.module("zlua"));
+    plugin_test_module.addImport("zlua", lua_dep.?.module("zlua"));
     plugin_test_module.linkSystemLibrary("m", .{});
 
     const plugin_tests = b.addTest(.{
@@ -346,7 +357,8 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "lua_capi", .module = lua_capi_module },
             .{ .name = "utils", .module = utils_module },
             .{ .name = "config", .module = config_module },
-            .{ .name = "zlua", .module = lua_dep.module("zlua") },
+            .{ .name = "zlua", .module = lua_dep.?.module("zlua") },
+            .{ .name = "desktopapp", .module = desktopapp_module },
         },
     });
     plugin_runtime_test_module.linkSystemLibrary("m", .{});
@@ -385,4 +397,15 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(&run_plugin_tests.step);
     test_step.dependOn(&run_plugin_runtime_tests.step);
     test_step.dependOn(&run_fuzz_tests.step);
+}
+
+fn minimalQtLibrary(name: []const u8) bool {
+    const excluded = [_][]const u8{
+        "qsvgrenderer", "qnetworkaccessmanager", "qnetworkrequest", "qnetworkreply",      "qclipboard",
+        "qmimedata",    "qimagereader",          "qplaintextedit",  "qsyntaxhighlighter", "qtextdocument",
+        "qtextobject",  "qfile",                 "qinputdialog",    "qmenu",              "qwidgetaction",
+        "qlistwidget",  "qmessagebox",           "qtoolbutton",     "qabstractbutton",
+    };
+    for (excluded) |lib| if (std.mem.eql(u8, name, lib)) return false;
+    return true;
 }
