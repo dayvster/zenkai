@@ -147,7 +147,7 @@ QWidget {
                                  stop: 1 rgba(20, 20, 24, 0.92));
 }
 
-#actionMenu {
+#actionPanel {
     background-color: rgba(20, 20, 24, 0.88);
     color: #ffffff;
     border-color: rgba(99, 99, 102, 0.25);
@@ -179,11 +179,7 @@ QWidget {
     color: rgba(152, 152, 157, 0.5);
 }
 
-#actionMenu::item:selected {
+#actionList::item:selected {
     background-color: rgba(255, 255, 255, 0.10);
     color: #ffffff;
-}
-
-#actionMenu::separator {
-    background-color: rgba(99, 99, 102, 0.25);
 }

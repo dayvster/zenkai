@@ -54,18 +54,9 @@ QWidget {
     font-size: 11px;
 }
 
-#actionMenu::item:selected {
+#actionList::item:selected {
     background: palette(highlight);
     color: palette(highlighted-text);
-}
-
-#actionMenu {
-    padding: 8px;
-    border: 1px solid palette(mid);
-    border-radius: 12px;
-    /* Matches the padded icon canvas in action_menu.zig. */
-    icon-size: 24px;
-    menu-scrollable: 1;
 }
 
 #actionMenuTitle {
@@ -96,22 +87,6 @@ QWidget {
     border-color: palette(highlight);
 }
 
-#actionMenuSearch::placeholder {
-    color: palette(placeholder-text);
-}
-
-#actionMenu::item {
-    padding: 8px 16px 8px 8px;
-    margin: 2px 4px;
-    border-radius: 7px;
-}
-
-#actionMenu::separator {
-    height: 1px;
-    background: palette(mid);
-    margin: 7px 12px;
-}
-
 #actionMenuHint {
     background: transparent;
     color: palette(placeholder-text);
@@ -124,6 +99,37 @@ QWidget {
     color: palette(placeholder-text);
     padding: 22px 12px;
 }
+QWidget#actionPanel {
+    padding: 0;
+    border: none;
+    border-left: 1px solid palette(mid);
+    border-radius: 0;
+}
+#actionList {
+    background: transparent;
+    border: none;
+    padding: 0;
+    outline: none;
+    font-size: 12px;
+}
+#actionList::item {
+    padding: 6px;
+    margin: 1px 0;
+    border-radius: 6px;
+}
+#actionList QScrollBar:vertical {
+    width: 10px;
+    background: transparent;
+    margin: 0;
+}
+#actionList QScrollBar::handle:vertical {
+    background: palette(mid);
+    min-height: 24px;
+    border-radius: 4px;
+}
+#actionList QScrollBar::add-line:vertical, #actionList QScrollBar::sub-line:vertical {
+    height: 0;
+}
 QWidget#filePreview {
     border-left: 1px solid palette(mid);
 }
@@ -134,3 +140,5 @@ QWidget#filePreview QPlainTextEdit {
     font-family: monospace;
     font-size: 12px;
 }
+
+#actionMenuSearch::placeholder { color: palette(placeholder-text); }

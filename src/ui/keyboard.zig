@@ -8,6 +8,7 @@ const QApp = qt.QApplication;
 const QLineEdit = qt.QLineEdit;
 const QKeyEvent = qt.QKeyEvent;
 const search_bar = @import("search_bar.zig");
+const actions = @import("action_menu.zig");
 
 var L: *List = undefined;
 var action_parent: QWidget = undefined;
@@ -34,6 +35,10 @@ fn focusSearch() void {
 }
 
 fn onEnter(_: QShortcut) callconv(.c) void {
+    if (actions.isOpen()) {
+        actions.activate();
+        return;
+    }
     if (L.run_mode) {
         L.launchRunCommand(search_bar.currentText());
         return;
@@ -42,6 +47,10 @@ fn onEnter(_: QShortcut) callconv(.c) void {
 }
 
 fn onUp(_: QShortcut) callconv(.c) void {
+    if (actions.isOpen()) {
+        actions.navigate(-1);
+        return;
+    }
     const row = currentRow() orelse {
         if (L.indices.items.len > 0) L.selectRow(@intCast(L.indices.items.len - 1));
         return;
@@ -54,6 +63,10 @@ fn onUp(_: QShortcut) callconv(.c) void {
 }
 
 fn onDown(_: QShortcut) callconv(.c) void {
+    if (actions.isOpen()) {
+        actions.navigate(1);
+        return;
+    }
     const row = currentRow() orelse {
         if (L.indices.items.len > 0) L.selectRow(0);
         return;
@@ -102,6 +115,10 @@ fn onSearchKeyPress(edit: QLineEdit, event: QKeyEvent) callconv(.c) void {
 }
 
 fn onEscape(_: QShortcut) callconv(.c) void {
+    if (actions.isOpen()) {
+        actions.close();
+        return;
+    }
     QApp.quit();
 }
 
@@ -111,6 +128,10 @@ fn onFocusSearch(_: QShortcut) callconv(.c) void {
 }
 
 fn onPageUp(_: QShortcut) callconv(.c) void {
+    if (actions.isOpen()) {
+        actions.navigate(-8);
+        return;
+    }
     const row = currentRow() orelse {
         if (L.indices.items.len > 0) L.selectRow(@intCast(L.indices.items.len - 1));
         return;
@@ -120,6 +141,10 @@ fn onPageUp(_: QShortcut) callconv(.c) void {
 }
 
 fn onPageDown(_: QShortcut) callconv(.c) void {
+    if (actions.isOpen()) {
+        actions.navigate(8);
+        return;
+    }
     const row = currentRow() orelse {
         if (L.indices.items.len > 0) L.selectRow(0);
         return;
@@ -143,6 +168,10 @@ fn onShiftTab(_: QShortcut) callconv(.c) void {
 fn makeActionHandler(comptime n: usize) *const fn (QShortcut) callconv(.c) void {
     const H = struct {
         fn handler(_: QShortcut) callconv(.c) void {
+            if (actions.isOpen()) {
+                actions.activateCustom(n);
+                return;
+            }
             L.launchAction(n);
         }
     };
