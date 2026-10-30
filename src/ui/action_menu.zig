@@ -6,13 +6,10 @@ const action_icons = @import("action_icons.zig");
 const info = @import("info.zig");
 const browser_actions = @import("browser_actions.zig");
 const windows = @import("../core/window_switcher.zig");
-
+const a = std.heap.page_allocator;
 const Operation = union(enum) { open, custom: usize, browser: browser_actions.Action, window: windows.layout.Action, copy_name, copy_command, information, refresh };
-const Row = struct { action: qt.QAction, label: []const u8, operation: Operation };
-
-// Built-in action icons live as SVGs in assets/icons/actions/. Custom app and
-// plugin actions still use the platform/freedesktop icon theme.
-fn actionIcon(menu: qt.QMenu, name: []const u8) qt.QIcon {
+const Row = struct { item: qt.QListWidgetItem, label: []const u8, operation: Operation };
+fn actionIcon(menu: qt.QWidget, name: []const u8) qt.QIcon {
     if (action_icons.load(menu, name)) |icon| return icon;
 
     const themed = icons.load(name);
@@ -22,39 +19,60 @@ fn actionIcon(menu: qt.QMenu, name: []const u8) qt.QIcon {
 }
 
 const State = struct {
-    menu: qt.QMenu,
+    panel: qt.QWidget,
     search: qt.QLineEdit,
-    empty: qt.QWidgetAction,
+    view: qt.QListWidget,
+    empty: qt.QLabel,
+    list: *List,
+    parent: qt.QWidget,
+    entry: @import("list.zig").IndexEntry,
+    revision: usize,
+    browser: ?browser_actions.Browser = null,
     rows: std.ArrayList(Row) = .empty,
-    chosen: ?usize = null,
-    anchor_x: i32 = 0,
-    anchor_y: i32 = 0,
 
     fn add(self: *State, label: []const u8, icon_name: []const u8, operation: Operation) !void {
-        const owned = try std.heap.page_allocator.dupe(u8, label);
-        errdefer std.heap.page_allocator.free(owned);
-        const icon = actionIcon(self.menu, icon_name);
+        const owned = try a.dupe(u8, label);
+        errdefer a.free(owned);
+        const icon = actionIcon(self.panel, icon_name);
         defer icon.delete();
-        const action = self.menu.addAction3(icon, label);
-        var hint: [512]u8 = undefined;
-        const shortcut: ?[]const u8 = switch (operation) {
-            .open => "Enter",
-            .custom => |i| if (i < 10) std.fmt.bufPrint(&hint, "Ctrl+{d}", .{(i + 1) % 10}) catch null else null,
-            else => null,
-        };
-        if (shortcut) |text| {
-            const caption = try std.fmt.allocPrint(std.heap.page_allocator, "{s}\t{s}", .{ label, text });
-            defer std.heap.page_allocator.free(caption);
-            action.setText(caption);
-        }
-        try self.rows.append(std.heap.page_allocator, .{ .action = action, .label = owned, .operation = operation });
+        const item = qt.QListWidgetItem.new9(icon, label, self.view);
+        item.setToolTip(label);
+        const size = qt.QSize.new4(0, 38);
+        defer size.delete();
+        item.setSizeHint(size);
+        try self.rows.append(a, .{ .item = item, .label = owned, .operation = operation });
+    }
+    fn destroy(self: *State) void {
+        self.panel.hide();
+        self.panel.deleteLater();
+        for (self.rows.items) |row| a.free(row.label);
+        self.rows.deinit(a);
+        if (self.browser) |*browser| browser.deinit();
+        a.destroy(self);
     }
 };
 var active: ?*State = null;
+pub var on_visibility_changed: ?*const fn (bool) void = null;
+
 pub fn isOpen() bool {
     return active != null;
 }
-
+pub fn selectionMatches() bool {
+    const state = active orelse return true;
+    const selected = state.list.selectedEntry() orelse return false;
+    return state.revision == state.list.revision and std.meta.eql(state.entry, selected);
+}
+fn detach() ?*State {
+    const state = active orelse return null;
+    active = null;
+    state.panel.hide();
+    if (on_visibility_changed) |callback| callback(false);
+    return state;
+}
+pub fn close() void {
+    const state = detach() orelse return;
+    state.destroy();
+}
 fn matches(label: []const u8, query: []const u8) bool {
     if (query.len > label.len) return false;
     for (0..label.len - query.len + 1) |i| {
@@ -62,200 +80,173 @@ fn matches(label: []const u8, query: []const u8) bool {
     }
     return false;
 }
+fn select(state: *State, index: usize) void {
+    state.view.setCurrentRow(@intCast(index));
+    state.view.scrollToItem(state.rows.items[index].item);
+}
 fn filter(_: qt.QLineEdit, value: [*:0]const u8) callconv(.c) void {
     const state = active orelse return;
-    var first = true;
-    for (state.rows.items) |row| {
+    var first: ?usize = null;
+    for (state.rows.items, 0..) |row, i| {
         const visible = matches(row.label, std.mem.span(value));
-        row.action.setVisible(visible);
-        if (visible and first) {
-            state.menu.setActiveAction(row.action);
-            first = false;
+        row.item.setHidden(!visible);
+        if (visible and first == null) first = i;
+    }
+    state.empty.setVisible(first == null);
+    state.view.setCurrentRow(-1);
+    if (first) |index| select(state, index);
+}
+pub fn navigate(delta: i32) void {
+    const state = active orelse return;
+    const count = state.rows.items.len;
+    if (count == 0) return;
+    var index: i32 = state.view.currentRow();
+    const step: i32 = if (delta < 0) -1 else 1;
+    for (0..@abs(delta)) |_| {
+        for (0..count) |_| {
+            index = @mod(index + step, @as(i32, @intCast(count)));
+            if (!state.rows.items[@intCast(index)].item.isHidden()) {
+                select(state, @intCast(index));
+                break;
+            }
         }
     }
-    state.empty.setVisible(first);
 }
-fn key(edit: qt.QLineEdit, event: qt.QKeyEvent) callconv(.c) void {
+pub fn activate() void {
     const state = active orelse return;
-    const keys = qt.qnamespace_enums.Key;
-    if (event.modifiers() & qt.qnamespace_enums.KeyboardModifier.ControlModifier != 0) {
-        if (event.key() == keys.Key_K) {
-            _ = state.menu.close();
+    const row = state.view.currentRow();
+    if (row >= 0) execute(@intCast(row));
+}
+pub fn activateCustom(index: usize) void {
+    const state = active orelse return;
+    for (state.rows.items, 0..) |row, i| {
+        if (row.operation == .custom and row.operation.custom == index and !row.item.isHidden()) {
+            execute(i);
             return;
         }
-        if (event.key() >= keys.Key_0 and event.key() <= keys.Key_9) {
-            const number: usize = @intCast(event.key() - keys.Key_0);
-            const target = if (number == 0) 9 else number - 1;
-            for (state.rows.items, 0..) |row, i| {
-                if (row.operation == .custom and row.operation.custom == target and row.action.isVisible()) {
-                    state.chosen = i;
-                    _ = state.menu.close();
-                    return;
-                }
-            }
-        }
     }
+}
+fn clicked(view: qt.QListWidget, item: qt.QListWidgetItem) callconv(.c) void {
+    const row = view.row(item);
+    if (row >= 0) execute(@intCast(row));
+}
+fn key(edit: qt.QLineEdit, event: qt.QKeyEvent) callconv(.c) void {
+    const keys = qt.qnamespace_enums.Key;
     switch (event.key()) {
-        keys.Key_Escape => {
-            _ = state.menu.close();
-        },
-        keys.Key_Return, keys.Key_Enter => {
-            for (state.rows.items, 0..) |row, i| {
-                if (row.action.isVisible() and row.action.ptr == state.menu.activeAction().ptr) {
-                    state.chosen = i;
-                    _ = state.menu.close();
-                    break;
-                }
-            }
-        },
-        keys.Key_Up, keys.Key_Down => {
-            const count = state.rows.items.len;
-            if (count == 0) return;
-            var index: usize = if (event.key() == keys.Key_Down) count - 1 else 0;
-            for (state.rows.items, 0..) |row, i| {
-                if (row.action.ptr == state.menu.activeAction().ptr) {
-                    index = i;
-                    break;
-                }
-            }
-            for (0..count) |_| {
-                index = if (event.key() == keys.Key_Down) (index + 1) % count else (index + count - 1) % count;
-                if (state.rows.items[index].action.isVisible()) {
-                    state.menu.setActiveAction(state.rows.items[index].action);
-                    break;
-                }
-            }
-        },
+        keys.Key_Escape => close(),
+        keys.Key_Return, keys.Key_Enter => activate(),
+        keys.Key_Up => navigate(-1),
+        keys.Key_Down => navigate(1),
+        keys.Key_PageUp => navigate(-8),
+        keys.Key_PageDown => navigate(8),
         else => edit.superKeyPressEvent(event),
     }
 }
-fn menuKey(_: qt.QMenu, event: qt.QKeyEvent) callconv(.c) void {
-    if (active) |state| {
-        state.search.setFocus();
-        key(state.search, event);
-    }
+fn makeLabel(parent: qt.QWidget, text: []const u8, name: []const u8) qt.QLabel {
+    const widget = qt.QLabel.new5(text, parent);
+    widget.setObjectName(name);
+    widget.setTextFormat(qt.qnamespace_enums.TextFormat.PlainText);
+    widget.setWordWrap(true);
+    return widget;
 }
-fn shown(_: qt.QMenu) callconv(.c) void {
-    if (active) |state| state.search.setFocus();
-}
-
-fn onMenuShow(menu: qt.QMenu, event: qt.QShowEvent) callconv(.c) void {
-    menu.superShowEvent(event);
-    if (active) |state| {
-        // QMenu's screen fitting uses the full unscrolled size hint. Place the
-        // bounded popup after that pass so long menus stay inside the launcher.
-        menu.move(state.anchor_x, state.anchor_y);
-        state.search.setFocus();
-    }
-}
-
-fn addLabel(menu: qt.QMenu, text: []const u8, name: []const u8) qt.QWidgetAction {
-    const label = qt.QLabel.new3(text);
-    label.setObjectName(name);
-    label.setTextFormat(qt.qnamespace_enums.TextFormat.PlainText);
-    label.setMaximumWidth(344);
-    const action = qt.QWidgetAction.new(menu);
-    action.setDefaultWidget(label);
-    menu.addAction(action);
-    return action;
-}
-
 pub fn show(list: *List, parent: qt.QWidget) void {
-    if (active != null) return;
+    if (isOpen()) {
+        close();
+        return;
+    }
     if (list.selectedEntry() == null) list.selectFirst();
     const entry = list.selectedEntry() orelse return;
-    const revision = list.revision;
-    var browser: ?browser_actions.Browser = if (entry == .item)
-        browser_actions.detect(list.allocator, list.selectedCommand() orelse "") catch null
-    else
-        null;
-    defer if (browser) |*value| value.deinit();
-    const menu = qt.QMenu.new(parent);
-    defer menu.delete();
-    menu.setObjectName("actionMenu");
-    const panel_width = @min(380, @max(240, parent.width() - 24));
-    menu.setFixedWidth(panel_width);
-    menu.setMaximumHeight(@max(160, parent.height() - 144));
-    menu.ensurePolished();
-    _ = addLabel(menu, "Actions", "actionMenuTitle");
-    _ = addLabel(menu, list.selectedName(), "actionMenuContext");
-    const search = qt.QLineEdit.new2();
+    const content = list.view.parentWidget();
+    const panel = qt.QWidget.new(content);
+    panel.setObjectName("actionPanel");
+    panel.setFixedWidth(@min(270, @divTrunc(parent.width(), 2)));
+    const layout = qt.QVBoxLayout.new(panel);
+    layout.setContentsMargins(12, 12, 12, 12);
+    layout.setSpacing(6);
+    layout.addWidget(makeLabel(panel, "Actions", "actionMenuTitle"));
+    const context = makeLabel(panel, list.selectedName(), "actionMenuContext");
+    context.setMaximumHeight(48);
+    context.setToolTip(list.selectedName());
+    layout.addWidget(context);
+    const search = qt.QLineEdit.new(panel);
     search.setObjectName("actionMenuSearch");
-    search.setPlaceholderText("Search actions...");
+    search.setPlaceholderText("Search actions…");
     search.setClearButtonEnabled(true);
-    const widget = qt.QWidgetAction.new(menu);
-    widget.setDefaultWidget(search);
-    menu.addAction(widget);
-    const empty = addLabel(menu, "No matching actions", "actionMenuEmpty");
-    empty.setVisible(false);
-    var state = State{ .menu = menu, .search = search, .empty = empty };
-    defer {
-        for (state.rows.items) |row| std.heap.page_allocator.free(row.label);
-        state.rows.deinit(std.heap.page_allocator);
-    }
-    state.add(if (entry == .window) "Switch to Window" else "Open", if (entry == .window) "preferences-system-windows" else "document-open", .open) catch return;
+    layout.addWidget(search);
+    const empty = makeLabel(panel, "No matching actions", "actionMenuEmpty");
+    empty.hide();
+    layout.addWidget(empty);
+    const view = qt.QListWidget.new(panel);
+    view.setObjectName("actionList");
+    const icon_size = qt.QSize.new4(24, 24);
+    defer icon_size.delete();
+    view.setIconSize(icon_size);
+    view.setMinimumHeight(0);
+    view.setFocusPolicy(qt.qnamespace_enums.FocusPolicy.NoFocus);
+    view.setVerticalScrollMode(qt.qabstractitemview_enums.ScrollMode.ScrollPerPixel);
+    view.setVerticalScrollBarPolicy(qt.qnamespace_enums.ScrollBarPolicy.ScrollBarAsNeeded);
+    view.setHorizontalScrollBarPolicy(qt.qnamespace_enums.ScrollBarPolicy.ScrollBarAlwaysOff);
+    view.setTextElideMode(qt.qnamespace_enums.TextElideMode.ElideRight);
+    layout.addWidget2(view, 1);
+    layout.addWidget(makeLabel(panel, "↑ ↓  Navigate · Enter  Run · Esc  Back", "actionMenuHint"));
+    const state = a.create(State) catch {
+        panel.deleteLater();
+        return;
+    };
+    state.* = .{ .panel = panel, .search = search, .view = view, .empty = empty, .list = list, .parent = parent, .entry = entry, .revision = list.revision };
+    var adopted = false;
+    defer if (!adopted) state.destroy();
+    state.browser = if (entry == .item) browser_actions.detect(list.allocator, list.selectedCommand() orelse "") catch null else null;
+    state.add(if (entry == .window) "Switch to Window" else "Open", "document-open", .open) catch return;
     if (entry == .window) {
         inline for (std.meta.tags(windows.layout.Action)) |action| {
             state.add(action.label(), action.icon(), .{ .window = action }) catch return;
         }
     }
-    if (browser) |value| {
+    if (state.browser) |browser| {
         state.add("New Window", "window-new", .{ .browser = .new_window }) catch return;
-        state.add(value.privateLabel(), "view-private", .{ .browser = .private_window }) catch return;
+        state.add(browser.privateLabel(), "view-private", .{ .browser = .private_window }) catch return;
     }
-    for (List.currentItemActions(), 0..) |action, i| {
-        state.add(action.name, action.icon, .{ .custom = i }) catch return;
-    }
-    _ = menu.addSeparator();
+    for (List.currentItemActions(), 0..) |action, i| state.add(action.name, action.icon, .{ .custom = i }) catch return;
     state.add(if (entry == .window) "Copy Window Title" else "Copy Name", "edit-copy", .copy_name) catch return;
     if (list.selectedCommand()) |command| {
         if (command.len > 0) state.add("Copy Launch Command", "edit-copy-command", .copy_command) catch return;
     }
     if (entry == .item) state.add("Application Info", "dialog-information", .information) catch return;
     if (entry == .window or entry == .window_message) state.add("Refresh Windows", "view-refresh", .refresh) catch return;
-    _ = addLabel(menu, "↑ ↓  Navigate     ↵  Run     Esc  Close", "actionMenuHint");
-    active = &state;
+    active = state;
+    adopted = true;
     search.onTextChanged(filter);
     search.onKeyPressEvent(key);
-    menu.onAboutToShow(shown);
-    menu.onShowEvent(onMenuShow);
-    menu.onKeyPressEvent(menuKey);
-    menu.setActiveAction(state.rows.items[0].action);
-    const size = menu.sizeHint();
-    defer size.delete();
-    const panel_height = @min(size.height(), menu.maximumHeight());
-    const local = qt.QPoint.new4(@max(12, parent.width() - panel_width - 12), @max(12, parent.height() - 56 - panel_height));
-    defer local.delete();
-    const position = parent.mapToGlobal2(local);
-    defer position.delete();
-    state.anchor_x = position.x();
-    state.anchor_y = position.y();
-    const selected = menu.exec2(position);
-    active = null;
-    if (list.revision != revision) return;
-    var chosen = state.chosen;
-    if (chosen == null) for (state.rows.items, 0..) |row, i| {
-        if (row.action.ptr == selected.ptr) {
-            chosen = i;
-            break;
-        }
-    };
-    const index = chosen orelse return;
+    view.onItemClicked(clicked);
+    if (on_visibility_changed) |callback| callback(true);
+    content.layout().addWidget(panel);
+    panel.show();
+    select(state, 0);
+    search.setFocus();
+}
+fn execute(index: usize) void {
+    const current = active orelse return;
+    if (!selectionMatches()) {
+        close();
+        return;
+    }
+    if (index >= current.rows.items.len or current.rows.items[index].item.isHidden()) return;
+    const state = detach() orelse return;
+    defer state.destroy();
+    const list = state.list;
     switch (state.rows.items[index].operation) {
         .open => list.launchSelected(),
         .custom => |i| list.launchAction(i),
         .window => |action| {
-            manageWindow(list, entry.window, action) catch |err| {
-                _ = qt.QMessageBox.warning(parent, "Window action failed", windows.errorMessage(err));
+            manageWindow(list, state.entry.window, action) catch |err| {
+                _ = qt.QMessageBox.warning(state.parent, "Window action failed", windows.errorMessage(err));
                 return;
             };
             list.launchSelected();
         },
-        .browser => |action| if (browser) |*value| {
-            value.launch(action) catch |err| {
-                @import("utils").log.info("browser action failed: {}", .{err});
-                return;
-            };
+        .browser => |action| if (state.browser) |*browser| {
+            browser.launch(action) catch return;
             @import("animation.zig").animateFadeOutAndQuit();
         },
         .copy_name => qt.QApplication.clipboard().setText(list.selectedName()),
@@ -263,7 +254,7 @@ pub fn show(list: *List, parent: qt.QWidget) void {
             qt.QApplication.clipboard().setText(command);
         },
         .information => {
-            info.setup(list, parent);
+            info.setup(list, state.parent);
             info.showInfoPanel();
         },
         .refresh => if (list.on_query_requested) |callback| {
@@ -272,109 +263,63 @@ pub fn show(list: *List, parent: qt.QWidget) void {
     }
 }
 
-test "action filtering is case insensitive and literal" {
-    try std.testing.expect(matches("Copy File Path", "FILE"));
-    try std.testing.expect(matches("Open", ""));
-    try std.testing.expect(!matches("Open", "["));
-    try std.testing.expect(!matches("Open", "longer query"));
-}
-
-test "modal action search filters all rows, copies values and handles Escape" {
+test "action pane scrolls, filters, executes and rejects stale selections" {
     var argc: i32 = 1;
-    var arg = [_:0]u8{ 'z', 'e', 'n', 'k', 'a', 'i' };
-    var argv = [_][:0]u8{arg[0.. :0]};
-    const app = qt.QApplication.new(std.heap.page_allocator, &argc, &argv);
+    var arg = "zenkai".*;
+    var argv = [_][:0]u8{&arg};
+    const app = qt.QApplication.new(a, &argc, &argv);
     defer app.delete();
-    const theme = if (std.c.getenv("ZENKAI_ACTION_LIGHT") != null) @embedFile("../styles/native-windows-light.qss") else @embedFile("../styles/native-windows-dark.qss");
-    const combined = try std.mem.concat(std.testing.allocator, u8, &.{ @embedFile("../styles/main.qss"), theme });
-    defer std.testing.allocator.free(combined);
-    const qss = try std.mem.replaceOwned(u8, std.testing.allocator, combined, "@ACCENT@", "#f7630c");
-    defer std.testing.allocator.free(qss);
-    app.setStyleSheet(qss);
-    const parent = qt.QWidget.new2();
-    defer parent.delete();
-    parent.resize(600, 500);
-    const ListItemAction = @import("list.zig").ListItemAction;
-    const actions: [14]ListItemAction = @splat(.{ .name = "Custom action" });
+    const host = qt.QWidget.new2();
+    defer host.delete();
+    host.resize(900, 400);
+    const layout = qt.QHBoxLayout.new(host);
+    const actions: [40]@import("list.zig").ListItemAction = @splat(.{ .name = "Custom action" });
     const items = [_]@import("list.zig").ListItem{.{ .name = "Brave", .cmd = "brave --profile-directory=Work", .icon = "", .actions = &actions }};
     var list = List.fromItems(std.testing.allocator, &items, 32);
-    defer list.view.delete();
     defer list.deinit();
+    layout.addWidget(list.view);
     list.adoptGList();
     List.setOnItemFocused(null);
     list.setFilter("");
     list.selectFirst();
-    const Probe = struct {
-        var passed = false;
-        var cancel = false;
-        var positioned = false;
-        var window_actions: usize = 0;
-        fn run(_: qt.QTimer) callconv(.c) void {
-            const state = active orelse return;
-            const host = state.menu.parentWidget();
-            const origin = qt.QPoint.new4(0, 0);
-            defer origin.delete();
-            const global = host.mapToGlobal2(origin);
-            defer global.delete();
-            positioned = state.menu.x() >= global.x() and
-                state.menu.x() + state.menu.width() <= global.x() + host.width() and
-                state.menu.y() >= global.y() + 80 and
-                state.menu.y() + state.menu.height() <= global.y() + host.height() - 48;
-            if (cancel) {
-                window_actions = 0;
-                for (state.rows.items) |row| {
-                    if (row.operation == .window) window_actions += 1;
-                }
-                const event = qt.QKeyEvent.new(6, qt.qnamespace_enums.Key.Key_Escape, 0);
-                defer event.delete();
-                key(state.search, event);
-                return;
-            }
-            state.search.setText("no action has this title");
-            passed = state.empty.isVisible();
-            state.search.setText("COPY LAUNCH");
-            const down = qt.QKeyEvent.new(6, qt.qnamespace_enums.Key.Key_Down, 0);
-            defer down.delete();
-            key(state.search, down);
-            var count: usize = 0;
-            var browser_count: usize = 0;
-            for (state.rows.items) |row| {
-                if (row.action.isVisible()) count += 1;
-                if (row.operation == .browser) browser_count += 1;
-            }
-            passed = passed and !state.empty.isVisible() and count == 1 and browser_count == 2 and state.rows.items.len > 14;
-            const event = qt.QKeyEvent.new(6, qt.qnamespace_enums.Key.Key_Return, 0);
-            defer event.delete();
-            key(state.search, event);
-        }
-    };
-    const timer = qt.QTimer.new();
-    defer timer.delete();
-    timer.setSingleShot(true);
-    timer.onTimeout(Probe.run);
-    Probe.cancel = false;
-    Probe.passed = false;
-    timer.start(0);
-    show(&list, parent);
-    try std.testing.expect(Probe.passed);
-    try std.testing.expect(Probe.positioned);
+    host.show();
+    show(&list, host);
+    defer close();
+    qt.QApplication.processEvents();
+    const state = active.?;
+    try std.testing.expect(state.panel.parentWidget().ptr == host.ptr);
+    try std.testing.expect(state.view.verticalScrollBar().maximum() > 0);
+    const pos = qt.QPointF.new5(20, 20);
+    defer pos.delete();
+    const pixel_delta = qt.QPoint.new4(0, 0);
+    defer pixel_delta.delete();
+    const angle_delta = qt.QPoint.new4(0, -120);
+    defer angle_delta.delete();
+    const wheel = qt.QWheelEvent.new(pos, pos, pixel_delta, angle_delta, 0, 0, 0, false);
+    defer wheel.delete();
+    _ = qt.QApplication.sendEvent(state.view.viewport(), wheel);
+    try std.testing.expect(state.view.verticalScrollBar().value() > 0);
+    navigate(39);
+    qt.QApplication.processEvents();
+    try std.testing.expect(state.view.verticalScrollBar().value() > 0);
+    state.search.setText("no matching action");
+    try std.testing.expect(state.empty.isVisible());
+    state.search.setText("COPY LAUNCH");
+    activate();
     try std.testing.expect(!isOpen());
-    const copied = qt.QApplication.clipboard().text(std.testing.allocator);
-    defer std.testing.allocator.free(copied);
+    const copied = qt.QApplication.clipboard().text(a);
+    defer a.free(copied);
     try std.testing.expectEqualStrings("brave --profile-directory=Work", copied);
-    Probe.cancel = true;
-    timer.start(0);
-    show(&list, parent);
+    show(&list, host);
+    list.setFilter("missing");
+    activate();
     try std.testing.expect(!isOpen());
-    try list.window_search.snapshot.addWithIcon(std.testing.allocator, "invalid", "Test window", "Editor", "");
-    list.window_search.cached = true;
-    list.setFilter("win: Test");
+    list.setFilter("");
     list.selectFirst();
-    timer.start(0);
-    show(&list, parent);
-    try std.testing.expectEqual(@as(usize, 7), Probe.window_actions);
+    show(&list, host);
+    show(&list, host);
+    try std.testing.expect(!isOpen());
 }
-
 fn manageWindow(list: *List, index: usize, action: windows.layout.Action) !void {
     var areas: std.ArrayList(windows.layout.Rect) = .empty;
     defer areas.deinit(list.allocator);

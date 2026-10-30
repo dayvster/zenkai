@@ -412,9 +412,11 @@ api.copy_text("Text to copy")
 after the hook, so plugins can copy a value without closing the search.
 
 The bottom bar is visible by default, including when the search has no results.
-Only `--no-bottom-bar` omits it. **Ctrl+K** opens the searchable Actions menu
-for the selected result, including when the footer is hidden. Type to filter,
-use Up/Down to select, Enter to run, and Escape to dismiss. Application actions
+Only `--no-bottom-bar` omits it. **Ctrl+K** toggles the searchable Actions pane
+for the selected result, including when the footer is hidden. It occupies the
+same right-hand panel as file previews, restoring the preview when dismissed.
+Type to filter, scroll with the mouse wheel or scrollbar, use Up/Down or
+Page Up/Page Down to navigate, Enter to run, and Escape to dismiss. Application actions
 loaded with `--actions-bottombar` and plugin actions keep Ctrl+1…Ctrl+0 shortcuts
 for their first ten entries; the menu displays all actions.
 

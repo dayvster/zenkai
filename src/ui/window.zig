@@ -109,6 +109,39 @@ test "footer stays visible after rebuilding actions and is omitted only when req
     }
 }
 
+test "actions temporarily replace and restore the preview pane" {
+    const a = std.testing.allocator;
+    var argc: i32 = 1;
+    var arg = "zenkai".*;
+    var argv = [_][:0]u8{&arg};
+    const app = QApp.new(std.heap.page_allocator, &argc, &argv);
+    defer app.delete();
+    var window: Window = undefined;
+    window.init(a, &.{}, .{ .no_animations = true, .file_previews = true }, true, true, app);
+    defer window.deinit();
+    window.list.model.beginResetModel();
+    try window.list.plugin_results.append(a, .{
+        .plugin_index = 0,
+        .id = 0,
+        .title = try a.dupe(u8, "Sample"),
+        .subtitle = try a.dupe(u8, ""),
+        .icon = try a.dupe(u8, ""),
+        .preview_path = try a.dupe(u8, "sample.txt"),
+    });
+    try window.list.indices.append(a, .{ .plugin = 0 });
+    window.list.model.endResetModel();
+    window.list.selectFirst();
+    window.widget.show();
+    QApp.processEvents();
+    try std.testing.expect(window.preview.?.path != null);
+    const actions = @import("action_menu.zig");
+    actions.show(&window.list, window.widget);
+    try std.testing.expect(actions.isOpen() and window.preview.?.widget.isHidden());
+    actions.close();
+    try std.testing.expect(!actions.isOpen() and !window.preview.?.widget.isHidden());
+    try std.testing.expectEqualStrings("sample.txt", window.preview.?.path.?);
+}
+
 fn onAppStateChanged(_: QApp, state: i32) callconv(.c) void {
     if (!g_close_on_focus_out) return;
     if (state == 2) {
@@ -126,7 +159,6 @@ fn onLeaveWidget(_: QWidget, _: qt.QEvent) callconv(.c) void {
 }
 
 fn onBlurTimerTimeout(_: qt.QTimer) callconv(.c) void {
-    if (@import("action_menu.zig").isOpen()) return;
     if (@import("file_actions.zig").isOpen()) return;
     QApp.quit();
 }
@@ -143,6 +175,7 @@ fn onBackdropMove(_: qt.QWidget, _: qt.QMoveEvent) callconv(.c) void {
 
 fn onSearchDebounced(text: []const u8) void {
     if (@import("file_actions.zig").isOpen()) return;
+    @import("action_menu.zig").close();
     g_window.list.setFilter(text);
     if (g_window.list.plugin_manager) |pm| {
         pm.dispatchIdle();
@@ -180,14 +213,25 @@ pub fn togglePreview() void {
     onItemFocused(0, List.currentItemActions());
 }
 
+fn onActionsVisibilityChanged(open: bool) void {
+    if (open) {
+        if (g_window.preview) |*preview| preview.select(null);
+    } else {
+        onItemFocused(0, List.currentItemActions());
+        g_window.search_bar.focus();
+    }
+}
+
 fn onItemFocused(_: usize, actions: []const ListItemAction) void {
+    const menu = @import("action_menu.zig");
+    if (menu.isOpen() and !menu.selectionMatches()) menu.close();
     if (g_window.preview) |*preview| {
         const entry = g_window.list.selectedEntry();
         const path = if (entry != null and entry.? == .plugin)
             g_window.list.plugin_results.items[entry.?.plugin].preview_path
         else
             null;
-        preview.select(if (g_window.preview_enabled) path else null);
+        preview.select(if (g_window.preview_enabled and !menu.isOpen()) path else null);
     }
     if (g_window.bottom_bar) |*bar| {
         if (actions.len > 0) {
@@ -379,6 +423,7 @@ pub const Window = struct {
         fade.setAttribute2(wa.WA_TransparentForMouseEvents, true);
 
         g_window = self;
+        @import("action_menu.zig").on_visibility_changed = onActionsVisibilityChanged;
         @import("file_actions.zig").parent = window;
         @import("http.zig").on_complete = onHttpComplete;
         g_close_on_focus_out = vis.close_on_focus_out;
@@ -407,6 +452,7 @@ pub const Window = struct {
     }
 
     pub fn setOwnedItems(self: *Window, items: []ListItem) void {
+        @import("action_menu.zig").close();
         self.list.invalidateIcons();
         if (self.owned_items) |old_items| {
             for (old_items) |item| {
@@ -457,6 +503,8 @@ pub const Window = struct {
     }
 
     pub fn deinit(self: *Window) void {
+        @import("action_menu.zig").on_visibility_changed = null;
+        @import("action_menu.zig").close();
         @import("file_actions.zig").parent = null;
         if (self.preview) |*preview| preview.deinit();
         @import("http.zig").deinit();
