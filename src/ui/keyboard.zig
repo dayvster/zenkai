@@ -14,6 +14,9 @@ var action_parent: QWidget = undefined;
 fn onActions(_: QShortcut) callconv(.c) void {
     @import("action_menu.zig").show(L, action_parent);
 }
+fn onPreview(_: QShortcut) callconv(.c) void {
+    @import("window.zig").togglePreview();
+}
 var search_widget: QLineEdit = undefined;
 
 fn currentRow() ?i32 {
@@ -151,6 +154,7 @@ pub const Keyboard = struct {
         L = list;
         action_parent = window;
         bind(window, "Ctrl+K", onActions);
+        bind(window, "Ctrl+P", onPreview);
         search_widget = search;
         bind(window, "Return", onEnter);
         bind(window, "Enter", onEnter);

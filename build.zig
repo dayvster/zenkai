@@ -54,10 +54,17 @@ pub fn build(b: *std.Build) !void {
         "qabstractitemview",
         "qabstractscrollarea",
         "qimage",
+        "qimagereader",
+        "qplaintextedit",
+        "qsyntaxhighlighter",
+        "qtextdocument",
+        "qtextobject",
         "qpixmap",
         "qicon",
         "qsvgrenderer",
         "qfileinfo",
+        "qfile",
+        "qinputdialog",
         "qfileiconprovider",
         "qrect",
         "qsize",
@@ -247,8 +254,8 @@ pub fn build(b: *std.Build) !void {
         const deploy_cmd = b.addSystemCommand(&.{
             b.fmt("{s}/bin/windeployqt.exe", .{qt_win_root}),
             "--no-translations",
-            b.getInstallPath(.bin, "zenkai.exe"),
         });
+        deploy_cmd.addFileArg(.{ .relative = .{ .base = .install_bin, .sub_path = "zenkai.exe" } });
         const runtime_dlls = [_][]const u8{ "libc++.dll", "libunwind.dll" };
         for (runtime_dlls) |runtime_dll| {
             const install_runtime = b.addInstallFileWithDir(
@@ -307,7 +314,8 @@ pub fn build(b: *std.Build) !void {
     const run_exe_tests = b.addRunArtifact(exe_tests);
     run_exe_tests.setEnvironmentVariable("QT_QPA_PLATFORM", "offscreen");
     if (target.result.os.tag == .windows and builtin.target.os.tag == .windows) {
-        run_exe_tests.addPathDir(b.fmt("{s}/bin", .{qt_win_root}));
+        const path = run_exe_tests.getEnvMap().get("PATH") orelse "";
+        run_exe_tests.setEnvironmentVariable("PATH", b.fmt("{s}/bin;{s}", .{ qt_win_root, path }));
         run_exe_tests.setEnvironmentVariable("QT_PLUGIN_PATH", b.fmt("{s}/plugins", .{qt_win_root}));
     }
     const ui_test_step = b.step("test-ui", "Run UI tests with the Qt offscreen backend");

@@ -45,6 +45,7 @@ pub const PluginResult = struct {
     subtitle: []const u8,
     icon: []const u8,
     exec: ?[]const u8 = null,
+    preview_path: ?[]const u8 = null,
     result_type: ResultType = .ExecCmd,
     actions: std.ArrayList(ResultAction) = .empty,
 
@@ -53,6 +54,7 @@ pub const PluginResult = struct {
         allocator.free(self.subtitle);
         allocator.free(self.icon);
         if (self.exec) |exec| allocator.free(exec);
+        if (self.preview_path) |path| allocator.free(path);
         for (self.actions.items) |action| {
             allocator.free(action.name);
             allocator.free(action.icon);

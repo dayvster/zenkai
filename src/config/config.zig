@@ -13,6 +13,7 @@ pub const VisualConfig = struct {
     icon_size: i32 = 32,
     close_on_focus_out: bool = false,
     show_backdrop: bool = false,
+    file_previews: bool = false,
     fullscreen: bool = false,
     monitor: ?i32 = null,
     theme: ?[]const u8 = null,
@@ -35,6 +36,7 @@ pub const VisualConfig = struct {
         if (cfg.icon_size) |v| self.icon_size = v;
         if (cfg.close_on_focus_out) |v| self.close_on_focus_out = v;
         if (cfg.show_backdrop) self.show_backdrop = true;
+        if (cfg.file_previews) |v| self.file_previews = v;
         if (cfg.fullscreen) self.fullscreen = true;
         if (cfg.monitor) |v| self.monitor = v;
         if (cfg.theme) |v| {
@@ -217,6 +219,7 @@ pub fn loadConfig(allocator: std.mem.Allocator, config_path: []const u8) !Visual
         if (std.mem.eql(u8, key, "icon_size")) cfg.icon_size = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "close_on_focus_out")) cfg.close_on_focus_out = std.mem.eql(u8, val, "true");
         if (std.mem.eql(u8, key, "show_backdrop")) cfg.show_backdrop = std.mem.eql(u8, val, "true");
+        if (std.mem.eql(u8, key, "file_previews")) cfg.file_previews = std.mem.eql(u8, val, "true");
         if (std.mem.eql(u8, key, "fullscreen")) cfg.fullscreen = std.mem.eql(u8, val, "true");
         if (std.mem.eql(u8, key, "monitor")) cfg.monitor = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "theme")) cfg.theme = parseTomlString(allocator, val);
@@ -235,6 +238,19 @@ pub fn detectIconTheme(allocator: std.mem.Allocator) ?[]const u8 {
     if (readFromGtkSettings(allocator, "gtk-3.0")) |theme| return theme;
     if (readFromGtkSettings(allocator, "gtk-4.0")) |theme| return theme;
     return null;
+}
+
+test "file previews are opt-in in the config file" {
+    const a = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "preview.conf", .data = "file_previews = true\n" });
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "preview.conf", a);
+    defer a.free(path);
+    var cfg = try loadConfig(a, path);
+    defer cfg.deinit(a);
+    try std.testing.expect(cfg.file_previews);
+    try std.testing.expect(!@as(VisualConfig, .{}).file_previews);
 }
 
 fn kdeglobalsPath(allocator: std.mem.Allocator) ![]u8 {
