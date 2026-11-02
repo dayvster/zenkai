@@ -80,4 +80,7 @@ pub const PluginConfig = struct {
     roots: ?[][]const u8 = null,
     exclude: ?[][]const u8 = null,
     include_hidden: ?bool = null,
+    editor: ?[][]const u8 = null,
+    terminal: ?[][]const u8 = null,
+    profiles: ?[][]const u8 = null,
 };

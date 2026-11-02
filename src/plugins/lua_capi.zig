@@ -76,6 +76,7 @@ pub extern "c" fn lua_getfield(L: *lua_State, idx: c_int, k: [*:0]const u8) c_in
 pub extern "c" fn lua_setfield(L: *lua_State, idx: c_int, k: [*:0]const u8) void;
 pub extern "c" fn lua_createtable(L: *lua_State, narr: c_int, nrec: c_int) void;
 pub extern "c" fn lua_rawseti(L: *lua_State, idx: c_int, n: i64) void;
+pub extern "c" fn lua_settable(L: *lua_State, idx: c_int) void;
 pub extern "c" fn lua_rawgeti(L: *lua_State, idx: c_int, n: i64) c_int;
 pub extern "c" fn lua_next(L: *lua_State, idx: c_int) c_int;
 pub extern "c" fn lua_pushvalue(L: *lua_State, idx: c_int) void;

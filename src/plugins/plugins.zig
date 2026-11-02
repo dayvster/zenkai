@@ -294,6 +294,70 @@ fn apiReadDir(L: *lua.lua_State) callconv(.c) c_int {
     return 1;
 }
 
+fn readPluginFile(L: *lua.lua_State, limit: usize) ![]u8 {
+    const raw = lua.lua_tostring(L, 1) orelse return error.InvalidPath;
+    const a = g_active_manager.allocator;
+    const path = try filesystem.absolute(a, std.mem.span(raw));
+    defer a.free(path);
+    return utils.fsutils.readFile(a, path, limit);
+}
+
+fn apiReadText(L: *lua.lua_State) callconv(.c) c_int {
+    const text = readPluginFile(L, 256 * 1024) catch |err| return pushFilesystemError(L, err);
+    defer g_active_manager.allocator.free(text);
+    if (!std.unicode.utf8ValidateSlice(text)) return pushFilesystemError(L, error.InvalidEncoding);
+    _ = lua.lua_pushlstring(L, text.ptr, text.len);
+    return 1;
+}
+
+fn validateJson(value: std.json.Value, depth: usize, remaining: *usize) !void {
+    if (depth > 24 or remaining.* == 0) return error.JsonTooLarge;
+    remaining.* -= 1;
+    switch (value) {
+        .array => |array| for (array.items) |item| try validateJson(item, depth + 1, remaining),
+        .object => |object| for (object.values()) |item| try validateJson(item, depth + 1, remaining),
+        else => {},
+    }
+}
+
+fn pushJson(L: *lua.lua_State, value: std.json.Value) void {
+    switch (value) {
+        .null => lua.lua_pushnil(L),
+        .bool => |v| lua.lua_pushboolean(L, if (v) 1 else 0),
+        .integer => |v| lua.lua_pushinteger(L, v),
+        .float => |v| lua.lua_pushnumber(L, v),
+        .string, .number_string => |v| { _ = lua.lua_pushlstring(L, v.ptr, v.len); },
+        .array => |array| {
+            lua.lua_newtable(L);
+            for (array.items, 0..) |item, i| {
+                pushJson(L, item);
+                lua.lua_rawseti(L, -2, @intCast(i + 1));
+            }
+        },
+        .object => |object| {
+            lua.lua_newtable(L);
+            var it = object.iterator();
+            while (it.next()) |entry| {
+                _ = lua.lua_pushlstring(L, entry.key_ptr.ptr, entry.key_ptr.len);
+                pushJson(L, entry.value_ptr.*);
+                lua.lua_settable(L, -3);
+            }
+        },
+    }
+}
+
+fn apiReadJson(L: *lua.lua_State) callconv(.c) c_int {
+    const a = g_active_manager.allocator;
+    const text = readPluginFile(L, 8 * 1024 * 1024) catch |err| return pushFilesystemError(L, err);
+    defer a.free(text);
+    const parsed = std.json.parseFromSlice(std.json.Value, a, text, .{ .max_value_len = 256 * 1024 }) catch |err| return pushFilesystemError(L, err);
+    defer parsed.deinit();
+    var remaining: usize = 100000;
+    validateJson(parsed.value, 0, &remaining) catch |err| return pushFilesystemError(L, err);
+    pushJson(L, parsed.value);
+    return 1;
+}
+
 fn apiOpenPath(L: *lua.lua_State) callconv(.c) c_int {
     const raw = lua.lua_tostring(L, 1) orelse return 0;
     filesystem.open(g_active_manager.allocator, std.mem.sliceTo(raw, 0)) catch |err| return pushFilesystemError(L, err);
@@ -340,8 +404,12 @@ fn apiExec(L: *lua.lua_State) callconv(.c) c_int {
 
     utils.spawnTool(bin, args_list.items, allocator) catch |err| {
         utils.log.info("plugin exec failed: {}", .{err});
+        lua.lua_pushnil(L);
+        _ = lua.lua_pushstring(L, "Unable to start this application");
+        return 2;
     };
-    return 0;
+    lua.lua_pushboolean(L, 1);
+    return 1;
 }
 
 fn apiRun(L: *lua.lua_State) callconv(.c) c_int {
@@ -419,7 +487,7 @@ fn tryLoadPluginConfig(self: *PluginManager, L: *lua.lua_State, path: []const u8
         lua.lua_pushboolean(L, if (replace) 1 else 0);
         lua.lua_setfield(L, -2, "replace");
     }
-    inline for (.{ "roots", "exclude" }) |key| {
+    inline for (.{ "roots", "exclude", "editor", "terminal", "profiles" }) |key| {
         if (@field(parsed.value, key)) |values| {
             lua.lua_newtable(L);
             for (values, 0..) |value, i| {
@@ -454,6 +522,11 @@ fn loadPluginConfig(self: *PluginManager, L: *lua.lua_State, plugins_base_dir: [
 
 fn setupAPI(L: *lua.lua_State) void {
     lua.lua_newtable(L);
+    pushLuaStrField(L, "platform", @tagName(builtin.os.tag));
+    lua.lua_pushcfunction(L, apiReadText);
+    lua.lua_setfield(L, -2, "read_text");
+    lua.lua_pushcfunction(L, apiReadJson);
+    lua.lua_setfield(L, -2, "read_json");
     lua.lua_pushcfunction(L, apiFileAction);
     lua.lua_setfield(L, -2, "file_action");
     lua.lua_pushcfunction(L, apiSetPreview);
