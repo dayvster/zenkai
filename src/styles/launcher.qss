@@ -1,0 +1,11 @@
+QWidget { font-size: 13px; }
+#searchbarInput {
+    border: none;
+    border-bottom: 1px solid palette(mid);
+    padding: 18px 20px;
+    font-size: 18px;
+}
+#appList { border: none; padding: 8px 0; outline: none; }
+#appList::item { padding: 8px 12px; margin: 2px 8px; border-radius: 6px; }
+#appList::item:selected { background: palette(highlight); color: palette(highlighted-text); }
+#bottomBar { border-top: 1px solid palette(mid); }

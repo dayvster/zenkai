@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const qt = @import("libqt6zig");
-const ui = @import("../ui/ui.zig");
+const theme_handler = @import("../ui/theme_handler.zig");
 const config = @import("config");
 const log = @import("utils").log;
 const theme = @import("../theme/theme.zig");
@@ -30,6 +30,14 @@ pub const Context = struct {
 };
 
 pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
+    return initMode(allocator, raw_args, false);
+}
+
+pub fn initMinimal(allocator: std.mem.Allocator, raw_args: anytype) !Context {
+    return initMode(allocator, raw_args, true);
+}
+
+fn initMode(allocator: std.mem.Allocator, raw_args: anytype, comptime minimal: bool) !Context {
     const argv = try qt.init(allocator, raw_args);
     errdefer qt.deinit(allocator, argv);
 
@@ -64,7 +72,7 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     var argc: i32 = @intCast(argv.len);
     const app = QApp.new(std.heap.page_allocator, &argc, argv);
     errdefer app.delete();
-    ui.theme.setApp(app);
+    theme_handler.setApp(app);
 
     const theme_resolved = if (visual.theme) |theme_name|
         if (std.mem.eql(u8, theme_name, "native")) theme.resolveNative(allocator) else theme.resolve(allocator, visual.theme)
@@ -73,10 +81,10 @@ pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     defer if (theme_resolved.allocation) |m| allocator.free(m);
 
     if (cfg.benchmark_all) debug.mark("theme apply");
-    const main_qss_loaded = theme.readMainQss(allocator);
-    const base_qss = main_qss_loaded orelse theme.main_qss;
+    const main_qss_loaded = if (minimal) null else theme.readMainQss(allocator);
+    const base_qss = main_qss_loaded orelse if (minimal) @embedFile("../styles/launcher.qss") else theme.main_qss;
     defer if (main_qss_loaded) |m| allocator.free(m);
-    ui.theme.apply(allocator, base_qss, theme_resolved.qss);
+    theme_handler.apply(allocator, base_qss, theme_resolved.qss);
 
     if (cfg.benchmark_all) debug.mark("icon theme");
     if (config.detectIconTheme(allocator)) |icon_theme| {

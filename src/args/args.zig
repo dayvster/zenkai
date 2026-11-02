@@ -19,6 +19,7 @@ pub const help =
     \\  --benchmark-startup       Report startup JSON after list paint, then exit
     \\  --benchmark-all           Benchmark all stages (Debug builds)
     \\  --no-icons                Hide icons
+    \\  --icons                   Show icons (minimal builds default to hidden)
     \\  --file-previews           Preview selected files and folders
     \\  --no-file-previews        Disable previews, overriding config
     \\  --no-bottom-bar           Hide bottom bar
@@ -216,6 +217,8 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.eql(u8, arg, "--benchmark-all")) {
             cfg.benchmark_all = true;
             log.verbose = true;
+        } else if (std.mem.eql(u8, arg, "--icons")) {
+            cfg.no_icons = false;
         } else if (std.mem.eql(u8, arg, "--no-icons")) {
             cfg.no_icons = true;
         } else if (std.mem.eql(u8, arg, "--file-previews")) {
