@@ -450,7 +450,9 @@ fn apiRun(L: *lua.lua_State) callconv(.c) c_int {
     }
 
     _ = lua.lua_pushlstring(L, out[0..result.bytes].ptr, result.bytes);
-    return 1;
+    // Second value lets plugins tell a failed command from empty output; nil if killed by a signal.
+    if (result.exit_code) |code| lua.lua_pushinteger(L, code) else lua.lua_pushnil(L);
+    return 2;
 }
 
 fn pushLuaStrField(L: *lua.lua_State, key: [*:0]const u8, value: []const u8) void {
@@ -1321,6 +1323,27 @@ test "bundled productivity plugins filter, encode URLs and copy exact text" {
             \\assert(opened_browser == nil)
         },
         .{
+            "browser",
+            \\api.run = function(_, cmd)
+            \\  if cmd == "bookmarks" then
+            \\    return "1:a\tFirefox\tDocs\thttps://example.com/docs\tToolbar\t\n" ..
+            \\      "1:b\tFirefox\tWork\t\tToolbar\tF\n", 0
+            \\  end
+            \\  return "", 1
+            \\end
+            \\on_query("bm: docs")
+            \\assert(#results == 1 and results[1].title == "Docs")
+            \\on_action(1, 1)
+            \\assert(copied == "https://example.com/docs")
+            \\results = {}
+            \\on_query("hist: zig")
+            \\assert(#results == 1 and results[1].title == "Could not reach the browser")
+            \\results = {}
+            \\api.run = function() return nil end
+            \\on_query("tab:")
+            \\assert(#results == 1 and results[1].title == "zenkai-web-bridge is not available")
+        },
+        .{
             "emoji",
             \\on_query("fire")
             \\assert(#results == 0)
@@ -1384,6 +1407,23 @@ test "bundled productivity plugins filter, encode URLs and copy exact text" {
         try runLuaTest(L, terminated);
         try runLuaTest(L, case[1]);
     }
+}
+
+test "api.run returns output and exit code" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+    var pm = PluginManager.init(std.testing.allocator);
+    defer pm.deinit();
+    setActiveManager(&pm);
+    const L = lua.luaL_newstateOrPanic();
+    defer lua.lua_close(L);
+    lua.luaL_openlibs(L);
+    setupAPI(L);
+    try runLuaTest(L,
+        \\local output, code = api.run("echo", "hi")
+        \\assert(output == "hi\n" and code == 0)
+        \\output, code = api.run("false")
+        \\assert(output == "" and code == 1)
+    );
 }
 
 test "emoji plugin queries stay within the instruction limit" {

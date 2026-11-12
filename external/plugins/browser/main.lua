@@ -33,10 +33,16 @@ local function each_line(text, callback)
 end
 
 local function run_cli(...)
-    local output = api.run(CLI, ...)
+    local output, code = api.run(CLI, ...)
     if not output then
         notice("zenkai-web-bridge is not available",
             "Install the CLI in PATH and run `zenkai-web-bridge install`")
+        return nil
+    end
+    -- The bridge fails without output when no browser answers, e.g. none is connected.
+    if output == "" and code ~= 0 then
+        notice("Could not reach the browser",
+            "Load the Zenkai Web extension and run `zenkai-web-bridge install`")
         return nil
     end
     return output
@@ -144,7 +150,8 @@ local function link_query(cmd, term)
     each_line(output, function(line)
         if count >= MAX_RESULTS then return end
         local fields = split_fields(line, 4)
-        if #fields < 4 then return end
+        -- Bookmark search also matches folders, which have no URL to open.
+        if #fields < 4 or fields[4] == "" then return end
         local title = fields[3] ~= "" and fields[3] or fields[4]
         local subtitle = fields[2] .. " — " .. fields[4]
         local id = api.add_result(title, subtitle,
