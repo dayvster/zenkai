@@ -79,7 +79,7 @@ pub fn manage(a: std.mem.Allocator, kind: backend.Backend, id: []const u8, actio
 }
 
 fn manageKde(a: std.mem.Allocator, id: []const u8, action: layout.Action) !void {
-    try @import("window_switcher_kde.zig").manage(a, id, action);
+    try @import("kde_backend.zig").impl.manage(a, id, action);
 }
 
 fn manageHyprland(a: std.mem.Allocator, id: []const u8, action: layout.Action) !void {
