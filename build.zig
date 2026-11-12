@@ -6,6 +6,8 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const minimal = b.option(bool, "minimal", "Build only the lightweight application launcher") orelse false;
     const qt_win_root = b.option([]const u8, "qt-win-root", "Windows Qt installation root") orelse "C:/Qt/6.8.3/llvm-mingw_64";
+    const kde = b.option(bool, "kde", "KDE Plasma 6 window switching via kwinctl (default: on for Linux targets)") orelse
+        (target.result.os.tag == .linux);
 
     const module = b.createModule(.{
         .root_source_file = b.path(if (minimal) "src/minimal.zig" else "src/main.zig"),
@@ -27,9 +29,16 @@ pub fn build(b: *std.Build) !void {
 
     exe.root_module.addImport("libqt6zig", qt6zig.module("libqt6zig"));
 
-    // KDE Plasma 6 window switching (pure Zig D-Bus + KWin scripts); only used by Linux builds
-    const kwinctl_dep = b.dependency("kwinctl", .{ .target = target, .optimize = .ReleaseFast });
-    exe.root_module.addImport("kwinctl", kwinctl_dep.module("kwinctl"));
+    // KDE Plasma 6 window switching (pure Zig D-Bus + KWin scripts). kwinctl is lazy:
+    // it is only fetched and built when -Dkde is on, which is the default for Linux.
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "kde", kde);
+    const kwinctl_module: ?*std.Build.Module = if (kde)
+        if (b.lazyDependency("kwinctl", .{ .target = target, .optimize = .ReleaseFast })) |dep| dep.module("kwinctl") else null
+    else
+        null;
+    exe.root_module.addOptions("build_options", build_options);
+    if (kwinctl_module) |m| exe.root_module.addImport("kwinctl", m);
 
     const libs = [_][]const u8{
         "qobject",
@@ -306,10 +315,11 @@ pub fn build(b: *std.Build) !void {
         .optimize = .debug,
         .imports = &.{
             .{ .name = "utils", .module = utils_module },
-            .{ .name = "kwinctl", .module = kwinctl_dep.module("kwinctl") },
         },
         .link_libc = true,
     });
+    window_test_module.addOptions("build_options", build_options);
+    if (kwinctl_module) |m| window_test_module.addImport("kwinctl", m);
     if (target.result.os.tag == .windows) {
         window_test_module.linkSystemLibrary("user32", .{});
         window_test_module.linkSystemLibrary("dwmapi", .{});

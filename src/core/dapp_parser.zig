@@ -109,6 +109,8 @@ fn pickLocalizedName(app: *de.DesktopApp, locale: []const u8) void {
         if (value.len == 0) continue;
 
         const score = localeScore(candidate, loc);
+        // Only translations for the user's language count; otherwise keep the plain Name.
+        if (score == 0) continue;
         const better = if (score > best_score) true else if (score == best_score)
             if (best_locale) |bl| std.mem.lessThan(u8, candidate, bl) else true
         else false;

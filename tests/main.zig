@@ -524,7 +524,7 @@ test "desktopapp: expandExecString quotes field code values for Exec grammar" {
         for (argv) |a| allocator.free(a);
         allocator.free(argv);
     }
-    try std.testing.expectEqual(@as(usize, 7), argv.len);
+    try std.testing.expectEqual(@as(usize, 8), argv.len);
     try std.testing.expectEqualStrings("env", argv[0]);
     try std.testing.expectEqualStrings("FOO=bar", argv[1]);
     try std.testing.expectEqualStrings("--icon", argv[2]);
@@ -532,6 +532,7 @@ test "desktopapp: expandExecString quotes field code values for Exec grammar" {
     try std.testing.expectEqualStrings("--", argv[4]);
     try std.testing.expectEqualStrings("/path/to/hi.desktop", argv[5]);
     try std.testing.expectEqualStrings("Foo Bar", argv[6]);
+    try std.testing.expectEqualStrings("%", argv[7]);
 }
 
 test "desktopapp: expandExecString drops file and deprecated field codes" {
@@ -581,10 +582,11 @@ test "desktopapp: expandExecString keeps literal percent codes" {
         for (argv) |a| allocator.free(a);
         allocator.free(argv);
     }
-    try std.testing.expectEqual(@as(usize, 3), argv.len);
+    try std.testing.expectEqual(@as(usize, 4), argv.len);
     try std.testing.expectEqualStrings("show", argv[0]);
     try std.testing.expectEqualStrings("%literal", argv[1]);
-    try std.testing.expectEqualStrings("a%qb", argv[2]);
+    try std.testing.expectEqualStrings("and", argv[2]);
+    try std.testing.expectEqualStrings("a%qb", argv[3]);
 }
 
 test "desktopapp: expandExecString then tokenizeCommandLine round-trips quoted values" {

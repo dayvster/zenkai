@@ -80,9 +80,9 @@ pub const Snapshot = struct {
                 const output = try capture(allocator, "swaymsg", &.{ "-t", "get_tree", "-r" });
                 defer allocator.free(output);
                 try self.parseSway(allocator, output, std.c.getpid());
-            } else if (@import("window_switcher_kde.zig").isSession()) {
+            } else if (@import("kde_backend.zig").impl.isSession()) {
                 self.backend = .kde;
-                try @import("window_switcher_kde.zig").enumerate(self, allocator, std.c.getpid());
+                try @import("kde_backend.zig").impl.enumerate(self, allocator, std.c.getpid());
             } else if (hasEnv("WAYLAND_DISPLAY")) {
                 return error.UnsupportedWayland;
             } else if (hasEnv("DISPLAY")) {
@@ -120,7 +120,7 @@ pub const Snapshot = struct {
         if (comptime builtin.os.tag == .windows) {
             return @import("window_switcher_windows.zig").focus(id);
         } else {
-            if (self.backend == .kde) return @import("window_switcher_kde.zig").focus(allocator, id);
+            if (self.backend == .kde) return @import("kde_backend.zig").impl.focus(allocator, id);
             var buf: [128]u8 = undefined;
             const output = switch (self.backend) {
                 .x11 => try capture(allocator, "wmctrl", &.{ "-ia", id }),
