@@ -699,7 +699,8 @@ areas, including negative monitor coordinates and desktop scaling. Center and
 Next Display preserve the window size when it fits. Applications may enforce a
 minimum size. On macOS, Maximize fills the desktop rather than creating a new
 fullscreen Space. Hyprland and Sway actions make tiled windows floating; leave
-Hyprland fullscreen mode before arranging a window.
+Hyprland fullscreen mode before arranging a window. KDE actions clear maximized
+and fullscreen state before arranging a window.
 
 Window results display the owning application's icon: executable icons on
 Windows, application bundle icons on macOS, and desktop entry `Icon` values on
@@ -714,8 +715,9 @@ user-installed desktop entries.
 | Linux / X11 | Install `wmctrl` and `xrandr` for window layouts; the window manager must support EWMH. |
 | Linux / Hyprland | `hyprctl` in PATH and the compositor's session environment. |
 | Linux / Sway | `swaymsg` in PATH and the compositor's session environment. |
+| Linux / KDE Plasma | A Plasma 6 session (Wayland or X11). No extra tools needed. |
 
-Other Wayland compositors, including GNOME and KDE Wayland, currently show an
+Other Wayland compositors, including GNOME, currently show an
 unsupported-session message. They require their own compositor integration;
 XWayland alone cannot enumerate their native Wayland windows. macOS retains the
 exact native window reference until the list is refreshed. The macOS and Linux

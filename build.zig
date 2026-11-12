@@ -27,6 +27,10 @@ pub fn build(b: *std.Build) !void {
 
     exe.root_module.addImport("libqt6zig", qt6zig.module("libqt6zig"));
 
+    // KDE Plasma 6 window switching (pure Zig D-Bus + KWin scripts); only used by Linux builds
+    const kwinctl_dep = b.dependency("kwinctl", .{ .target = target, .optimize = .ReleaseFast });
+    exe.root_module.addImport("kwinctl", kwinctl_dep.module("kwinctl"));
+
     const libs = [_][]const u8{
         "qobject",
         "qcoreapplication",
@@ -300,7 +304,10 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/core/window_search.zig"),
         .target = target,
         .optimize = .debug,
-        .imports = &.{.{ .name = "utils", .module = utils_module }},
+        .imports = &.{
+            .{ .name = "utils", .module = utils_module },
+            .{ .name = "kwinctl", .module = kwinctl_dep.module("kwinctl") },
+        },
         .link_libc = true,
     });
     if (target.result.os.tag == .windows) {

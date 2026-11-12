@@ -10,7 +10,7 @@ pub const Window = struct {
     native_handle: ?*const anyopaque = null,
 };
 
-pub const Backend = enum { windows, macos, x11, hyprland, sway };
+pub const Backend = enum { windows, macos, x11, hyprland, sway, kde };
 pub const layout = @import("window_layout.zig");
 
 pub const Snapshot = struct {
@@ -80,6 +80,9 @@ pub const Snapshot = struct {
                 const output = try capture(allocator, "swaymsg", &.{ "-t", "get_tree", "-r" });
                 defer allocator.free(output);
                 try self.parseSway(allocator, output, std.c.getpid());
+            } else if (@import("window_switcher_kde.zig").isSession()) {
+                self.backend = .kde;
+                try @import("window_switcher_kde.zig").enumerate(self, allocator, std.c.getpid());
             } else if (hasEnv("WAYLAND_DISPLAY")) {
                 return error.UnsupportedWayland;
             } else if (hasEnv("DISPLAY")) {
@@ -117,6 +120,7 @@ pub const Snapshot = struct {
         if (comptime builtin.os.tag == .windows) {
             return @import("window_switcher_windows.zig").focus(id);
         } else {
+            if (self.backend == .kde) return @import("window_switcher_kde.zig").focus(allocator, id);
             var buf: [128]u8 = undefined;
             const output = switch (self.backend) {
                 .x11 => try capture(allocator, "wmctrl", &.{ "-ia", id }),
@@ -130,7 +134,7 @@ pub const Snapshot = struct {
                     };
                 },
                 .sway => try capture(allocator, "swaymsg", &.{ "-r", try std.fmt.bufPrint(&buf, "[con_id={s}] focus", .{id}) }),
-                .windows, .macos => return error.UnsupportedPlatform,
+                .windows, .macos, .kde => return error.UnsupportedPlatform,
             };
             defer allocator.free(output);
             if (self.backend == .hyprland and !hyprlandAcknowledged(output)) return error.FocusFailed;
@@ -254,9 +258,13 @@ fn hyprlandAcknowledged(output: []const u8) bool {
 }
 
 pub fn capture(allocator: std.mem.Allocator, executable: []const u8, args: []const []const u8) ![]u8 {
+    return captureTimed(allocator, executable, args, 2000);
+}
+
+pub fn captureTimed(allocator: std.mem.Allocator, executable: []const u8, args: []const []const u8, timeout_ms: u64) ![]u8 {
     const buffer = try allocator.alloc(u8, 1024 * 1024);
     defer allocator.free(buffer);
-    const result = try utils.runToolTimed(executable, args, buffer, 2000, allocator);
+    const result = try utils.runToolTimed(executable, args, buffer, timeout_ms, allocator);
     if (result.exit_code == null or result.exit_code.? != 0) return error.BackendFailed;
     if (result.truncated) return error.ResponseTooLarge;
     return allocator.dupe(u8, buffer[0..result.bytes]);
@@ -264,7 +272,7 @@ pub fn capture(allocator: std.mem.Allocator, executable: []const u8, args: []con
 
 pub fn errorMessage(err: anyerror) []const u8 {
     return switch (err) {
-        error.UnsupportedWayland => "This Wayland session needs a compositor backend. Supported: Hyprland and Sway.",
+        error.UnsupportedWayland => "This Wayland session needs a compositor backend. Supported: Hyprland, Sway, and KDE Plasma 6.",
         error.NoDisplay => "No desktop session found.",
         error.ToolNotFound => "Install wmctrl and xrandr for X11, or ensure hyprctl/swaymsg is available for your compositor.",
         error.NoOtherDisplay => "Connect another display to move this window.",
