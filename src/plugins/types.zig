@@ -3,11 +3,11 @@ const lua = @import("lua_capi");
 
 pub const Manifest = struct {
     name: []const u8,
-    version: ?[]const u8,
+    version: ?[]const u8 = null,
     main: []const u8,
-    description: ?[]const u8,
-    author: ?[]const u8,
-    disabled: ?bool,
+    description: ?[]const u8 = null,
+    author: ?[]const u8 = null,
+    disabled: ?bool = null,
     platforms: ?[][]const u8 = null,
     // Opt in to query-triggered loading. Omit for normal post-paint startup.
     activation_prefixes: ?[][]const u8 = null,

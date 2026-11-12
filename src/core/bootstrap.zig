@@ -29,6 +29,10 @@ pub const Context = struct {
     }
 };
 
+// Qt keeps a reference to argc for the QApplication's whole lifetime (the XCB
+// backend reads it for WM_CLASS), so it must outlive init().
+var qt_argc: i32 = 0;
+
 pub fn init(allocator: std.mem.Allocator, raw_args: anytype) !Context {
     return initMode(allocator, raw_args, false);
 }
@@ -69,8 +73,8 @@ fn initMode(allocator: std.mem.Allocator, raw_args: anytype, comptime minimal: b
     if (cfg.benchmark_all) debug.mark("qt init");
     const start_ns = if (cfg.start_timer) debug.monotonicNs() else 0;
 
-    var argc: i32 = @intCast(argv.len);
-    const app = QApp.new(std.heap.page_allocator, &argc, argv);
+    qt_argc = @intCast(argv.len);
+    const app = QApp.new(std.heap.page_allocator, &qt_argc, argv);
     errdefer app.delete();
     theme_handler.setApp(app);
 

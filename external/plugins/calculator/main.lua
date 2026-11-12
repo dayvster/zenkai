@@ -225,6 +225,8 @@ function on_query(query)
     local expr = query:gsub("%s+", "")
     local result, unit_name, detail = calculate(query)
     if finite(result) then
+        -- Unit conversions with offsets (e.g. 32 f to c) leave float noise like 5.7e-14.
+        if unit_name and math.abs(result) < 1e-9 then result = 0 end
         local display = tostring(result)
         local rounded = tonumber(string.format("%.10g", result))
         if rounded then
