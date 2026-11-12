@@ -197,7 +197,10 @@ function calculate(query)
             if a[1] ~= b[1] then return nil end
             local base = (value + a[3]) * a[2]
             if a[1] == "temperature" and base < 0 then return nil end
-            return base / b[2] - b[3], target
+            local converted = base / b[2] - b[3]
+            -- Offset units (e.g. 32 f to c) leave float noise like 5.7e-14.
+            if (a[3] ~= 0 or b[3] ~= 0) and math.abs(converted) < 1e-9 then converted = 0 end
+            return converted, target
         end
         if not a and not b then return currency(value, source, target) end
         return nil
@@ -225,8 +228,6 @@ function on_query(query)
     local expr = query:gsub("%s+", "")
     local result, unit_name, detail = calculate(query)
     if finite(result) then
-        -- Unit conversions with offsets (e.g. 32 f to c) leave float noise like 5.7e-14.
-        if unit_name and math.abs(result) < 1e-9 then result = 0 end
         local display = tostring(result)
         local rounded = tonumber(string.format("%.10g", result))
         if rounded then
