@@ -446,6 +446,9 @@ plugins. `--no-plugins` disables them; `--plugin=NAME` can select them individua
 | `www.google.com` | Suggest opening `https://www.google.com` in the system default browser. |
 | `win: editor` | Find an open window by title or application name; Enter switches to it. |
 | `:fire` or `emoji: fire` | Find an emoji by name or keyword; Enter copies it. |
+| `tab: github` | Find an open browser tab by title or URL; Enter focuses it, Ctrl+K offers close, reload, pin, mute and more. Requires `zenkai-web-bridge` and the Zenkai Web extension. |
+| `hist: zig` | Search browser history; Enter opens the page. |
+| `bm: docs` | Search browser bookmarks; Enter opens the page. |
 
 Quicklinks and snippets load only when their prefixes are used. Prefixes are
 case-insensitive. Snippets copy text; they do not type it into another app.
