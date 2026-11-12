@@ -47,6 +47,18 @@ pub fn setupSandbox(L: *lua.lua_State) void {
     lua.lua_setglobal(L, "print");
 }
 
+/// Lua instructions a single hook call may run before it is stopped.
+pub const instruction_limit = 50000;
+
+/// Applies the per-call instruction limit to `L` until `clearInstructionLimit` is called.
+pub fn limitInstructions(L: *lua.lua_State) void {
+    lua.lua_sethook(L, instructionLimitHook, lua.LUA_MASKCOUNT, instruction_limit);
+}
+
+pub fn clearInstructionLimit(L: *lua.lua_State) void {
+    lua.lua_sethook(L, null, 0, 0);
+}
+
 fn instructionLimitHook(L: *lua.lua_State, _: *lua.lua_Debug) callconv(.c) void {
     lua.lua_sethook(L, null, 0, 0);
     _ = lua.lua_pushstring(L, "plugin exceeded instruction limit");
@@ -63,9 +75,9 @@ pub fn callPluginMethod(plugin: *types.Plugin, argument_count: c_int, error_labe
     lua.lua_insert(plugin.state, -(argument_count + 2));
     const error_handler_index = lua.lua_gettop(plugin.state) - argument_count - 1;
 
-    lua.lua_sethook(plugin.state, instructionLimitHook, lua.LUA_MASKCOUNT, 50000);
+    limitInstructions(plugin.state);
     const result = lua.lua_pcall(plugin.state, argument_count, 0, error_handler_index);
-    lua.lua_sethook(plugin.state, null, 0, 0);
+    clearInstructionLimit(plugin.state);
 
     if (result != lua.LUA_OK) {
         const error_message = lua.lua_tostring(plugin.state, -1) orelse "unknown error";
