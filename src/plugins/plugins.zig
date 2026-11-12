@@ -851,7 +851,7 @@ pub const PluginManager = struct {
         const main_path = std.fs.path.join(self.allocator, &.{ plugins_base_dir, dir_name, plugin_main }) catch return;
         defer self.allocator.free(main_path);
 
-        const lua_content = loader.readFile(self.allocator, main_path) catch {
+        const lua_content = loader.readScript(self.allocator, main_path) catch {
             utils.log.info("plugin '{s}': main file not readable", .{dir_name});
             return;
         };
@@ -1320,6 +1320,37 @@ test "bundled productivity plugins filter, encode URLs and copy exact text" {
             \\on_open(1)
             \\assert(opened_browser == nil)
         },
+        .{
+            "emoji",
+            \\on_query("fire")
+            \\assert(#results == 0)
+            \\on_query(":fire")
+            \\assert(results[1].title == "Fire" and results[1].icon == "glyph:🔥" and results[1].kind == "NoReturn")
+            \\on_open(1)
+            \\assert(copied == "🔥")
+            \\on_action(1, 3)
+            \\assert(copied == "U+1F525")
+            \\results = {}
+            \\on_query("EMOJI: red heart")
+            \\assert(results[1].icon:find("❤", 1, true))
+            \\results = {}
+            \\on_query(":heart")
+            \\assert(results[1].icon == "glyph:❤️", results[1].title)
+            \\results = {}
+            \\on_query(":laugh")
+            \\local joy = false
+            \\for _, r in ipairs(results) do if r.icon == "glyph:😂" then joy = true end end
+            \\assert(joy)
+            \\results = {}
+            \\on_query(":")
+            \\assert(#results == 40)
+            \\results = {}
+            \\on_query(":e")
+            \\assert(#results == 50)
+            \\results = {}
+            \\on_query(":zzzzq")
+            \\assert(#results == 1 and results[1].title == "No emoji found")
+        },
     };
     inline for (cases) |case| {
         const manifest_source = try loader.readFile(a, "external/plugins/" ++ case[0] ++ "/manifest.json");
@@ -1346,12 +1377,40 @@ test "bundled productivity plugins filter, encode URLs and copy exact text" {
             \\  log = function() end
             \\}
         );
-        const source = try loader.readFile(a, "external/plugins/" ++ case[0] ++ "/main.lua");
+        const source = try loader.readScript(a, "external/plugins/" ++ case[0] ++ "/main.lua");
         defer a.free(source);
         const terminated = try a.dupeSentinel(u8, source, 0);
         defer a.free(terminated);
         try runLuaTest(L, terminated);
         try runLuaTest(L, case[1]);
+    }
+}
+
+test "emoji plugin queries stay within the instruction limit" {
+    const a = std.testing.allocator;
+    const L = lua.luaL_newstateOrPanic();
+    defer lua.lua_close(L);
+    lua.luaL_openlibs(L);
+    setupSandbox(L);
+    try runLuaTest(L,
+        \\results = {}
+        \\api = {
+        \\  add_result = function(title) results[#results + 1] = title return #results end,
+        \\  add_action = function() end,
+        \\  copy_text = function() end,
+        \\}
+    );
+    const source = try loader.readScript(a, "external/plugins/emoji/main.lua");
+    defer a.free(source);
+    const terminated = try a.dupeSentinel(u8, source, 0);
+    defer a.free(terminated);
+    try runLuaTest(L, terminated);
+    // Broad queries are the expensive ones: they match most of the ~1,900 emoji.
+    inline for (.{ ":", ":e", ":a", ":s", ":fa", ":face", ":man", ":ing", ":heart", "emoji: red heart", ":zzzzq" }) |query| {
+        try runLuaTest(L, "results = {}");
+        sandbox.limitInstructions(L);
+        defer sandbox.clearInstructionLimit(L);
+        try runLuaTest(L, "on_query(\"" ++ query ++ "\")");
     }
 }
 

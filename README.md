@@ -415,6 +415,9 @@ api.open_url("https://example.com")
 api.log("something happened")
 ```
 
+`icon_name` is a theme icon name or an image path. Use `glyph:<text>` to draw a
+short piece of text, such as an emoji, as the icon: `api.add_result("Fire", "", "glyph:🔥")`.
+
 `result_type` is optional. Use `"NoReturn"` to keep the launcher open after selecting the result (like a calculator showing an answer). The default `"ExecCmd"` closes the launcher and fires `on_open`.
 
 #### Example
@@ -442,6 +445,7 @@ plugins. `--no-plugins` disables them; `--plugin=NAME` can select them individua
 | `snip: greeting` | Find a saved snippet by title or description. Enter copies its full text. |
 | `www.google.com` | Suggest opening `https://www.google.com` in the system default browser. |
 | `win: editor` | Find an open window by title or application name; Enter switches to it. |
+| `:fire` or `emoji: fire` | Find an emoji by name or keyword; Enter copies it. |
 
 Quicklinks and snippets load only when their prefixes are used. Prefixes are
 case-insensitive. Snippets copy text; they do not type it into another app.
@@ -474,6 +478,18 @@ Type to filter, scroll with the mouse wheel or scrollbar, use Up/Down or
 Page Up/Page Down to navigate, Enter to run, and Escape to dismiss. Application actions
 loaded with `--actions-bottombar` and plugin actions keep Ctrl+1…Ctrl+0 shortcuts
 for their first ten entries; the menu displays all actions.
+
+### Emoji picker
+
+Type `:` followed by a name or keyword, or use `emoji:`, to search 1,898 emoji:
+`:fire`, `:red heart`, `:laugh`, `:thumbs`. A bare `:` lists the smileys.
+Enter copies the emoji and keeps the launcher open; Ctrl+K also offers Copy
+Codepoints (for example `U+1F525`). Skin-tone variants are not listed.
+
+Names and keywords come from Unicode Emoji 15.1 and CLDR 44 English
+annotations (Unicode License v3). To update them, download `emoji-test.txt`
+and CLDR's `annotations/en.xml`, then run
+`python3 tools/emoji/generate.py emoji-test.txt en.xml external/plugins/emoji/main.lua`.
 
 ### Files and folders
 

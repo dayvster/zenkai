@@ -1,0 +1,9 @@
+{
+    "name": "emoji",
+    "version": "1.0.0",
+    "main": "main.lua",
+    "description": "Search emoji by name or keyword and copy them",
+    "author": "built-in",
+    "disabled": false,
+    "activation_prefixes": [":", "emoji:"]
+}
