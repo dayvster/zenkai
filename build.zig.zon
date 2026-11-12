@@ -8,6 +8,11 @@
             .url = "git+https://github.com/rcalixte/libqt6zig#76fbd35d3b4d67721e5ca5cd323c06cd83afeaad",
             .hash = "libqt6zig-6.8.2-OSXtXJRx4BxEkhok6OWmDklZGRHmnWFVTag8HX66JGuq",
         },
+        // KDE Plasma 6 window control (pure Zig D-Bus + KWin scripts)
+        .kwinctl = .{
+            .url = "git+https://github.com/dayvster/kwinctl#49bcc24b698eafdb86f7ad1bfd190f979da99ea3",
+            .hash = "kwinctl-0.1.0-uwc5SWFLAQATW0oAAhNKBCyLoiyH2P99bo-DfOtzGcdn",
+        },
         .zlua = .{
             .url = "git+https://github.com/natecraddock/ziglua#4aab3aff0f6dd3f2b96410b6d8ca118ce69d339e",
             .hash = "zlua-0.1.0-hGRpC-OdBQAcwrYy6quE4SKpa2b9Zt-J6q5vD46RntgC",

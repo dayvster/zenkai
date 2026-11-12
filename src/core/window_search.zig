@@ -3,6 +3,7 @@ const backend = @import("window_switcher.zig");
 
 test {
     std.testing.refAllDecls(backend);
+    std.testing.refAllDecls(@import("window_switcher_kde.zig"));
 }
 
 /// Owns the native snapshot independently of Lua and application discovery.
