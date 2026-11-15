@@ -119,6 +119,8 @@ const State = struct {
     controls: [fields.len]Control,
     // One switch per installed plugin, in `installed` order.
     plugin_switches: []qt.QCheckBox,
+    // Each plugin's name label, also in `installed` order; restyle colors them.
+    plugin_titles: []qt.QLabel = &.{},
     installed: []const plugins.PluginInfo,
     // Disabled names with no installed plugin, kept so saving doesn't silently drop them.
     disabled: []const []const u8,
@@ -177,6 +179,7 @@ fn destroy(state: *State) void {
     state.preview.deinit();
     state.window.delete();
     state.allocator.free(state.plugin_switches);
+    state.allocator.free(state.plugin_titles);
 }
 
 // Theme colors ----------------------------------------------------------------
@@ -217,6 +220,24 @@ const Rgb = struct {
         return (max - min) / (1 - @abs(2 * l - 1));
     }
 
+    /// WCAG relative luminance, 0 (black) to 1 (white).
+    fn luminance(self: Rgb) f32 {
+        const linear = struct {
+            fn of(channel: u8) f32 {
+                const c = @as(f32, @floatFromInt(channel)) / 255;
+                return if (c <= 0.03928) c / 12.92 else std.math.pow(f32, (c + 0.055) / 1.055, 2.4);
+            }
+        };
+        return 0.2126 * linear.of(self.r) + 0.7152 * linear.of(self.g) + 0.0722 * linear.of(self.b);
+    }
+
+    /// WCAG contrast ratio between two colors, 1 to 21.
+    fn contrast(self: Rgb, other: Rgb) f32 {
+        const a = self.luminance();
+        const b = other.luminance();
+        return (@max(a, b) + 0.05) / (@min(a, b) + 0.05);
+    }
+
     fn lightness(self: Rgb) f32 {
         const max: f32 = @floatFromInt(@max(self.r, self.g, self.b));
         const min: f32 = @floatFromInt(@min(self.r, self.g, self.b));
@@ -246,6 +267,43 @@ const Rgb = struct {
         return qt.QColor.new15(self.r, self.g, self.b, 255);
     }
 };
+
+/// The color of `hue` (degrees) at the given HSL saturation and lightness (0 to 1).
+fn fromHsl(hue: f32, saturation: f32, lightness: f32) Rgb {
+    const a = saturation * @min(lightness, 1 - lightness);
+    const channel = struct {
+        fn at(n: f32, h: f32, l: f32, amount: f32) u8 {
+            const k = @mod(n + h / 30, 12);
+            const value = l - amount * @max(-1, @min(@min(k - 3, 9 - k), 1));
+            return @intFromFloat(@round(value * 255));
+        }
+    };
+    return .{
+        .r = channel.at(0, hue, lightness, a),
+        .g = channel.at(8, hue, lightness, a),
+        .b = channel.at(4, hue, lightness, a),
+    };
+}
+
+/// The color of the `index`th plugin name in the (sorted) list. Hues step by the golden
+/// angle, which keeps neighbours far apart for any number of plugins; hashing names left
+/// some pairs a degree apart. HSL lightness isn't perceptual (yellow looks far lighter than
+/// blue at the same value), so the lightness steps away from the background until the name
+/// reaches 4.5:1 contrast, the WCAG AA level for text.
+fn pluginColor(index: usize, background: Rgb) Rgb {
+    const hue = pluginHue(index);
+    const dark_theme = background.lightness() < 0.5;
+    var lightness: f32 = if (dark_theme) 0.68 else 0.42;
+    while (true) : (lightness += if (dark_theme) 0.02 else -0.02) {
+        const color = fromHsl(hue, 0.65, lightness);
+        if (color.contrast(background) >= 4.5 or lightness <= 0.05 or lightness >= 0.95) return color;
+    }
+}
+
+fn pluginHue(index: usize) f32 {
+    const golden_angle = 137.508;
+    return @floatCast(@mod(20 + @as(f64, @floatFromInt(index)) * golden_angle, 360));
+}
 
 const Colors = struct {
     background: Rgb = .{ .r = 0x20, .g = 0x20, .b = 0x24 },
@@ -453,7 +511,7 @@ fn build(state: *State, active_qss: []const u8) !void {
         state.controls[i] = control;
         const card = cards[@intFromEnum(field.card)].?;
         switch (control) {
-            inline else => |widget| addRow(card, text(field.key), text(field.key ++ "_hint"), widget),
+            inline else => |widget| _ = addRow(card, text(field.key), text(field.key ++ "_hint"), widget),
         }
     }
 
@@ -461,10 +519,11 @@ fn build(state: *State, active_qss: []const u8) !void {
     const plugin_page = addPage(state.pages, t.settings_page_plugins, t.settings_page_plugins_hint);
     const plugin_card = addCard(plugin_page, t.settings_card_plugins);
     state.plugin_switches = try state.allocator.alloc(qt.QCheckBox, state.installed.len);
-    for (state.installed, state.plugin_switches) |info, *toggle| {
+    state.plugin_titles = try state.allocator.alloc(qt.QLabel, state.installed.len);
+    for (state.installed, state.plugin_switches, state.plugin_titles) |info, *toggle, *title| {
         toggle.* = makeSwitch();
         const hint = if (info.description.len > 0) info.description else t.settings_plugin_no_description;
-        addRow(plugin_card, info.name, hint, toggle.*);
+        title.* = addRow(plugin_card, info.name, hint, toggle.*);
     }
     plugin_page.addStretch();
 
@@ -511,6 +570,11 @@ fn restyle(state: *State, qss: []const u8) !void {
         state.nav.item(@intCast(row)).setIcon(icon);
     }
     addThemeSwatches(state.allocator, state.controls[fieldIndex("theme")].combo);
+    for (state.plugin_titles, 0..) |title, index| {
+        var buf: [64]u8 = undefined;
+        const style = std.fmt.bufPrint(&buf, "color: {f}; font-weight: 600;", .{pluginColor(index, g_colors.background)}) catch continue;
+        title.setStyleSheet(style);
+    }
     // Switches paint from g_colors, so they need a repaint too.
     state.window.update();
 }
@@ -651,7 +715,8 @@ fn addCard(page: qt.QVBoxLayout, title: []const u8) qt.QVBoxLayout {
 
 /// One card row: title and hint on the left, the control on the right, and a divider above
 /// every row but the first.
-fn addRow(card: qt.QVBoxLayout, title: []const u8, hint: []const u8, control: anytype) void {
+/// Returns the title label, for rows that style it (plugin names).
+fn addRow(card: qt.QVBoxLayout, title: []const u8, hint: []const u8, control: anytype) qt.QLabel {
     if (card.count() > 0) {
         const divider = qt.QWidget.new2();
         divider.setObjectName("settingsDivider");
@@ -674,6 +739,7 @@ fn addRow(card: qt.QVBoxLayout, title: []const u8, hint: []const u8, control: an
     row.addLayout2(labels, 1);
     row.addWidget(control);
     card.addLayout(row);
+    return heading;
 }
 
 fn FieldType(comptime key: []const u8) type {
@@ -1308,6 +1374,27 @@ test "settings window shows the saved config and applies changes" {
         }
     }
     try std.testing.expectEqual(@as(usize, 1), defaults.disabled_plugins.len); // "gone" isn't installed
+}
+
+test "plugin names get distinct colors, readable on every theme" {
+    // Twelve bundled plugins: every pair of hues stays at least 20 degrees apart.
+    const count = 12;
+    for (0..count) |a| {
+        for (a + 1..count) |b| {
+            const apart = @abs(pluginHue(a) - pluginHue(b));
+            try std.testing.expect(@min(apart, 360 - apart) >= 20);
+        }
+    }
+    for (theme.theme_entries) |entry| {
+        const background = themeColorsFor(std.testing.allocator, entry.name).background;
+        for (0..count) |index| {
+            const ratio = pluginColor(index, background).contrast(background);
+            if (ratio < 4.5) {
+                std.debug.print("plugin {d} on theme '{s}' has contrast {d:.2}\n", .{ index, entry.name, ratio });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }
 }
 
 test "theme colors come from the style sheet, with the most saturated accent" {
