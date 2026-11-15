@@ -1,0 +1,152 @@
+/* Ember: warm charcoal with glowing orange embers and amber highlights. */
+
+QWidget {
+    background-color: #18110e;
+    color: #f3e3d3;
+}
+
+#searchbarInput {
+    background-color: #2d1f19;
+    color: #f3e3d3;
+    border-color: #2d1f19;
+    selection-background-color: #ff7a2f;
+    selection-color: #18110e;
+}
+
+#searchbarInput:focus {
+    border-color: #ffb23f;
+}
+
+#searchbarInput::placeholder {
+    color: #9c7f6c;
+}
+
+#appList {
+    background: #18110e;
+}
+
+#appList::item {
+    padding: 8px 12px;
+    border-radius: 4px;
+    color: #f3e3d3;
+}
+
+#appList::item:selected {
+    background: #ff7a2f;
+    color: #18110e;
+}
+
+#appList QScrollBar:vertical {
+    background-color: transparent;
+    width: 6px;
+}
+
+#appList QScrollBar::handle:vertical {
+    background-color: #2d1f19;
+    min-height: 30px;
+    border-radius: 3px;
+}
+
+#appList QScrollBar::handle:vertical:hover {
+    background-color: #ff7a2f;
+}
+
+#appList QScrollBar::add-line:vertical,
+#appList QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+#appList QScrollBar::add-page:vertical,
+#appList QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+#bottomBar {
+    background: #18110e;
+    border-top: 1px solid #2d1f19;
+}
+
+#bottomBar QToolButton {
+    padding: 4px 6px;
+    border-radius: 4px;
+    color: #f3e3d3;
+}
+
+#bottomBar QToolButton:hover {
+    background-color: #2d1f19;
+    border: 1px solid #ffb23f;
+}
+
+#bottomBar QLabel {
+    color: #9c7f6c;
+}
+
+#actionItem {
+    margin: 4px 6px;
+}
+
+#actionButton {
+    background: transparent;
+    border: none;
+    padding: 4px 6px;
+    color: #f3e3d3;
+    border-radius: 4px;
+}
+
+#actionButton:hover {
+    background: #2d1f19;
+    border: 1px solid #ffb23f;
+}
+
+#actionShortcut {
+    color: #9c7f6c;
+    background: transparent;
+}
+
+#actionName {
+    color: #f3e3d3;
+    background: transparent;
+}
+
+#listFade {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 transparent,
+                                 stop: 1 #18110e);
+}
+
+#actionPanel {
+    background-color: #18110e;
+    color: #f3e3d3;
+    border-color: #2d1f19;
+}
+
+#actionMenuSearch {
+    background-color: #2d1f19;
+    color: #f3e3d3;
+    border-color: #2d1f19;
+    selection-background-color: #ff7a2f;
+    selection-color: #18110e;
+}
+
+#actionMenuSearch:focus {
+    border-color: #ffb23f;
+}
+
+#actionMenuSearch::placeholder {
+    color: #9c7f6c;
+}
+
+#actionMenuTitle {
+    color: #f3e3d3;
+}
+
+#actionMenuContext,
+#actionMenuHint,
+#actionMenuEmpty {
+    color: #9c7f6c;
+}
+
+#actionList::item:selected {
+    background-color: #ff7a2f;
+    color: #18110e;
+}
