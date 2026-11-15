@@ -191,6 +191,14 @@ fn apiClose(_: *lua.lua_State) callconv(.c) c_int {
     return 0;
 }
 
+// The sandbox removes `os`, so this is the only wall clock plugins get: Unix time in milliseconds.
+fn apiNow(L: *lua.lua_State) callconv(.c) c_int {
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const ns = std.Io.Clock.real.now(io).nanoseconds;
+    lua.lua_pushinteger(L, @intCast(@divFloor(ns, std.time.ns_per_ms)));
+    return 1;
+}
+
 fn apiAddAction(L: *lua.lua_State) callconv(.c) c_int {
     const results = g_active_results orelse return 0;
     const result_id = lua.lua_tointeger(L, 1);
@@ -559,6 +567,8 @@ fn setupAPI(L: *lua.lua_State) void {
     lua.lua_setfield(L, -2, "browser_icon");
     lua.lua_pushcfunction(L, apiClose);
     lua.lua_setfield(L, -2, "close");
+    lua.lua_pushcfunction(L, apiNow);
+    lua.lua_setfield(L, -2, "now");
     lua.lua_pushcfunction(L, apiExec);
     lua.lua_setfield(L, -2, "exec");
     lua.lua_pushcfunction(L, apiRun);
@@ -1348,6 +1358,48 @@ test "bundled productivity plugins filter, encode URLs and copy exact text" {
             \\assert(#results == 1 and results[1].title == "zenkai-web-bridge is not available")
         },
         .{
+            "devtoolbox",
+            \\api.now = function() return 1700000000123 end
+            \\api.set_query = function(query) next_query = query end
+            \\local function titles(query)
+            \\  results = {}
+            \\  on_query(query)
+            \\  local list = {}
+            \\  for i, r in ipairs(results) do list[i] = r.title end
+            \\  return list
+            \\end
+            \\assert(#titles("unrelated") == 0 and #titles("dev:") == 8)
+            \\on_open(1)
+            \\assert(next_query == "dev: b64 " and copied == nil)
+            \\local t = titles("DEV: hash abc")
+            \\assert(t[1] == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+            \\assert(t[2] == "a9993e364706816aba3e25717850c26c9cd0d89d")
+            \\assert(t[3] == "900150983cd24fb0d6963f7d28e17f72")
+            \\on_open(1)
+            \\assert(copied == t[1] and results[1].kind == "NoReturn")
+            \\t = titles("dev: b64 aGVsbG8=")
+            \\assert(t[1] == "YUdWc2JHOD0=" and t[2] == "hello")
+            \\assert(titles("dev: url a b&c")[1] == "a%20b%26c")
+            \\t = titles("dev: ts 1700000000")
+            \\assert(t[1] == "2023-11-14T22:13:20Z" and t[3] == "1700000000000")
+            \\assert(titles("dev: ts")[2] == "1700000000")
+            \\assert(titles("dev: ts 2023-11-14 22:13:20")[2] == "1700000000")
+            \\t = titles("dev: color #f80")
+            \\assert(t[1] == "#ff8800" and t[2] == "rgb(255, 136, 0)" and t[3] == "hsl(32, 100%, 50%)")
+            \\t = titles("dev: case XMLHttpRequest")
+            \\assert(t[1] == "xml_http_request" and t[2] == "xmlHttpRequest" and t[4] == "xml-http-request")
+            \\t = titles("dev: json { \"a\" : [1, true] }")
+            \\assert(t[1] == "{\"a\":[1,true]}" and t[2] == "Pretty-printed (6 lines)")
+            \\on_open(2)
+            \\assert(copied == "{\n  \"a\": [\n    1,\n    true\n  ]\n}")
+            \\assert(titles("dev: json [1,]")[1] == "Invalid JSON")
+            \\assert(titles("dev: json [" .. ("1,"):rep(600) .. "1]")[1] == "JSON too large")
+            \\assert(titles("dev: hash " .. ("x"):rep(120))[1] == "Input too long")
+            \\local uuid = titles("dev: uuid")[1]
+            \\assert(uuid:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-4%x%x%x%-[89ab]%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$"), uuid)
+            \\assert(titles("dev: zz")[1] == "No tool named \"zz\"")
+        },
+        .{
             "emoji",
             \\on_query("fire")
             \\assert(#results == 0)
@@ -1430,6 +1482,22 @@ test "api.run returns output and exit code" {
     );
 }
 
+test "api.now returns Unix time in milliseconds" {
+    var pm = PluginManager.init(std.testing.allocator);
+    defer pm.deinit();
+    setActiveManager(&pm);
+    const L = lua.luaL_newstateOrPanic();
+    defer lua.lua_close(L);
+    lua.luaL_openlibs(L);
+    setupAPI(L);
+    // 2024-01-01 and 2100-01-01: catches seconds, nanoseconds or a zero clock.
+    try runLuaTest(L,
+        \\local now = api.now()
+        \\assert(math.type(now) == "integer")
+        \\assert(now > 1704067200000 and now < 4102444800000, now)
+    );
+}
+
 test "emoji plugin queries stay within the instruction limit" {
     const a = std.testing.allocator;
     const L = lua.luaL_newstateOrPanic();
@@ -1455,6 +1523,42 @@ test "emoji plugin queries stay within the instruction limit" {
         sandbox.limitInstructions(L);
         defer sandbox.clearInstructionLimit(L);
         try runLuaTest(L, "on_query(\"" ++ query ++ "\")");
+    }
+}
+
+test "devtoolbox inputs at their size limits stay within the instruction limit" {
+    const a = std.testing.allocator;
+    const L = lua.luaL_newstateOrPanic();
+    defer lua.lua_close(L);
+    lua.luaL_openlibs(L);
+    setupSandbox(L);
+    try runLuaTest(L,
+        \\results = {}
+        \\api = {
+        \\  add_result = function(title) results[#results + 1] = title return #results end,
+        \\  add_action = function() end,
+        \\  now = function() return 0 end,
+        \\}
+    );
+    const source = try loader.readScript(a, "external/plugins/devtoolbox/main.lua");
+    defer a.free(source);
+    const terminated = try a.dupeSentinel(u8, source, 0);
+    defer a.free(terminated);
+    try runLuaTest(L, terminated);
+    // The most expensive input each tool accepts; JSON is bounded by tokens, not bytes.
+    inline for (.{
+        "\"dev: hash \" .. (\"x\"):rep(119)",
+        "\"dev: b64 \" .. (\"QUJD\"):rep(250)",
+        "\"dev: case \" .. (\"aB \"):rep(666)",
+        "\"dev: url \" .. (\"%41\"):rep(666)",
+        "\"dev: json [\" .. (\"1,\"):rep(5000) .. \"1]\"",
+        "\"dev: json [\" .. (\"1,\"):rep(248) .. \"1]\"",
+        "\"dev: json \" .. (\"[\"):rep(240) .. (\"]\"):rep(240)",
+    }) |query| {
+        try runLuaTest(L, "results = {}");
+        sandbox.limitInstructions(L);
+        defer sandbox.clearInstructionLimit(L);
+        try runLuaTest(L, "on_query(" ++ query ++ ")");
     }
 }
 

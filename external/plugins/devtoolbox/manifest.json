@@ -3,6 +3,7 @@
     "version": "1.0.0",
     "main": "main.lua",
     "description": "Developer tools for base64, URLs, UUIDs, timestamps, colors, text, JSON, and hashes",
-    "author": "zenkai",
-    "disabled": false
+    "author": "built-in",
+    "disabled": false,
+    "activation_prefixes": ["dev:"]
 }

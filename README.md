@@ -446,6 +446,7 @@ plugins. `--no-plugins` disables them; `--plugin=NAME` can select them individua
 | `www.google.com` | Suggest opening `https://www.google.com` in the system default browser. |
 | `win: editor` | Find an open window by title or application name; Enter switches to it. |
 | `:fire` or `emoji: fire` | Find an emoji by name or keyword; Enter copies it. |
+| `dev: hash hello` | Developer tools: Base64, URL encoding, UUIDs, timestamps, colors, text case, JSON and hashes. |
 | `tab: github` | Find an open browser tab by title or URL; Enter focuses it, Ctrl+K offers close, reload, pin, mute and more. Requires `zenkai-web-bridge` and the Zenkai Web extension. |
 | `hist: zig` | Search browser history; Enter opens the page. |
 | `bm: docs` | Search browser bookmarks; Enter opens the page. |
@@ -493,6 +494,27 @@ Names and keywords come from Unicode Emoji 15.1 and CLDR 44 English
 annotations (Unicode License v3). To update them, download `emoji-test.txt`
 and CLDR's `annotations/en.xml`, then run
 `python3 tools/emoji/generate.py emoji-test.txt en.xml external/plugins/emoji/main.lua`.
+
+### Developer toolbox
+
+Type `dev:` to list the tools, or `dev: <tool> <input>` to use one. Enter
+copies a result and keeps the launcher open; on a listed tool it fills in its
+prefix.
+
+| Query | Results |
+| --- | --- |
+| `dev: b64 hello` | Base64 encoding; valid Base64 input is also decoded. |
+| `dev: url a b&c` | Percent-encoding; `%XX` input is also decoded. |
+| `dev: uuid` | Three random v4 UUIDs (from `math.random`; not for secrets). |
+| `dev: ts`, `dev: ts 1700000000`, `dev: ts 2023-11-14 22:13` | ISO 8601 UTC date, Unix seconds and milliseconds. |
+| `dev: color #ff8800`, `rgb(255, 136, 0)`, `hsl(32, 100%, 50%)` | Hex, RGB and HSL. |
+| `dev: case helloWorld` | snake_case, camelCase, PascalCase, kebab-case, CONSTANT_CASE, Title Case, upper and lower case, length. |
+| `dev: json {"a":1}` | Validates, then minifies or pretty-prints with 2 spaces, keeping key order. |
+| `dev: hash hello` | SHA-256, SHA-1 and MD5 of the UTF-8 text. |
+
+Plugins run under a per-call instruction limit, so inputs are capped: hashes
+take up to 119 bytes, Base64 1,000 bytes, URL and case 2,000 bytes, and JSON
+500 tokens. Larger inputs show a message instead of a result.
 
 ### Files and folders
 
@@ -770,4 +792,5 @@ The native services are also available to other Lua plugins:
 api.open_browser("https://example.com") -- system browser; HTTP(S) only
 local icon = api.browser_icon("https") -- default handler's icon; also accepts "http"
 api.close() -- request closing after on_open, including for NoReturn results
+local ms = api.now() -- Unix time in milliseconds (the sandbox has no `os`)
 ```
