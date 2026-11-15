@@ -2,10 +2,10 @@
  * Ember: a warm dark theme built around an amber accent.
  *
  * Colors from the Ember color scheme by Michal Wilk (MIT License, Copyright (c) 2025
- * Michal Wilk), https://github.com/MichalWilk/ember-color-scheme. The window, search bar
- * and app list share the base background, so they read as one surface split by the search
- * bar's border; the other colors keep the roles the scheme gives them:
- *   bg_hard #1a1918  base background      bg_statusline #141312  bottom bar
+ * Michal Wilk), https://github.com/MichalWilk/ember-color-scheme. The window, search bar,
+ * app list and bottom bar all use the scheme's darkest shade, bg_statusline, so they read
+ * as one near-black surface; the other colors keep the roles the scheme gives them:
+ *   bg_statusline #141312  background
  *   bg1     #2e2c2a  hover surfaces       orange        #fe8019  accent: selected row,
  *   bg2     #3e3c3a  borders                                     focus and selection
  *   fg      #e8e4dd  primary text         fg_dim        #9a9491  muted text
@@ -13,16 +13,16 @@
  */
 
 QWidget {
-    background-color: #1a1918;
+    background-color: #141312;
     color: #e8e4dd;
 }
 
 #searchbarInput {
-    background-color: #1a1918;
+    background-color: #141312;
     color: #e8e4dd;
     border-color: #3e3c3a;
     selection-background-color: #fe8019;
-    selection-color: #1a1918;
+    selection-color: #141312;
 }
 
 #searchbarInput:focus {
@@ -34,7 +34,7 @@ QWidget {
 }
 
 #appList {
-    background: #1a1918;
+    background: #141312;
 }
 
 #appList::item {
@@ -45,7 +45,7 @@ QWidget {
 
 #appList::item:selected {
     background: #fe8019;
-    color: #1a1918;
+    color: #141312;
 }
 
 #appList QScrollBar:vertical {
@@ -123,21 +123,21 @@ QWidget {
 #listFade {
     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                                  stop: 0 transparent,
-                                 stop: 1 #1a1918);
+                                 stop: 1 #141312);
 }
 
 #actionPanel {
-    background-color: #1a1918;
+    background-color: #141312;
     color: #e8e4dd;
     border-color: #3e3c3a;
 }
 
 #actionMenuSearch {
-    background-color: #1a1918;
+    background-color: #141312;
     color: #e8e4dd;
     border-color: #3e3c3a;
     selection-background-color: #fe8019;
-    selection-color: #1a1918;
+    selection-color: #141312;
 }
 
 #actionMenuSearch:focus {
@@ -160,5 +160,5 @@ QWidget {
 
 #actionList::item:selected {
     background-color: #fe8019;
-    color: #1a1918;
+    color: #141312;
 }
