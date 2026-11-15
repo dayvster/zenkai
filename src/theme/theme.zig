@@ -7,6 +7,7 @@ const fsutils = @import("utils").fsutils;
 pub const dark_qss = @embedFile("../styles/dark.theme.qss");
 pub const light_qss = @embedFile("../styles/light.theme.qss");
 pub const dracula_qss = @embedFile("../styles/dracula.qss");
+pub const ember_qss = @embedFile("../styles/ember.qss");
 pub const ayu_dark_qss = @embedFile("../styles/ayu-dark.qss");
 pub const minimal_qss = @embedFile("../styles/minimal.qss");
 pub const gruvbox_qss = @embedFile("../styles/gruvbox.qss");
@@ -150,6 +151,8 @@ pub fn resolve(allocator: std.mem.Allocator, theme_arg: ?[]const u8) ThemeResult
             return resolveWithDisk(allocator, "light.theme.qss", light_qss);
         } else if (std.mem.eql(u8, name, "dracula")) {
             return resolveWithDisk(allocator, "dracula.qss", dracula_qss);
+        } else if (std.mem.eql(u8, name, "ember")) {
+            return resolveWithDisk(allocator, "ember.qss", ember_qss);
         } else if (std.mem.eql(u8, name, "ayu-dark")) {
             return resolveWithDisk(allocator, "ayu-dark.qss", ayu_dark_qss);
         } else if (std.mem.eql(u8, name, "minimal")) {
@@ -314,6 +317,7 @@ pub const theme_entries = [_]ThemeEntry{
     .{ .name = "cupertino-dark", .desc = "Dark macOS Finder" },
     .{ .name = "dark", .desc = "Catppuccin Mocha dark (default)" },
     .{ .name = "dracula", .desc = "Dark purple Dracula" },
+    .{ .name = "ember", .desc = "Warm charcoal with glowing orange embers" },
     .{ .name = "everforest", .desc = "Forest green dark" },
     .{ .name = "frieza", .desc = "Pale white/purple final form" },
     .{ .name = "github-dark", .desc = "GitHub dark" },
@@ -368,5 +372,21 @@ pub const theme_entries = [_]ThemeEntry{
 pub fn listThemes(writer: anytype) !void {
     for (theme_entries) |entry| {
         try writer.print("  {s:<26} {s}\n", .{ entry.name, entry.desc });
+    }
+}
+
+test "every listed theme resolves to its own style sheet" {
+    const a = std.testing.allocator;
+    const fallback = resolve(a, "dark");
+    defer if (fallback.allocation) |m| a.free(m);
+    for (theme_entries) |entry| {
+        // "dark" is the fallback itself; "native" is resolved by resolveNative.
+        if (std.mem.eql(u8, entry.name, "dark") or std.mem.eql(u8, entry.name, "native")) continue;
+        const resolved = resolve(a, entry.name);
+        defer if (resolved.allocation) |m| a.free(m);
+        if (std.mem.eql(u8, resolved.qss, fallback.qss)) {
+            std.debug.print("theme '{s}' is listed but falls back to dark\n", .{entry.name});
+            return error.TestUnexpectedResult;
+        }
     }
 }

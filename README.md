@@ -167,7 +167,7 @@ Use `native` to follow system light/dark appearance and accent color. It selects
 ./zig-out/bin/zenkai --theme=./my-custom-theme.qss
 ```
 
-Name one of the 65 built-in themes or point at a `.qss` file. See [screenshots](screenshots/) to save yourself the trouble of running each individually.
+Name one of the 66 built-in themes or point at a `.qss` file. See [screenshots](screenshots/) to save yourself the trouble of running each individually.
 
 Uses an icon grid with a pill-shaped search bar:
 
