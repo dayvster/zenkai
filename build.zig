@@ -114,6 +114,8 @@ pub fn build(b: *std.Build) !void {
         "qpushbutton",
         "qstackedwidget",
         "qformlayout",
+        "qscrollarea",
+        "qbrush",
     };
 
     for (libs) |lib| {
@@ -435,7 +437,7 @@ fn minimalQtLibrary(name: []const u8) bool {
         "qtextobject",  "qfile",                 "qinputdialog",    "qmenu",              "qwidgetaction",
         "qlistwidget",  "qmessagebox",           "qtoolbutton",     "qabstractbutton",
         "qcheckbox",    "qspinbox",              "qabstractspinbox", "qcombobox",         "qpushbutton",
-        "qstackedwidget", "qformlayout",
+        "qstackedwidget", "qformlayout",          "qscrollarea",     "qbrush",
     };
     for (excluded) |lib| if (std.mem.eql(u8, name, lib)) return false;
     return true;
