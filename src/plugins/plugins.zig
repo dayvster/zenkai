@@ -1227,8 +1227,12 @@ test "bundled productivity plugins filter, encode URLs and copy exact text" {
             "calculator",
             \\on_query("2 + 3 * 4")
             \\assert(results[1].title == "14")
+            \\assert(results[1].subtitle == "2 + 3 * 4 = · Enter to copy")
             \\on_open(1)
             \\assert(copied == "14")
+            \\results = {}
+            \\on_query("  100   cm to m ")
+            \\assert(results[1].subtitle == "100 cm to m = · Enter to copy")
             \\assert(math.abs(eval_math("sin(pi / 2)") - 1) < 1e-9)
             \\assert(eval_math("sqrt(144) + max(2, 3)") == 15)
             \\assert(eval_math("1e3 + 2.5e-1") == 1000.25)

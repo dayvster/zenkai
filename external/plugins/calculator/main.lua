@@ -225,7 +225,8 @@ function on_query(query)
     if query == "" or #query < 2 then
         return
     end
-    local expr = query:gsub("%s+", "")
+    -- Collapse rather than strip spaces so "100 km to mi" doesn't read as "100kmtomi".
+    local expr = query:match("^%s*(.-)%s*$"):gsub("%s+", " ")
     local result, unit_name, detail = calculate(query)
     if finite(result) then
         local display = tostring(result)
