@@ -317,7 +317,7 @@ pub const theme_entries = [_]ThemeEntry{
     .{ .name = "cupertino-dark", .desc = "Dark macOS Finder" },
     .{ .name = "dark", .desc = "Catppuccin Mocha dark (default)" },
     .{ .name = "dracula", .desc = "Dark purple Dracula" },
-    .{ .name = "ember", .desc = "Warm charcoal with glowing orange embers" },
+    .{ .name = "ember", .desc = "Warm Gruvbox-inspired dark with an amber accent" },
     .{ .name = "everforest", .desc = "Forest green dark" },
     .{ .name = "frieza", .desc = "Pale white/purple final form" },
     .{ .name = "github-dark", .desc = "GitHub dark" },
