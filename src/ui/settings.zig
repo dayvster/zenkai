@@ -1406,6 +1406,13 @@ test "theme colors come from the style sheet, with the most saturated accent" {
     try std.testing.expectEqual(Rgb{ .r = 0x31, .g = 0x32, .b = 0x44 }, colors.field);
     try std.testing.expectEqual(Rgb{ .r = 0x89, .g = 0xb4, .b = 0xfa }, colors.accent);
 
+    // Ember starts with a credit comment; its colors still parse, with the amber accent.
+    const ember = theme.resolve(std.testing.allocator, "ember");
+    defer if (ember.allocation) |m| std.testing.allocator.free(m);
+    const ember_colors = parseColors(ember.qss);
+    try std.testing.expectEqual(Rgb{ .r = 0x1a, .g = 0x19, .b = 0x18 }, ember_colors.background);
+    try std.testing.expectEqual(Rgb{ .r = 0xfe, .g = 0x80, .b = 0x19 }, ember_colors.accent);
+
     // Selector lists match, later rules win, comments are skipped, and "color" doesn't match
     // "border-color" or "selection-color".
     const qss =

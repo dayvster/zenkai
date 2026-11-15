@@ -1,39 +1,50 @@
-/* Ember: warm charcoal with glowing orange embers and amber highlights. */
+/*
+ * Ember: a warm dark theme built around an amber accent.
+ *
+ * Colors from the Ember color scheme by Michal Wilk (MIT License, Copyright (c) 2025
+ * Michal Wilk), https://github.com/MichalWilk/ember-color-scheme. Each color is used in
+ * the role the scheme gives it:
+ *   bg_hard #1a1918  base background      bg_statusline #141312  bottom bar
+ *   bg1     #2e2c2a  UI surfaces          bg_selected   #362510  selection
+ *   bg2     #3e3c3a  borders              orange        #fe8019  primary accent
+ *   fg      #e8e4dd  primary text         fg_dim        #9a9491  muted text
+ *   fg_bright #ffffff  emphasized text
+ */
 
 QWidget {
-    background-color: #18110e;
-    color: #f3e3d3;
+    background-color: #1a1918;
+    color: #e8e4dd;
 }
 
 #searchbarInput {
-    background-color: #2d1f19;
-    color: #f3e3d3;
-    border-color: #2d1f19;
-    selection-background-color: #ff7a2f;
-    selection-color: #18110e;
+    background-color: #2e2c2a;
+    color: #e8e4dd;
+    border-color: #3e3c3a;
+    selection-background-color: #fe8019;
+    selection-color: #1a1918;
 }
 
 #searchbarInput:focus {
-    border-color: #ffb23f;
+    border-color: #fe8019;
 }
 
 #searchbarInput::placeholder {
-    color: #9c7f6c;
+    color: #9a9491;
 }
 
 #appList {
-    background: #18110e;
+    background: #1a1918;
 }
 
 #appList::item {
     padding: 8px 12px;
     border-radius: 4px;
-    color: #f3e3d3;
+    color: #e8e4dd;
 }
 
 #appList::item:selected {
-    background: #ff7a2f;
-    color: #18110e;
+    background: #362510;
+    color: #fe8019;
 }
 
 #appList QScrollBar:vertical {
@@ -42,13 +53,13 @@ QWidget {
 }
 
 #appList QScrollBar::handle:vertical {
-    background-color: #2d1f19;
+    background-color: #3e3c3a;
     min-height: 30px;
     border-radius: 3px;
 }
 
 #appList QScrollBar::handle:vertical:hover {
-    background-color: #ff7a2f;
+    background-color: #fe8019;
 }
 
 #appList QScrollBar::add-line:vertical,
@@ -62,23 +73,23 @@ QWidget {
 }
 
 #bottomBar {
-    background: #18110e;
-    border-top: 1px solid #2d1f19;
+    background: #141312;
+    border-top: 1px solid #3e3c3a;
 }
 
 #bottomBar QToolButton {
     padding: 4px 6px;
     border-radius: 4px;
-    color: #f3e3d3;
+    color: #e8e4dd;
 }
 
 #bottomBar QToolButton:hover {
-    background-color: #2d1f19;
-    border: 1px solid #ffb23f;
+    background-color: #2e2c2a;
+    border: 1px solid #fe8019;
 }
 
 #bottomBar QLabel {
-    color: #9c7f6c;
+    color: #9a9491;
 }
 
 #actionItem {
@@ -89,64 +100,64 @@ QWidget {
     background: transparent;
     border: none;
     padding: 4px 6px;
-    color: #f3e3d3;
+    color: #e8e4dd;
     border-radius: 4px;
 }
 
 #actionButton:hover {
-    background: #2d1f19;
-    border: 1px solid #ffb23f;
+    background: #2e2c2a;
+    border: 1px solid #fe8019;
 }
 
 #actionShortcut {
-    color: #9c7f6c;
+    color: #9a9491;
     background: transparent;
 }
 
 #actionName {
-    color: #f3e3d3;
+    color: #e8e4dd;
     background: transparent;
 }
 
 #listFade {
     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                                  stop: 0 transparent,
-                                 stop: 1 #18110e);
+                                 stop: 1 #1a1918);
 }
 
 #actionPanel {
-    background-color: #18110e;
-    color: #f3e3d3;
-    border-color: #2d1f19;
+    background-color: #1a1918;
+    color: #e8e4dd;
+    border-color: #3e3c3a;
 }
 
 #actionMenuSearch {
-    background-color: #2d1f19;
-    color: #f3e3d3;
-    border-color: #2d1f19;
-    selection-background-color: #ff7a2f;
-    selection-color: #18110e;
+    background-color: #2e2c2a;
+    color: #e8e4dd;
+    border-color: #3e3c3a;
+    selection-background-color: #fe8019;
+    selection-color: #1a1918;
 }
 
 #actionMenuSearch:focus {
-    border-color: #ffb23f;
+    border-color: #fe8019;
 }
 
 #actionMenuSearch::placeholder {
-    color: #9c7f6c;
+    color: #9a9491;
 }
 
 #actionMenuTitle {
-    color: #f3e3d3;
+    color: #ffffff;
 }
 
 #actionMenuContext,
 #actionMenuHint,
 #actionMenuEmpty {
-    color: #9c7f6c;
+    color: #9a9491;
 }
 
 #actionList::item:selected {
-    background-color: #ff7a2f;
-    color: #18110e;
+    background-color: #362510;
+    color: #fe8019;
 }
