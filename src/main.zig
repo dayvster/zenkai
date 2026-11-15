@@ -79,6 +79,7 @@ test {
     std.testing.refAllDecls(@import("ui/file_preview.zig"));
     std.testing.refAllDecls(@import("ui/file_actions.zig"));
     std.testing.refAllDecls(@import("core/window_layout.zig"));
+    std.testing.refAllDecls(@import("ui/settings.zig"));
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -123,6 +124,7 @@ pub fn main(init: std.process.Init) !void {
         _ = freopen("/dev/null", "w", __stderrp);
     }
     if (ctx.cfg.run_mode) ctx.visual.window_height = 140;
+    if (ctx.cfg.settings) return @import("ui/settings.zig").run(init.gpa);
 
     {
         var args_iter = try init.minimal.args.iterateAllocator(init.gpa);

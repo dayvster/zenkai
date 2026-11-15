@@ -106,6 +106,14 @@ pub fn build(b: *std.Build) !void {
         "qvariantanimation",
         "qpropertyanimation",
         "qeasingcurve",
+        // Settings window
+        "qcheckbox",
+        "qspinbox",
+        "qabstractspinbox",
+        "qcombobox",
+        "qpushbutton",
+        "qstackedwidget",
+        "qformlayout",
     };
 
     for (libs) |lib| {
@@ -426,6 +434,8 @@ fn minimalQtLibrary(name: []const u8) bool {
         "qmimedata",    "qimagereader",          "qplaintextedit",  "qsyntaxhighlighter", "qtextdocument",
         "qtextobject",  "qfile",                 "qinputdialog",    "qmenu",              "qwidgetaction",
         "qlistwidget",  "qmessagebox",           "qtoolbutton",     "qabstractbutton",
+        "qcheckbox",    "qspinbox",              "qabstractspinbox", "qcombobox",         "qpushbutton",
+        "qstackedwidget", "qformlayout",
     };
     for (excluded) |lib| if (std.mem.eql(u8, name, lib)) return false;
     return true;

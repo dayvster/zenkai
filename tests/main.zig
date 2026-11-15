@@ -285,6 +285,14 @@ test "config: updateConfig rewrites keys in place and keeps comments" {
     const no_newline = try config.updateConfig(allocator, "a = 1", &.{});
     defer allocator.free(no_newline);
     try std.testing.expectEqualStrings("a = 1\n", no_newline);
+
+    // A null value unsets the key: existing lines go, and nothing is appended.
+    const unset = try config.updateConfig(allocator, "monitor = 1\n# monitor = 2\nicon_size = 32\n", &.{
+        .{ .key = "monitor", .value = null },
+        .{ .key = "theme", .value = null },
+    });
+    defer allocator.free(unset);
+    try std.testing.expectEqualStrings("# monitor = 2\nicon_size = 32\n", unset);
 }
 
 test "config: saveConfig writes values loadConfig reads back" {

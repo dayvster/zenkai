@@ -24,6 +24,9 @@ pub const EasingType = enum(i32) {
     OutBack = 34,
     InOutBack = 35,
 
+    /// The names `fromName` accepts, for the settings window. Keep the two in sync.
+    pub const names = [_][]const u8{ "linear", "in-quad", "out-quad", "in-out-quad", "in-cubic", "out-cubic", "in-out-cubic", "out-back", "in-out-back" };
+
     pub fn fromName(name: []const u8) EasingType {
         if (std.mem.eql(u8, name, "linear")) return .Linear;
         if (std.mem.eql(u8, name, "in-quad")) return .InQuad;

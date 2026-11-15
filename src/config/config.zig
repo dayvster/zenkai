@@ -261,9 +261,10 @@ fn parseNameList(allocator: std.mem.Allocator, val: []const u8) ![]const []const
 }
 
 /// One `key = value` line for `updateConfig`; `value` is written as given, so quote strings.
+/// A null value removes the key, for settings whose default is "not set" (monitor, theme).
 pub const Assignment = struct {
     key: []const u8,
-    value: []const u8,
+    value: ?[]const u8,
 };
 
 /// Returns `content` with each assignment's existing lines rewritten in place, keeping
@@ -282,15 +283,17 @@ pub fn updateConfig(allocator: std.mem.Allocator, content: []const u8, assignmen
         var lines = std.mem.splitScalar(u8, body, '\n');
         while (lines.next()) |line| {
             if (assignmentFor(line, assignments)) |index| {
-                try out.print(allocator, "{s} = {s}\n", .{ assignments[index].key, assignments[index].value });
                 written[index] = true;
+                const value = assignments[index].value orelse continue;
+                try out.print(allocator, "{s} = {s}\n", .{ assignments[index].key, value });
             } else {
                 try out.print(allocator, "{s}\n", .{line});
             }
         }
     }
     for (assignments, written) |assignment, done| {
-        if (!done) try out.print(allocator, "{s} = {s}\n", .{ assignment.key, assignment.value });
+        const value = assignment.value orelse continue;
+        if (!done) try out.print(allocator, "{s} = {s}\n", .{ assignment.key, value });
     }
     return try out.toOwnedSlice(allocator);
 }

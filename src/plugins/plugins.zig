@@ -642,8 +642,8 @@ fn containsName(names: []const []const u8, name: []const u8) bool {
 }
 
 pub const PluginInfo = struct {
-    name: []u8,
-    description: []u8,
+    name: []const u8,
+    description: []const u8,
 };
 
 /// Plugins available on this platform, read from their manifests without loading any Lua.
