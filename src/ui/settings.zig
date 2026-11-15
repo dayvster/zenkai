@@ -14,6 +14,7 @@ const log = @import("utils").log;
 const theme = @import("../theme/theme.zig");
 const icons = @import("icon_loader.zig");
 const action_icons = @import("action_icons.zig");
+const bottombar = @import("bottombar.zig");
 const EasingType = @import("animation.zig").EasingType;
 
 const Page = enum { appearance, behaviour, animations, integrations };
@@ -793,6 +794,8 @@ const Preview = struct {
     launcher: qt.QWidget,
     layout: qt.QVBoxLayout,
     list: qt.QListWidget,
+    // Rebuilt on every refresh, after the theme is applied, so its icons take the theme's colors.
+    bottom: ?qt.QWidget = null,
     image: qt.QLabel,
     caption: qt.QLabel,
 
@@ -836,16 +839,6 @@ const Preview = struct {
         list.setCurrentRow(0);
         layout.addWidget2(list, 1);
 
-        const bottom = qt.QWidget.new2();
-        bottom.setObjectName("bottomBar");
-        bottom.setFixedHeight(44);
-        const bottom_row = qt.QHBoxLayout.new(bottom);
-        bottom_row.setContentsMargins(8, 6, 8, 6);
-        addBottomAction(bottom_row, t.bottom_bar_open, t.bottom_bar_return);
-        bottom_row.addStretch();
-        addBottomAction(bottom_row, t.bottom_bar_actions, "Ctrl+K");
-        layout.addWidget(bottom);
-
         addSectionTitle(page, t.settings_card_preview);
         // Framed by a thin border (#settingsPreview) so it reads as a window even when the
         // theme's background matches the page.
@@ -861,20 +854,42 @@ const Preview = struct {
         return .{ .launcher = launcher, .layout = layout, .list = list, .image = image, .caption = caption };
     }
 
-    fn addBottomAction(row: qt.QHBoxLayout, name: []const u8, shortcut: []const u8) void {
+    /// The launcher's bottom bar, built with the same pieces bottombar.zig uses.
+    fn buildBottomBar(self: *Preview) void {
+        const t = lang.get();
+        if (self.bottom) |old| old.delete();
+        const bottom = qt.QWidget.new2();
+        bottom.setObjectName("bottomBar");
+        bottom.setFixedHeight(bottombar.BottomBar.minimum_height);
+        // In the launcher stand-in first, so the theme's #bottomBar rules reach the items.
+        self.layout.addWidget(bottom);
+        const row = qt.QHBoxLayout.new(bottom);
+        row.setContentsMargins(8, 6, 8, 6);
+        addBottomAction(row, t.bottom_bar_open, .enter, bottombar.open_icon);
+        row.addStretch();
+        addBottomAction(row, t.bottom_bar_actions, .{ .combo = "Ctrl+K" }, bottombar.actions_icon);
+        // The stand-in is already visible after the first refresh, and Qt leaves widgets added
+        // to a visible parent hidden until they are shown.
+        bottom.show();
+        self.bottom = bottom;
+    }
+
+    fn addBottomAction(row: qt.QHBoxLayout, name: []const u8, keys: bottombar.Keys, svg: []const u8) void {
         const item = qt.QWidget.new2();
         item.setObjectName("actionItem");
+        row.addWidget(item);
         const item_row = qt.QHBoxLayout.new(item);
         item_row.setContentsMargins(0, 0, 0, 0);
         item_row.setSpacing(6);
+        // Owned by the item, so rebuilding the bar deletes it too.
+        const action = qt.QAction.new5(name, item);
         const button = qt.QToolButton.new2();
         button.setObjectName("actionButton");
-        button.setText(name);
+        button.setToolButtonStyle(qt.qnamespace_enums.ToolButtonStyle.ToolButtonTextBesideIcon);
+        button.setDefaultAction(action);
         item_row.addWidget(button);
-        const label = qt.QLabel.new3(shortcut);
-        label.setObjectName("actionShortcut");
-        item_row.addWidget(label);
-        row.addWidget(item);
+        bottombar.tintButton(button, action, svg);
+        bottombar.addShortcut(item_row, keys);
     }
 
     fn deinit(self: Preview) void {
@@ -883,7 +898,7 @@ const Preview = struct {
     }
 
     /// Redraws the picture from the window's current Appearance values.
-    fn refresh(self: Preview, state: *State) void {
+    fn refresh(self: *Preview, state: *State) void {
         const allocator = state.allocator;
         const value = struct {
             fn of(s: *State, comptime key: []const u8) i32 {
@@ -898,6 +913,7 @@ const Preview = struct {
         const qss = selectedStyleSheet(state) catch return;
         defer allocator.free(qss);
         self.launcher.setStyleSheet(qss);
+        self.buildBottomBar();
 
         self.layout.setContentsMargins(margin, margin, margin, margin);
         self.layout.setSpacing(value.of(state, "layout_spacing"));
