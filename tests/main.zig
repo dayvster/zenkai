@@ -680,6 +680,21 @@ test "dapp_parser: shouldListApp keeps OnlyShowIn filtering" {
     try std.testing.expect(!dapp_parser.shouldListApp(&entry, &kde));
 }
 
+test "utils: makeDir creates missing parent directories" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const base = try tmp.dir.realPathFileAlloc(io, ".", allocator);
+    defer allocator.free(base);
+    const path = try std.fs.path.join(allocator, &.{ base, ".config", "zenkai" });
+    defer allocator.free(path);
+
+    try utils.fsutils.makeDir(io, path);
+    try std.testing.expect(utils.fsutils.dirExists(io, path));
+    try utils.fsutils.makeDir(io, path);
+}
+
 test "utils: tokenizeCommandLine handles Exec grammar escapes in double quotes" {
     const allocator = std.testing.allocator;
 
