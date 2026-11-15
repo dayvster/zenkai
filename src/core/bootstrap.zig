@@ -5,6 +5,18 @@ const theme_handler = @import("../ui/theme_handler.zig");
 const config = @import("config");
 const log = @import("utils").log;
 const theme = @import("../theme/theme.zig");
+const theme_colors = @import("../theme/colors.zig");
+
+/// The appearance settings from the config, as the theme code takes them. Fullscreen
+/// windows fill the screen, so they stay opaque and square.
+pub fn appearanceOf(visual: config.VisualConfig) theme_colors.Appearance {
+    return .{
+        .opacity = if (visual.fullscreen) 100 else visual.window_opacity,
+        .corner_radius = if (visual.fullscreen) 0 else visual.corner_radius,
+        .font_size = visual.font_size,
+        .search_font_size = visual.search_font_size,
+    };
+}
 const debug = @import("../debug/debug.zig");
 const benchmark = @import("../debug/startup_benchmark.zig");
 const args = @import("../args/args.zig");
@@ -88,6 +100,13 @@ fn initMode(allocator: std.mem.Allocator, raw_args: anytype, comptime minimal: b
     const main_qss_loaded = if (minimal) null else theme.readMainQss(allocator);
     const base_qss = main_qss_loaded orelse if (minimal) @embedFile("../styles/launcher.qss") else theme.main_qss;
     defer if (main_qss_loaded) |m| allocator.free(m);
+    // The minimal launcher's window has no translucent backing, so it keeps the plain theme.
+    if (!minimal) {
+        const appearance_qss = theme_colors.appearanceStyleSheet(allocator, theme_resolved.qss, appearanceOf(visual)) catch "";
+        defer allocator.free(appearance_qss);
+        theme_handler.setAppearance(appearance_qss);
+        @import("../ui/window_background.zig").configure(theme_colors.windowBackground(theme_resolved.qss, appearanceOf(visual)));
+    }
     theme_handler.apply(allocator, base_qss, theme_resolved.qss);
 
     if (cfg.benchmark_all) debug.mark("icon theme");

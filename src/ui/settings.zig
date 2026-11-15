@@ -15,7 +15,14 @@ const theme = @import("../theme/theme.zig");
 const icons = @import("icon_loader.zig");
 const action_icons = @import("action_icons.zig");
 const bottombar = @import("bottombar.zig");
+const window_background = @import("window_background.zig");
 const EasingType = @import("animation.zig").EasingType;
+const theme_colors = @import("../theme/colors.zig");
+const Rgb = theme_colors.Rgb;
+const Colors = theme_colors.Colors;
+const fromHsl = theme_colors.fromHsl;
+const parseColors = theme_colors.parseColors;
+const ruleColor = theme_colors.ruleColor;
 
 const Page = enum { appearance, behaviour, animations, integrations };
 
@@ -24,6 +31,8 @@ const Card = enum {
     theme,
     size,
     spacing,
+    style,
+    text,
     window,
     results,
     motion,
@@ -31,7 +40,7 @@ const Card = enum {
 
     fn page(card: Card) Page {
         return switch (card) {
-            .theme, .size, .spacing => .appearance,
+            .theme, .size, .spacing, .style, .text => .appearance,
             .window, .results => .behaviour,
             .motion => .animations,
             .commands => .integrations,
@@ -51,6 +60,9 @@ const Field = struct {
     suffix: []const u8 = "",
     choices: []const []const u8 = &.{},
     placeholder: []const u8 = "",
+    // For ?i32 fields: the translation key (after `settings_`) shown for the lowest value,
+    // which saves as "not set".
+    unset: []const u8 = "",
 };
 
 const theme_names = blk: {
@@ -67,10 +79,14 @@ const fields = [_]Field{
     .{ .key = "window_height", .card = .size, .min = 200, .max = 3000, .suffix = " px" },
     .{ .key = "layout_margin", .card = .spacing, .max = 64, .suffix = " px" },
     .{ .key = "layout_spacing", .card = .spacing, .max = 64, .suffix = " px" },
+    .{ .key = "window_opacity", .card = .style, .min = 30, .max = 100, .suffix = " %" },
+    .{ .key = "corner_radius", .card = .style, .max = 24, .suffix = " px" },
+    .{ .key = "search_font_size", .card = .text, .min = 9, .max = 40, .suffix = " px", .unset = "theme_default" },
+    .{ .key = "font_size", .card = .text, .min = 7, .max = 32, .suffix = " px", .unset = "theme_default" },
     .{ .key = "close_on_focus_out", .card = .window },
     .{ .key = "show_backdrop", .card = .window },
     .{ .key = "fullscreen", .card = .window },
-    .{ .key = "monitor", .card = .window, .min = -1, .max = 15 },
+    .{ .key = "monitor", .card = .window, .min = -1, .max = 15, .unset = "monitor_cursor" },
     .{ .key = "file_previews", .card = .results },
     .{ .key = "no_animations", .card = .motion },
     .{ .key = "animation_interval", .card = .motion, .max = 2000, .suffix = " ms" },
@@ -185,107 +201,6 @@ fn destroy(state: *State) void {
 
 // Theme colors ----------------------------------------------------------------
 
-const Rgb = struct {
-    r: u8 = 0,
-    g: u8 = 0,
-    b: u8 = 0,
-
-    /// Parses `#rgb` or `#rrggbb`; other color syntax (rgba(), palette(), names) gives null.
-    fn parse(value: []const u8) ?Rgb {
-        if (value.len < 1 or value[0] != '#') return null;
-        const hex = value[1..];
-        const digit = struct {
-            fn at(s: []const u8, i: usize, width: usize) ?u8 {
-                const n = std.fmt.parseInt(u8, s[i * width ..][0..width], 16) catch return null;
-                return if (width == 1) n * 17 else n;
-            }
-        };
-        const width: usize = switch (hex.len) {
-            3 => 1,
-            6 => 2,
-            else => return null,
-        };
-        return .{
-            .r = digit.at(hex, 0, width) orelse return null,
-            .g = digit.at(hex, 1, width) orelse return null,
-            .b = digit.at(hex, 2, width) orelse return null,
-        };
-    }
-
-    /// HSL saturation and lightness, each 0 to 1.
-    fn saturation(self: Rgb) f32 {
-        const max = @as(f32, @floatFromInt(@max(self.r, self.g, self.b))) / 255;
-        const min = @as(f32, @floatFromInt(@min(self.r, self.g, self.b))) / 255;
-        if (max == min) return 0;
-        const l = (max + min) / 2;
-        return (max - min) / (1 - @abs(2 * l - 1));
-    }
-
-    /// WCAG relative luminance, 0 (black) to 1 (white).
-    fn luminance(self: Rgb) f32 {
-        const linear = struct {
-            fn of(channel: u8) f32 {
-                const c = @as(f32, @floatFromInt(channel)) / 255;
-                return if (c <= 0.03928) c / 12.92 else std.math.pow(f32, (c + 0.055) / 1.055, 2.4);
-            }
-        };
-        return 0.2126 * linear.of(self.r) + 0.7152 * linear.of(self.g) + 0.0722 * linear.of(self.b);
-    }
-
-    /// WCAG contrast ratio between two colors, 1 to 21.
-    fn contrast(self: Rgb, other: Rgb) f32 {
-        const a = self.luminance();
-        const b = other.luminance();
-        return (@max(a, b) + 0.05) / (@min(a, b) + 0.05);
-    }
-
-    fn lightness(self: Rgb) f32 {
-        const max: f32 = @floatFromInt(@max(self.r, self.g, self.b));
-        const min: f32 = @floatFromInt(@min(self.r, self.g, self.b));
-        return (max + min) / 510;
-    }
-
-    /// `self` moved `amount` (0 to 1) of the way towards `other`.
-    fn mix(self: Rgb, other: Rgb, amount: f32) Rgb {
-        const blend = struct {
-            fn channel(a: u8, b: u8, t: f32) u8 {
-                const value = @as(f32, @floatFromInt(a)) * (1 - t) + @as(f32, @floatFromInt(b)) * t;
-                return @intFromFloat(@round(value));
-            }
-        };
-        return .{
-            .r = blend.channel(self.r, other.r, amount),
-            .g = blend.channel(self.g, other.g, amount),
-            .b = blend.channel(self.b, other.b, amount),
-        };
-    }
-
-    pub fn format(self: Rgb, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.print("#{x:0>2}{x:0>2}{x:0>2}", .{ self.r, self.g, self.b });
-    }
-
-    fn qcolor(self: Rgb) qt.QColor {
-        return qt.QColor.new15(self.r, self.g, self.b, 255);
-    }
-};
-
-/// The color of `hue` (degrees) at the given HSL saturation and lightness (0 to 1).
-fn fromHsl(hue: f32, saturation: f32, lightness: f32) Rgb {
-    const a = saturation * @min(lightness, 1 - lightness);
-    const channel = struct {
-        fn at(n: f32, h: f32, l: f32, amount: f32) u8 {
-            const k = @mod(n + h / 30, 12);
-            const value = l - amount * @max(-1, @min(@min(k - 3, 9 - k), 1));
-            return @intFromFloat(@round(value * 255));
-        }
-    };
-    return .{
-        .r = channel.at(0, hue, lightness, a),
-        .g = channel.at(8, hue, lightness, a),
-        .b = channel.at(4, hue, lightness, a),
-    };
-}
-
 /// The color of the `index`th plugin name in the (sorted) list. Hues step by the golden
 /// angle, which keeps neighbours far apart for any number of plugins; hashing names left
 /// some pairs a degree apart. HSL lightness isn't perceptual (yellow looks far lighter than
@@ -304,68 +219,6 @@ fn pluginColor(index: usize, background: Rgb) Rgb {
 fn pluginHue(index: usize) f32 {
     const golden_angle = 137.508;
     return @floatCast(@mod(20 + @as(f64, @floatFromInt(index)) * golden_angle, 360));
-}
-
-const Colors = struct {
-    background: Rgb = .{ .r = 0x20, .g = 0x20, .b = 0x24 },
-    foreground: Rgb = .{ .r = 0xee, .g = 0xee, .b = 0xee },
-    field: Rgb = .{ .r = 0x2c, .g = 0x2c, .b = 0x32 },
-    accent: Rgb = .{ .r = 0x3d, .g = 0x8b, .b = 0xfd },
-};
-
-/// A theme's colors, read from its style sheet. Every theme styles `QWidget` and the
-/// launcher's search bar and list, so those rules give the background, text and field
-/// colors. The accent lives in different rules per theme (Dracula's is the selected row,
-/// the default dark theme's is the focused search bar border), so the most saturated of
-/// those candidates is taken as the accent.
-fn parseColors(qss: []const u8) Colors {
-    var colors: Colors = .{};
-    if (ruleColor(qss, "QWidget", "background-color")) |rgb| colors.background = rgb;
-    if (ruleColor(qss, "QWidget", "color")) |rgb| colors.foreground = rgb;
-    if (ruleColor(qss, "#searchbarInput", "background-color")) |rgb| colors.field = rgb;
-    const candidates = [_]?Rgb{
-        ruleColor(qss, "#searchbarInput:focus", "border-color"),
-        ruleColor(qss, "#appList::item:selected", "background"),
-        ruleColor(qss, "#appList::item:selected", "background-color"),
-        ruleColor(qss, "#searchbarInput", "selection-background-color"),
-    };
-    var best: ?Rgb = null;
-    for (candidates) |candidate| {
-        const rgb = candidate orelse continue;
-        if (best == null or rgb.saturation() > best.?.saturation()) best = rgb;
-    }
-    if (best) |rgb| colors.accent = rgb;
-    return colors;
-}
-
-/// The color `property` gets from the last rule whose selector list contains exactly
-/// `selector`, like the cascade: later rules win. Comments before a rule are skipped.
-fn ruleColor(qss: []const u8, selector: []const u8, property: []const u8) ?Rgb {
-    var found: ?Rgb = null;
-    var rules = std.mem.splitScalar(u8, qss, '}');
-    while (rules.next()) |rule| {
-        const open = std.mem.indexOfScalar(u8, rule, '{') orelse continue;
-        var selectors = rule[0..open];
-        while (std.mem.indexOf(u8, selectors, "*/")) |end| selectors = selectors[end + 2 ..];
-        if (!hasSelector(selectors, selector)) continue;
-        var declarations = std.mem.splitScalar(u8, rule[open + 1 ..], ';');
-        while (declarations.next()) |declaration| {
-            const colon = std.mem.indexOfScalar(u8, declaration, ':') orelse continue;
-            if (!std.mem.eql(u8, std.mem.trim(u8, declaration[0..colon], " \t\r\n"), property)) continue;
-            const value = std.mem.trim(u8, declaration[colon + 1 ..], " \t\r\n");
-            const first = value[0 .. std.mem.indexOfAny(u8, value, " \t") orelse value.len];
-            if (Rgb.parse(first)) |rgb| found = rgb;
-        }
-    }
-    return found;
-}
-
-fn hasSelector(list: []const u8, selector: []const u8) bool {
-    var parts = std.mem.splitScalar(u8, list, ',');
-    while (parts.next()) |part| {
-        if (std.mem.eql(u8, std.mem.trim(u8, part, " \t\r\n"), selector)) return true;
-    }
-    return false;
 }
 
 /// The colors of a theme by name (null for the default), resolved as the launcher would.
@@ -760,7 +613,7 @@ fn makeControl(comptime field: Field) Control {
             // squeezes the text field to 1px once a style sheet applies. QSS padding doesn't
             // reach the inner field, so its text is inset here.
             spin.lineEdit().setTextMargins(10, 0, 10, 0);
-            if (T == ?i32) spin.setSpecialValueText(lang.get().settings_monitor_cursor);
+            if (T == ?i32) spin.setSpecialValueText(text(field.unset));
             spin.onValueChanged(onSpinChanged);
             return .{ .spin = spin };
         },
@@ -821,6 +674,8 @@ const Preview = struct {
         const launcher = qt.QWidget.new2();
         launcher.setObjectName("mainWindow");
         launcher.setAttribute(qt.qnamespace_enums.WidgetAttribute.WA_DontShowOnScreen);
+        // Painted like a translucent launcher, so opacity and round corners show in the picture.
+        window_background.install(launcher);
         const layout = qt.QVBoxLayout.new(launcher);
 
         const search = qt.QLineEdit.new2();
@@ -913,6 +768,7 @@ const Preview = struct {
         const qss = selectedStyleSheet(state) catch return;
         defer allocator.free(qss);
         self.launcher.setStyleSheet(qss);
+        window_background.configure(theme_colors.windowBackground(qss, appearanceFromControls(state)));
         self.buildBottomBar();
 
         self.layout.setContentsMargins(margin, margin, margin, margin);
@@ -944,6 +800,11 @@ const Preview = struct {
             }
         };
         self.image.setFixedSize2(logical.px(scaled.width(), ratio) + 2, logical.px(scaled.height(), ratio) + 2);
+        // The frame's corners follow the launcher's, scaled like the picture.
+        var frame_style: [64]u8 = undefined;
+        const scale = @as(f64, @floatFromInt(logical.px(scaled.width(), ratio))) / @as(f64, @floatFromInt(width));
+        const radius: i32 = @intFromFloat(@round(@as(f64, @floatFromInt(appearanceFromControls(state).corner_radius)) * scale));
+        self.image.setStyleSheet(std.fmt.bufPrint(&frame_style, "border-radius: {d}px;", .{radius}) catch "");
 
         var buf: [64]u8 = undefined;
         self.caption.setText(std.fmt.bufPrint(&buf, "{d} \u{00d7} {d} px", .{ width, height }) catch "");
@@ -962,7 +823,31 @@ fn selectedStyleSheet(state: *State) ![]u8 {
     else
         theme.resolve(allocator, name);
     defer if (resolved.allocation) |memory| allocator.free(memory);
-    return std.mem.concat(allocator, u8, &.{ theme.main_qss, resolved.qss });
+    const appearance_qss = try theme_colors.appearanceStyleSheet(allocator, resolved.qss, appearanceFromControls(state));
+    defer allocator.free(appearance_qss);
+    return std.mem.concat(allocator, u8, &.{ theme.main_qss, resolved.qss, appearance_qss });
+}
+
+/// Opacity, corners and text sizes as the window shows them, applied the way the launcher
+/// applies the config (bootstrap.appearanceOf), so fullscreen is treated the same.
+fn appearanceFromControls(state: *State) theme_colors.Appearance {
+    const value = struct {
+        fn of(s: *State, comptime key: []const u8) i32 {
+            return s.controls[fieldIndex(key)].spin.value();
+        }
+        // ?i32 fields: the lowest value means "not set".
+        fn optional(s: *State, comptime key: []const u8) ?i32 {
+            const v = of(s, key);
+            return if (v == fields[fieldIndex(key)].min) null else v;
+        }
+    };
+    return @import("../core/bootstrap.zig").appearanceOf(.{
+        .fullscreen = state.controls[fieldIndex("fullscreen")].toggle.isChecked(),
+        .window_opacity = value.of(state, "window_opacity"),
+        .corner_radius = value.of(state, "corner_radius"),
+        .font_size = value.optional(state, "font_size"),
+        .search_font_size = value.optional(state, "search_font_size"),
+    });
 }
 
 // Switches ---------------------------------------------------------------------
@@ -1363,8 +1248,12 @@ test "settings window shows the saved config and applies changes" {
             defer a.free(out);
             try std.testing.expect(shot.save(out));
         }
-        // The preview sits below the fold, so the whole Appearance page is captured too.
-        state.window.resize(900, 1500);
+        // The preview sits below the fold, so the whole Appearance page is captured too, with a
+        // translucent, rounded launcher and larger result text to show those settings.
+        state.controls[fieldIndex("window_opacity")].spin.setValue(85);
+        state.controls[fieldIndex("corner_radius")].spin.setValue(14);
+        state.controls[fieldIndex("font_size")].spin.setValue(15);
+        state.window.resize(900, 1900);
         state.pages.setCurrentIndex(0);
         qt.QApplication.processEvents();
         const page_shot = state.window.grab();

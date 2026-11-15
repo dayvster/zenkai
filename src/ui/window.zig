@@ -347,6 +347,11 @@ pub const Window = struct {
             if (!vis.fullscreen) flags |= wt.Tool;
             break :blk flags;
         });
+        // A see-through or rounded launcher gets a transparent backing and paints the theme's
+        // background itself, translucent and rounded (window_background.zig).
+        if (@import("../core/bootstrap.zig").appearanceOf(vis).translucent()) {
+            @import("window_background.zig").install(window);
+        }
 
         const main_layout = QVBoxLayout.new(window);
         main_layout.setContentsMargins(vis.layout_margin, vis.layout_margin, vis.layout_margin, vis.layout_margin);

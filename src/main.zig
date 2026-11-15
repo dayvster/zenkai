@@ -80,6 +80,7 @@ test {
     std.testing.refAllDecls(@import("ui/file_actions.zig"));
     std.testing.refAllDecls(@import("core/window_layout.zig"));
     std.testing.refAllDecls(@import("theme/theme.zig"));
+    std.testing.refAllDecls(@import("theme/colors.zig"));
     std.testing.refAllDecls(@import("ui/settings.zig"));
 }
 

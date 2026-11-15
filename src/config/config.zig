@@ -22,6 +22,12 @@ pub const VisualConfig = struct {
     no_animations: bool = false,
     animation_interval: i32 = 200,
     animation_easing: ?[]const u8 = null,
+    // Background opacity in percent and corner radius in px; text stays opaque.
+    window_opacity: i32 = 100,
+    corner_radius: i32 = 0,
+    // Result and search text sizes in px; null keeps the theme's.
+    font_size: ?i32 = null,
+    search_font_size: ?i32 = null,
     // Plugin names (manifest "name") that are not loaded unless selected with --plugin.
     disabled_plugins: []const []const u8 = &.{},
 
@@ -232,6 +238,10 @@ pub fn loadConfig(allocator: std.mem.Allocator, config_path: []const u8) !Visual
         if (std.mem.eql(u8, key, "animation_interval")) cfg.animation_interval = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "animation_easing")) cfg.animation_easing = parseTomlString(allocator, val);
         if (std.mem.eql(u8, key, "url_handler")) cfg.url_handler = parseTomlString(allocator, val);
+        if (std.mem.eql(u8, key, "window_opacity")) cfg.window_opacity = parseInt(val) catch continue;
+        if (std.mem.eql(u8, key, "corner_radius")) cfg.corner_radius = parseInt(val) catch continue;
+        if (std.mem.eql(u8, key, "font_size")) cfg.font_size = parseInt(val) catch continue;
+        if (std.mem.eql(u8, key, "search_font_size")) cfg.search_font_size = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "disabled_plugins")) {
             const names = parseNameList(allocator, val) catch continue;
             for (cfg.disabled_plugins) |name| allocator.free(name);
