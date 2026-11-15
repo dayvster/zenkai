@@ -6,8 +6,8 @@
  * and app list share the base background, so they read as one surface split by the search
  * bar's border; the other colors keep the roles the scheme gives them:
  *   bg_hard #1a1918  base background      bg_statusline #141312  bottom bar
- *   bg1     #2e2c2a  hover surfaces       bg_selected   #362510  selection
- *   bg2     #3e3c3a  borders              orange        #fe8019  primary accent
+ *   bg1     #2e2c2a  hover surfaces       orange        #fe8019  accent: selected row,
+ *   bg2     #3e3c3a  borders                                     focus and selection
  *   fg      #e8e4dd  primary text         fg_dim        #9a9491  muted text
  *   fg_bright #ffffff  emphasized text
  */
@@ -44,8 +44,8 @@ QWidget {
 }
 
 #appList::item:selected {
-    background: #362510;
-    color: #fe8019;
+    background: #fe8019;
+    color: #1a1918;
 }
 
 #appList QScrollBar:vertical {
@@ -159,6 +159,6 @@ QWidget {
 }
 
 #actionList::item:selected {
-    background-color: #362510;
-    color: #fe8019;
+    background-color: #fe8019;
+    color: #1a1918;
 }
