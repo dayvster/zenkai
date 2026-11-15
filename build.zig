@@ -366,6 +366,9 @@ pub fn build(b: *std.Build) !void {
     });
 
     const run_plugin_tests = b.addRunArtifact(plugin_tests);
+    // The tests load external/plugins/*/main.lua at runtime, which the build can't
+    // see; without this, editing only a plugin script would reuse the cached result.
+    run_plugin_tests.has_side_effects = true;
     const plugin_runtime_test_module = b.createModule(.{
         .root_source_file = b.path("src/plugins/plugins.zig"),
         .target = target,
@@ -388,6 +391,7 @@ pub fn build(b: *std.Build) !void {
     }
     const plugin_runtime_tests = b.addTest(.{ .root_module = plugin_runtime_test_module });
     const run_plugin_runtime_tests = b.addRunArtifact(plugin_runtime_tests);
+    run_plugin_runtime_tests.has_side_effects = true;
     const plugin_test_step = b.step("test-plugins", "Run plugin runtime and lazy activation tests");
     plugin_test_step.dependOn(&run_plugin_tests.step);
     plugin_test_step.dependOn(&run_plugin_runtime_tests.step);
