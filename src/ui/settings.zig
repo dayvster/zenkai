@@ -366,6 +366,7 @@ fn styleSheet(allocator: std.mem.Allocator, c: Colors, arrow: []const u8) ![]u8 
         \\    background: {[field]f}; color: {[fg]f}; border: 1px solid {[line]f}; border-radius: 8px;
         \\    padding: 4px; outline: 0; selection-background-color: {[selected]f}; selection-color: {[fg]f};
         \\}}
+        \\#settingsPreview {{ border: 1px solid {[line]f}; padding: 0; }}
         \\#settingsFooter {{ background: {[bg]f}; border-top: 1px solid {[line]f}; }}
         \\#settingsStatus {{ color: {[muted]f}; font-size: 12px; }}
         \\#settingsButton {{ background: transparent; color: {[fg]f}; border: 1px solid {[line]f}; border-radius: 8px; padding: 7px 14px; }}
@@ -435,7 +436,7 @@ fn build(state: *State, active_qss: []const u8) !void {
                 if (cards[card_index] == null) cards[card_index] = addCard(content, text("card_" ++ @tagName(field.card)));
             }
         }
-        if (page == .appearance) state.preview = Preview.init(addCard(content, t.settings_card_preview));
+        if (page == .appearance) state.preview = Preview.init(content);
         content.addStretch();
     }
     inline for (fields, 0..) |field, i| {
@@ -596,7 +597,8 @@ fn addPage(pages: qt.QStackedWidget, title: []const u8, description: []const u8)
 }
 
 /// Adds a titled card to a page and returns the layout its rows go into.
-fn addCard(page: qt.QVBoxLayout, title: []const u8) qt.QVBoxLayout {
+/// The small upper-case heading above a card or the preview.
+fn addSectionTitle(page: qt.QVBoxLayout, title: []const u8) void {
     page.addSpacing(26);
     var upper: [64]u8 = undefined;
     const heading = qt.QLabel.new3(std.ascii.upperString(&upper, title[0..@min(title.len, upper.len)]));
@@ -604,7 +606,10 @@ fn addCard(page: qt.QVBoxLayout, title: []const u8) qt.QVBoxLayout {
     heading.setContentsMargins(4, 0, 0, 0);
     page.addWidget(heading);
     page.addSpacing(8);
+}
 
+fn addCard(page: qt.QVBoxLayout, title: []const u8) qt.QVBoxLayout {
+    addSectionTitle(page, title);
     const card = qt.QWidget.new2();
     card.setObjectName("settingsCard");
     card.setAttribute(qt.qnamespace_enums.WidgetAttribute.WA_StyledBackground);
@@ -688,7 +693,7 @@ fn makeControl(comptime field: Field) Control {
 /// `launcher` is a stand-in built from the same object names the real launcher uses
 /// (mainWindow, searchbarInput, appList, bottomBar, ...), so the selected theme's style
 /// sheet applies to it as it would to the launcher. It is laid out off screen at its real
-/// size, grabbed, and shown scaled down in the card with its size underneath.
+/// size, grabbed, and shown on the page with its size underneath.
 const Preview = struct {
     launcher: qt.QWidget,
     layout: qt.QVBoxLayout,
@@ -696,9 +701,10 @@ const Preview = struct {
     image: qt.QLabel,
     caption: qt.QLabel,
 
-    // The largest the picture is drawn in the card; bigger launchers are scaled down.
-    const max_width = 560;
-    const max_height = 300;
+    // The largest the picture is drawn: the default 600 by 500 launcher fits at its real
+    // size in the page's width; bigger launchers are scaled down to fit.
+    const max_width = 600;
+    const max_height = 520;
 
     const sample_apps = [_][2][]const u8{
         .{ "Firefox", "firefox" },
@@ -711,7 +717,8 @@ const Preview = struct {
         .{ "Music", "multimedia-player" },
     };
 
-    fn init(card: qt.QVBoxLayout) Preview {
+    /// Adds the preview's heading, picture and caption to the end of `page`.
+    fn init(page: qt.QVBoxLayout) Preview {
         const t = lang.get();
         const launcher = qt.QWidget.new2();
         launcher.setObjectName("mainWindow");
@@ -744,15 +751,17 @@ const Preview = struct {
         addBottomAction(bottom_row, t.bottom_bar_actions, "Ctrl+K");
         layout.addWidget(bottom);
 
+        addSectionTitle(page, t.settings_card_preview);
+        // Framed by a thin border (#settingsPreview) so it reads as a window even when the
+        // theme's background matches the page.
         const image = qt.QLabel.new3("");
-        image.setAlignment(qt.qnamespace_enums.AlignmentFlag.AlignCenter);
-        image.setFixedHeight(max_height + 32);
-        card.addWidget(image);
+        image.setObjectName("settingsPreview");
+        page.addWidget3(image, 0, qt.qnamespace_enums.AlignmentFlag.AlignHCenter);
+        page.addSpacing(8);
         const caption = qt.QLabel.new3("");
         caption.setObjectName("settingsRowHint");
         caption.setAlignment(qt.qnamespace_enums.AlignmentFlag.AlignCenter);
-        caption.setContentsMargins(0, 0, 0, 14);
-        card.addWidget(caption);
+        page.addWidget(caption);
 
         return .{ .launcher = launcher, .layout = layout, .list = list, .image = image, .caption = caption };
     }
@@ -826,6 +835,13 @@ const Preview = struct {
         defer scaled.delete();
         scaled.setDevicePixelRatio(ratio);
         self.image.setPixmap(scaled);
+        // Hug the picture so the border frames it; 1px of border on each side.
+        const logical = struct {
+            fn px(physical_px: i32, r: f64) i32 {
+                return @intFromFloat(@round(@as(f64, @floatFromInt(physical_px)) / r));
+            }
+        };
+        self.image.setFixedSize2(logical.px(scaled.width(), ratio) + 2, logical.px(scaled.height(), ratio) + 2);
 
         var buf: [64]u8 = undefined;
         self.caption.setText(std.fmt.bufPrint(&buf, "{d} \u{00d7} {d} px", .{ width, height }) catch "");
@@ -1180,12 +1196,15 @@ test "settings window shows the saved config and saves every change" {
             defer a.free(out);
             try std.testing.expect(shot.save(out));
         }
-        // The preview card sits below the fold on the Appearance page.
-        const preview_shot = state.preview.image.grab();
-        defer preview_shot.delete();
-        const preview_out = try std.fmt.allocPrintSentinel(a, "{s}-preview.png", .{std.mem.span(prefix)}, 0);
-        defer a.free(preview_out);
-        try std.testing.expect(preview_shot.save(preview_out));
+        // The preview sits below the fold, so the whole Appearance page is captured too.
+        state.window.resize(900, 1500);
+        state.pages.setCurrentIndex(0);
+        qt.QApplication.processEvents();
+        const page_shot = state.window.grab();
+        defer page_shot.delete();
+        const page_out = try std.fmt.allocPrintSentinel(a, "{s}-appearance.png", .{std.mem.span(prefix)}, 0);
+        defer a.free(page_out);
+        try std.testing.expect(page_shot.save(page_out));
     }
 
     // Restoring the defaults and saving gives a config that loads as the defaults.
