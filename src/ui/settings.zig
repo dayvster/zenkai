@@ -92,6 +92,8 @@ const page_icons = [_][]const u8{
 };
 // Plugins: three blocks and a plus.
 const plugins_icon = "<svg " ++ icon_attributes ++ "><rect x=\"4\" y=\"4\" width=\"6.5\" height=\"6.5\" rx=\"1.5\"/><rect x=\"13.5\" y=\"4\" width=\"6.5\" height=\"6.5\" rx=\"1.5\"/><rect x=\"4\" y=\"13.5\" width=\"6.5\" height=\"6.5\" rx=\"1.5\"/><path d=\"M16.75 13.5v6.5M13.5 16.75H20\"/></svg>";
+// One per sidebar row, in order: the pages, then Plugins.
+const nav_icons = page_icons ++ [_][]const u8{plugins_icon};
 
 // Every input has the same width so their edges line up down a card.
 const input_width = 220;
@@ -107,17 +109,24 @@ const State = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
     path: []const u8,
+    // Apply sets the chosen theme on the app as well as this window.
+    app: qt.QApplication,
     window: qt.QWidget,
+    nav: qt.QListWidget = undefined,
     pages: qt.QStackedWidget,
     status: qt.QLabel,
+    apply_button: qt.QPushButton = undefined,
     controls: [fields.len]Control,
     // One switch per installed plugin, in `installed` order.
     plugin_switches: []qt.QCheckBox,
     installed: []const plugins.PluginInfo,
     // Disabled names with no installed plugin, kept so saving doesn't silently drop them.
     disabled: []const []const u8,
-    // Set while the window fills in values, so those changes aren't saved back.
+    preview: Preview = undefined,
+    // Set while the window fills in values, so those changes don't count as edits.
     loading: bool = false,
+    // Edits made since the last Apply.
+    dirty: bool = false,
 };
 
 // Qt callbacks carry no user data, so they reach the open window through these.
@@ -145,6 +154,7 @@ pub fn run(allocator: std.mem.Allocator, app: qt.QApplication) !void {
         .allocator = allocator,
         .io = io,
         .path = path,
+        .app = app,
         .window = undefined,
         .pages = undefined,
         .status = undefined,
@@ -164,6 +174,7 @@ pub fn run(allocator: std.mem.Allocator, app: qt.QApplication) !void {
 }
 
 fn destroy(state: *State) void {
+    state.preview.deinit();
     state.window.delete();
     state.allocator.free(state.plugin_switches);
 }
@@ -364,10 +375,14 @@ fn styleSheet(allocator: std.mem.Allocator, c: Colors, arrow: []const u8) ![]u8 
         \\    background: {[field]f}; color: {[fg]f}; border: 1px solid {[line]f}; border-radius: 8px;
         \\    padding: 4px; outline: 0; selection-background-color: {[selected]f}; selection-color: {[fg]f};
         \\}}
+        \\#settingsPreview {{ border: 1px solid {[line]f}; padding: 0; }}
         \\#settingsFooter {{ background: {[bg]f}; border-top: 1px solid {[line]f}; }}
         \\#settingsStatus {{ color: {[muted]f}; font-size: 12px; }}
         \\#settingsButton {{ background: transparent; color: {[fg]f}; border: 1px solid {[line]f}; border-radius: 8px; padding: 7px 14px; }}
         \\#settingsButton:hover {{ background: {[hover]f}; }}
+        \\#settingsApply {{ background: {[accent]f}; color: {[on_accent]f}; border: 1px solid {[accent]f}; border-radius: 8px; padding: 7px 20px; font-weight: 600; }}
+        \\#settingsApply:hover {{ background: {[accent_hover]f}; }}
+        \\#settingsApply:disabled {{ background: transparent; color: {[muted]f}; border: 1px solid {[line]f}; font-weight: 400; }}
         \\#settingsWindow QScrollBar:vertical {{ background: transparent; width: 8px; margin: 4px 2px; }}
         \\#settingsWindow QScrollBar::handle:vertical {{ background: {[line]f}; border-radius: 3px; min-height: 30px; }}
         \\#settingsWindow QScrollBar::add-line:vertical, #settingsWindow QScrollBar::sub-line:vertical {{ height: 0; }}
@@ -379,6 +394,9 @@ fn styleSheet(allocator: std.mem.Allocator, c: Colors, arrow: []const u8) ![]u8 
         .fg = fg,
         .field = c.field,
         .accent = c.accent,
+        .accent_hover = c.accent.mix(fg, 0.12),
+        // Text on the accent: the background on a light accent, white on a dark one.
+        .on_accent = if (c.accent.lightness() > 0.6) bg else Rgb{ .r = 255, .g = 255, .b = 255 },
         .sidebar = bg.mix(fg, 0.03),
         .surface = bg.mix(fg, 0.045),
         .line = bg.mix(fg, 0.12),
@@ -393,19 +411,12 @@ fn styleSheet(allocator: std.mem.Allocator, c: Colors, arrow: []const u8) ![]u8 
 /// `active_qss` is the style sheet the app is running with; the window takes its colors.
 fn build(state: *State, active_qss: []const u8) !void {
     const t = lang.get();
-    g_colors = parseColors(active_qss);
-    const arrow = writeArrow(state.allocator, state.io, g_colors.foreground);
-    defer if (arrow) |path| state.allocator.free(path);
-    const qss = try styleSheet(state.allocator, g_colors, arrow orelse "");
-    defer state.allocator.free(qss);
-
     const window = qt.QWidget.new2();
     window.setObjectName("settingsWindow");
     window.setWindowTitle(t.settings_title);
     const window_icon = icons.load("zenkai");
     defer window_icon.delete();
     window.setWindowIcon(window_icon);
-    window.setStyleSheet(qss);
     window.resize(900, 620);
     window.setMinimumSize2(720, 480);
     state.window = window;
@@ -415,6 +426,7 @@ fn build(state: *State, active_qss: []const u8) !void {
     root.setSpacing(0);
 
     const nav = buildSidebar(root);
+    state.nav = nav;
     const right = qt.QVBoxLayout.new2();
     right.setSpacing(0);
     root.addLayout2(right, 1);
@@ -422,9 +434,9 @@ fn build(state: *State, active_qss: []const u8) !void {
     right.addWidget2(state.pages, 1);
 
     var cards: [std.enums.values(Card).len]?qt.QVBoxLayout = @splat(null);
-    inline for (comptime std.enums.values(Page), 0..) |page, page_index| {
+    inline for (comptime std.enums.values(Page)) |page| {
         const name = @field(t, "settings_page_" ++ @tagName(page));
-        addNavItem(nav, page_icons[page_index], name);
+        nav.addItem(name);
         const content = addPage(state.pages, name, @field(t, "settings_page_" ++ @tagName(page) ++ "_hint"));
         // Cards appear in the order their first field is listed.
         inline for (fields) |field| {
@@ -433,6 +445,7 @@ fn build(state: *State, active_qss: []const u8) !void {
                 if (cards[card_index] == null) cards[card_index] = addCard(content, text("card_" ++ @tagName(field.card)));
             }
         }
+        if (page == .appearance) state.preview = Preview.init(content);
         content.addStretch();
     }
     inline for (fields, 0..) |field, i| {
@@ -443,9 +456,8 @@ fn build(state: *State, active_qss: []const u8) !void {
             inline else => |widget| addRow(card, text(field.key), text(field.key ++ "_hint"), widget),
         }
     }
-    addThemeSwatches(state.allocator, state.controls[fieldIndex("theme")].combo);
 
-    addNavItem(nav, plugins_icon, t.settings_page_plugins);
+    nav.addItem(t.settings_page_plugins);
     const plugin_page = addPage(state.pages, t.settings_page_plugins, t.settings_page_plugins_hint);
     const plugin_card = addCard(plugin_page, t.settings_card_plugins);
     state.plugin_switches = try state.allocator.alloc(qt.QCheckBox, state.installed.len);
@@ -461,17 +473,46 @@ fn build(state: *State, active_qss: []const u8) !void {
     footer.setAttribute(qt.qnamespace_enums.WidgetAttribute.WA_StyledBackground);
     const footer_row = qt.QHBoxLayout.new(footer);
     footer_row.setContentsMargins(32, 12, 32, 12);
-    state.status = qt.QLabel.new3(t.settings_autosave);
+    state.status = qt.QLabel.new3("");
     state.status.setObjectName("settingsStatus");
     footer_row.addWidget2(state.status, 1);
     const restore_button = qt.QPushButton.new3(t.settings_restore_defaults);
     restore_button.setObjectName("settingsButton");
     restore_button.onClicked(onRestoreDefaults);
     footer_row.addWidget(restore_button);
+    state.apply_button = qt.QPushButton.new3(t.settings_apply);
+    state.apply_button.setObjectName("settingsApply");
+    state.apply_button.setEnabled(false);
+    state.apply_button.onClicked(onApply);
+    footer_row.addWidget(state.apply_button);
     right.addWidget(footer);
 
     nav.onCurrentRowChanged(onPageChanged);
     nav.setCurrentRow(0);
+    window.onCloseEvent(onWindowClose);
+    try restyle(state, active_qss);
+}
+
+/// Takes the look of `qss` (the app's style sheet: the base sheet followed by a theme):
+/// this window's generated style sheet, sidebar icons and the theme swatches all follow it.
+fn restyle(state: *State, qss: []const u8) !void {
+    g_colors = parseColors(qss);
+    const arrow = writeArrow(state.allocator, state.io, g_colors.foreground);
+    defer if (arrow) |path| state.allocator.free(path);
+    const window_qss = try styleSheet(state.allocator, g_colors, arrow orelse "");
+    defer state.allocator.free(window_qss);
+    state.window.setStyleSheet(window_qss);
+
+    var hex: [7]u8 = undefined;
+    const icon_color = std.fmt.bufPrint(&hex, "{f}", .{g_colors.background.mix(g_colors.foreground, 0.85)}) catch unreachable;
+    for (nav_icons, 0..) |svg, row| {
+        const icon = action_icons.tinted(state.nav, svg, icon_color) orelse qt.QIcon.new();
+        defer icon.delete();
+        state.nav.item(@intCast(row)).setIcon(icon);
+    }
+    addThemeSwatches(state.allocator, state.controls[fieldIndex("theme")].combo);
+    // Switches paint from g_colors, so they need a repaint too.
+    state.window.update();
 }
 
 fn buildSidebar(root: qt.QHBoxLayout) qt.QListWidget {
@@ -502,14 +543,6 @@ fn buildSidebar(root: qt.QHBoxLayout) qt.QListWidget {
     column.addWidget2(nav, 1);
     root.addWidget(sidebar);
     return nav;
-}
-
-fn addNavItem(nav: qt.QListWidget, svg: []const u8, name: []const u8) void {
-    var hex: [7]u8 = undefined;
-    const color = std.fmt.bufPrint(&hex, "{f}", .{g_colors.background.mix(g_colors.foreground, 0.85)}) catch unreachable;
-    const icon = action_icons.tinted(nav, svg, color) orelse qt.QIcon.new();
-    defer icon.delete();
-    nav.addItem2(qt.QListWidgetItem.new3(icon, name));
 }
 
 /// Gives every theme in the dropdown a swatch of its background, field and accent colors.
@@ -593,7 +626,8 @@ fn addPage(pages: qt.QStackedWidget, title: []const u8, description: []const u8)
 }
 
 /// Adds a titled card to a page and returns the layout its rows go into.
-fn addCard(page: qt.QVBoxLayout, title: []const u8) qt.QVBoxLayout {
+/// The small upper-case heading above a card or the preview.
+fn addSectionTitle(page: qt.QVBoxLayout, title: []const u8) void {
     page.addSpacing(26);
     var upper: [64]u8 = undefined;
     const heading = qt.QLabel.new3(std.ascii.upperString(&upper, title[0..@min(title.len, upper.len)]));
@@ -601,7 +635,10 @@ fn addCard(page: qt.QVBoxLayout, title: []const u8) qt.QVBoxLayout {
     heading.setContentsMargins(4, 0, 0, 0);
     page.addWidget(heading);
     page.addSpacing(8);
+}
 
+fn addCard(page: qt.QVBoxLayout, title: []const u8) qt.QVBoxLayout {
+    addSectionTitle(page, title);
     const card = qt.QWidget.new2();
     card.setObjectName("settingsCard");
     card.setAttribute(qt.qnamespace_enums.WidgetAttribute.WA_StyledBackground);
@@ -665,7 +702,7 @@ fn makeControl(comptime field: Field) Control {
                 const line = qt.QLineEdit.new2();
                 line.setFixedWidth(input_width);
                 line.setPlaceholderText(field.placeholder);
-                line.onEditingFinished(onTextEdited);
+                line.onTextChanged(onTextEdited);
                 return .{ .text = line };
             }
             const combo = qt.QComboBox.new2();
@@ -677,6 +714,173 @@ fn makeControl(comptime field: Field) Control {
         },
         else => @compileError("no settings control for " ++ field.key),
     }
+}
+
+// Preview ----------------------------------------------------------------------
+
+/// A picture of the launcher with the Appearance values as they are set in the window.
+/// `launcher` is a stand-in built from the same object names the real launcher uses
+/// (mainWindow, searchbarInput, appList, bottomBar, ...), so the selected theme's style
+/// sheet applies to it as it would to the launcher. It is laid out off screen at its real
+/// size, grabbed, and shown on the page with its size underneath.
+const Preview = struct {
+    launcher: qt.QWidget,
+    layout: qt.QVBoxLayout,
+    list: qt.QListWidget,
+    image: qt.QLabel,
+    caption: qt.QLabel,
+
+    // The largest the picture is drawn: the default 600 by 500 launcher fits at its real
+    // size in the page's width; bigger launchers are scaled down to fit.
+    const max_width = 600;
+    const max_height = 520;
+
+    const sample_apps = [_][2][]const u8{
+        .{ "Firefox", "firefox" },
+        .{ "Files", "system-file-manager" },
+        .{ "Terminal", "utilities-terminal" },
+        .{ "Text Editor", "accessories-text-editor" },
+        .{ "Calculator", "accessories-calculator" },
+        .{ "System Settings", "preferences-system" },
+        .{ "Image Viewer", "image-viewer" },
+        .{ "Music", "multimedia-player" },
+    };
+
+    /// Adds the preview's heading, picture and caption to the end of `page`.
+    fn init(page: qt.QVBoxLayout) Preview {
+        const t = lang.get();
+        const launcher = qt.QWidget.new2();
+        launcher.setObjectName("mainWindow");
+        launcher.setAttribute(qt.qnamespace_enums.WidgetAttribute.WA_DontShowOnScreen);
+        const layout = qt.QVBoxLayout.new(launcher);
+
+        const search = qt.QLineEdit.new2();
+        search.setObjectName("searchbarInput");
+        search.setPlaceholderText(t.search_placeholder);
+        layout.addWidget(search);
+
+        const list = qt.QListWidget.new2();
+        list.setObjectName("appList");
+        list.setHorizontalScrollBarPolicy(qt.qnamespace_enums.ScrollBarPolicy.ScrollBarAlwaysOff);
+        for (sample_apps) |app| {
+            const icon = icons.load(app[1]);
+            defer icon.delete();
+            list.addItem2(qt.QListWidgetItem.new3(icon, app[0]));
+        }
+        list.setCurrentRow(0);
+        layout.addWidget2(list, 1);
+
+        const bottom = qt.QWidget.new2();
+        bottom.setObjectName("bottomBar");
+        bottom.setFixedHeight(44);
+        const bottom_row = qt.QHBoxLayout.new(bottom);
+        bottom_row.setContentsMargins(8, 6, 8, 6);
+        addBottomAction(bottom_row, t.bottom_bar_open, t.bottom_bar_return);
+        bottom_row.addStretch();
+        addBottomAction(bottom_row, t.bottom_bar_actions, "Ctrl+K");
+        layout.addWidget(bottom);
+
+        addSectionTitle(page, t.settings_card_preview);
+        // Framed by a thin border (#settingsPreview) so it reads as a window even when the
+        // theme's background matches the page.
+        const image = qt.QLabel.new3("");
+        image.setObjectName("settingsPreview");
+        page.addWidget3(image, 0, qt.qnamespace_enums.AlignmentFlag.AlignHCenter);
+        page.addSpacing(8);
+        const caption = qt.QLabel.new3("");
+        caption.setObjectName("settingsRowHint");
+        caption.setAlignment(qt.qnamespace_enums.AlignmentFlag.AlignCenter);
+        page.addWidget(caption);
+
+        return .{ .launcher = launcher, .layout = layout, .list = list, .image = image, .caption = caption };
+    }
+
+    fn addBottomAction(row: qt.QHBoxLayout, name: []const u8, shortcut: []const u8) void {
+        const item = qt.QWidget.new2();
+        item.setObjectName("actionItem");
+        const item_row = qt.QHBoxLayout.new(item);
+        item_row.setContentsMargins(0, 0, 0, 0);
+        item_row.setSpacing(6);
+        const button = qt.QToolButton.new2();
+        button.setObjectName("actionButton");
+        button.setText(name);
+        item_row.addWidget(button);
+        const label = qt.QLabel.new3(shortcut);
+        label.setObjectName("actionShortcut");
+        item_row.addWidget(label);
+        row.addWidget(item);
+    }
+
+    fn deinit(self: Preview) void {
+        // The launcher stand-in has no parent, so it isn't deleted with the window.
+        self.launcher.delete();
+    }
+
+    /// Redraws the picture from the window's current Appearance values.
+    fn refresh(self: Preview, state: *State) void {
+        const allocator = state.allocator;
+        const value = struct {
+            fn of(s: *State, comptime key: []const u8) i32 {
+                return s.controls[fieldIndex(key)].spin.value();
+            }
+        };
+        const width = value.of(state, "window_width");
+        const height = value.of(state, "window_height");
+        const margin = value.of(state, "layout_margin");
+        const icon_extent = value.of(state, "icon_size");
+
+        const qss = selectedStyleSheet(state) catch return;
+        defer allocator.free(qss);
+        self.launcher.setStyleSheet(qss);
+
+        self.layout.setContentsMargins(margin, margin, margin, margin);
+        self.layout.setSpacing(value.of(state, "layout_spacing"));
+        const icon_size = qt.QSize.new4(icon_extent, icon_extent);
+        defer icon_size.delete();
+        self.list.setIconSize(icon_size);
+        self.launcher.setFixedSize2(width, height);
+        self.launcher.show();
+        _ = self.layout.activate();
+
+        // Scale in physical pixels and keep the ratio, so the picture stays sharp on HiDPI.
+        const shot = self.launcher.grab();
+        defer shot.delete();
+        const ratio = shot.devicePixelRatio();
+        const physical = struct {
+            fn px(logical: i32, r: f64) i32 {
+                return @intFromFloat(@round(@as(f64, @floatFromInt(logical)) * r));
+            }
+        };
+        const scaled = shot.scaled4(physical.px(@min(width, max_width), ratio), physical.px(@min(height, max_height), ratio), qt.qnamespace_enums.AspectRatioMode.KeepAspectRatio, qt.qnamespace_enums.TransformationMode.SmoothTransformation);
+        defer scaled.delete();
+        scaled.setDevicePixelRatio(ratio);
+        self.image.setPixmap(scaled);
+        // Hug the picture so the border frames it; 1px of border on each side.
+        const logical = struct {
+            fn px(physical_px: i32, r: f64) i32 {
+                return @intFromFloat(@round(@as(f64, @floatFromInt(physical_px)) / r));
+            }
+        };
+        self.image.setFixedSize2(logical.px(scaled.width(), ratio) + 2, logical.px(scaled.height(), ratio) + 2);
+
+        var buf: [64]u8 = undefined;
+        self.caption.setText(std.fmt.bufPrint(&buf, "{d} \u{00d7} {d} px", .{ width, height }) catch "");
+    }
+};
+
+/// The style sheet the launcher would run with for the theme chosen in the window: the base
+/// sheet followed by the theme's, as theme_handler.apply combines them. Caller frees.
+fn selectedStyleSheet(state: *State) ![]u8 {
+    const allocator = state.allocator;
+    const combo = state.controls[fieldIndex("theme")].combo;
+    const name = if (combo.currentIndex() == 0) null else combo.currentText(allocator);
+    defer if (name) |n| allocator.free(n);
+    const resolved = if (name != null and std.mem.eql(u8, name.?, "native"))
+        theme.resolveNative(allocator)
+    else
+        theme.resolve(allocator, name);
+    defer if (resolved.allocation) |memory| allocator.free(memory);
+    return std.mem.concat(allocator, u8, &.{ theme.main_qss, resolved.qss });
 }
 
 // Switches ---------------------------------------------------------------------
@@ -763,6 +967,7 @@ fn showValues(state: *State, cfg: config.VisualConfig) void {
     for (state.installed, state.plugin_switches) |info, toggle| {
         toggle.setChecked(!containsName(cfg.disabled_plugins, info.name));
     }
+    state.preview.refresh(state);
 }
 
 /// Index 0 is "Default". A value the list doesn't know (say, a custom theme) is added so
@@ -844,21 +1049,55 @@ fn save(state: *State) !void {
     try config.saveConfig(state.io, state.allocator, state.path, assignments);
 }
 
-fn saveAndReport(state: *State) void {
-    save(state) catch |err| {
-        log.info("settings: saving {s} failed: {}", .{ state.path, err });
-        const message = std.fmt.allocPrint(state.allocator, "{s}: {s}", .{ lang.get().settings_save_failed, @errorName(err) }) catch return;
+/// Saves the window's values and shows the chosen theme on the app and this window.
+fn apply(state: *State) !void {
+    try save(state);
+    setDirty(state, false);
+    state.status.setText(lang.get().settings_saved);
+    const qss = try selectedStyleSheet(state);
+    defer state.allocator.free(qss);
+    state.app.setStyleSheet(qss);
+    try restyle(state, qss);
+}
+
+/// Applies, reporting a failure in the status line. Returns whether it worked.
+fn applyAndReport(state: *State) bool {
+    apply(state) catch |err| {
+        log.info("settings: applying to {s} failed: {}", .{ state.path, err });
+        const message = std.fmt.allocPrint(state.allocator, "{s}: {s}", .{ lang.get().settings_save_failed, @errorName(err) }) catch return false;
         defer state.allocator.free(message);
         state.status.setText(message);
-        return;
+        return false;
     };
-    state.status.setText(lang.get().settings_saved);
+    return true;
+}
+
+fn setDirty(state: *State, dirty: bool) void {
+    state.dirty = dirty;
+    state.apply_button.setEnabled(dirty);
+    if (dirty) state.status.setText(lang.get().settings_unapplied);
 }
 
 fn changed() void {
     const state = g_state orelse return;
+    // showValues refreshes the preview once when it's done filling in values.
     if (state.loading) return;
-    saveAndReport(state);
+    state.preview.refresh(state);
+    setDirty(state, true);
+}
+
+fn onApply(_: qt.QPushButton) callconv(.c) void {
+    const state = g_state orelse return;
+    _ = applyAndReport(state);
+}
+
+/// Closing with unapplied changes asks whether to apply them first.
+fn onWindowClose(_: qt.QWidget, event: qt.QCloseEvent) callconv(.c) void {
+    const state = g_state orelse return;
+    if (!state.dirty) return;
+    const buttons = qt.qmessagebox_enums.StandardButton;
+    const answer = qt.QMessageBox.question5(state.window, lang.get().settings_title, lang.get().settings_close_unapplied, buttons.Apply | buttons.Discard | buttons.Cancel, buttons.Apply);
+    if (answer == buttons.Cancel or (answer == buttons.Apply and !applyAndReport(state))) event.ignore();
 }
 
 fn onSwitchToggled(_: qt.QCheckBox, _: bool) callconv(.c) void {
@@ -873,18 +1112,15 @@ fn onComboChanged(_: qt.QComboBox, _: i32) callconv(.c) void {
     changed();
 }
 
-fn onTextEdited(_: qt.QLineEdit) callconv(.c) void {
+fn onTextEdited(_: qt.QLineEdit, _: [*:0]const u8) callconv(.c) void {
     changed();
 }
 
+/// Fills in the defaults (every plugin on); nothing is written until Apply.
 fn onRestoreDefaults(_: qt.QPushButton) callconv(.c) void {
     const state = g_state orelse return;
-    const buttons = qt.qmessagebox_enums.StandardButton;
-    const answer = qt.QMessageBox.question5(state.window, lang.get().settings_restore_defaults, lang.get().settings_restore_confirm, buttons.Yes | buttons.No, buttons.No);
-    if (answer != buttons.Yes) return;
-    // Defaults turn every plugin on.
     showValues(state, .{});
-    saveAndReport(state);
+    setDirty(state, true);
 }
 
 fn onPageChanged(_: qt.QListWidget, row: i32) callconv(.c) void {
@@ -901,7 +1137,7 @@ fn fieldIndex(comptime key: []const u8) usize {
     @compileError("no settings field " ++ key);
 }
 
-test "settings window shows the saved config and saves every change" {
+test "settings window shows the saved config and applies changes" {
     const a = std.testing.allocator;
     const io = std.testing.io;
     var argc: i32 = 1;
@@ -934,6 +1170,7 @@ test "settings window shows the saved config and saves every change" {
         .allocator = a,
         .io = io,
         .path = path,
+        .app = app,
         .window = undefined,
         .pages = undefined,
         .status = undefined,
@@ -965,8 +1202,33 @@ test "settings window shows the saved config and saves every change" {
         try std.testing.expect(std.mem.indexOf(u8, before, "icon_size = 40") != null);
     }
 
-    // Every edit saves on its own, keeping values, the comment and the uninstalled "gone".
+    // The preview follows the window's values.
+    {
+        const caption = state.preview.caption.text(a);
+        defer a.free(caption);
+        try std.testing.expectEqualStrings("600 \u{00d7} 500 px", caption);
+    }
+    state.controls[fieldIndex("window_width")].spin.setValue(800);
+    {
+        const caption = state.preview.caption.text(a);
+        defer a.free(caption);
+        try std.testing.expectEqualStrings("800 \u{00d7} 500 px", caption);
+    }
+    state.controls[fieldIndex("window_width")].spin.setValue(600);
+
+    // Edits mark the window as changed but write nothing until Apply.
+    try std.testing.expect(state.dirty);
     state.controls[fieldIndex("icon_size")].spin.setValue(64);
+    try std.testing.expect(state.dirty and state.apply_button.isEnabled());
+    {
+        const before = try tmp.dir.readFileAlloc(io, "zenkai.conf", a, .unlimited);
+        defer a.free(before);
+        try std.testing.expect(std.mem.indexOf(u8, before, "icon_size = 40") != null);
+    }
+
+    // Apply writes them, keeping other values, the comment and the uninstalled "gone".
+    try apply(&state);
+    try std.testing.expect(!state.dirty and !state.apply_button.isEnabled());
     {
         var saved = try config.loadConfig(a, path);
         defer saved.deinit(a);
@@ -983,19 +1245,28 @@ test "settings window shows the saved config and saves every change" {
         try std.testing.expect(std.mem.startsWith(u8, saved_text, "# my config\n"));
     }
 
-    state.controls[fieldIndex("theme")].combo.setCurrentIndex(0);
+    // Applying a new theme also restyles the app and this window.
+    const theme_choice = state.controls[fieldIndex("theme")].combo;
+    theme_choice.setCurrentIndex(theme_choice.findText("nord"));
     state.controls[fieldIndex("monitor")].spin.setValue(-1);
     state.controls[fieldIndex("close_on_focus_out")].toggle.setChecked(false);
     state.controls[fieldIndex("clipboard")].text.setText("  ");
-    state.controls[fieldIndex("clipboard")].text.editingFinished();
     state.plugin_switches[1].setChecked(true);
+    try apply(&state);
     {
         var saved = try config.loadConfig(a, path);
         defer saved.deinit(a);
-        try std.testing.expect(saved.theme == null and saved.monitor == null and saved.clipboard == null);
+        try std.testing.expectEqualStrings("nord", saved.theme.?);
+        try std.testing.expect(saved.monitor == null and saved.clipboard == null);
         try std.testing.expect(!saved.close_on_focus_out);
         try std.testing.expectEqual(@as(usize, 1), saved.disabled_plugins.len);
         try std.testing.expectEqualStrings("gone", saved.disabled_plugins[0]);
+    }
+    try std.testing.expectEqual(Rgb{ .r = 0x2e, .g = 0x34, .b = 0x40 }, g_colors.background);
+    {
+        const app_qss = app.styleSheet(a);
+        defer a.free(app_qss);
+        try std.testing.expect(std.mem.indexOf(u8, app_qss, "#2e3440") != null);
     }
 
     if (std.c.getenv("ZENKAI_SETTINGS_SHOT")) |prefix| {
@@ -1010,11 +1281,22 @@ test "settings window shows the saved config and saves every change" {
             defer a.free(out);
             try std.testing.expect(shot.save(out));
         }
+        // The preview sits below the fold, so the whole Appearance page is captured too.
+        state.window.resize(900, 1500);
+        state.pages.setCurrentIndex(0);
+        qt.QApplication.processEvents();
+        const page_shot = state.window.grab();
+        defer page_shot.delete();
+        const page_out = try std.fmt.allocPrintSentinel(a, "{s}-appearance.png", .{std.mem.span(prefix)}, 0);
+        defer a.free(page_out);
+        try std.testing.expect(page_shot.save(page_out));
     }
 
-    // Restoring the defaults and saving gives a config that loads as the defaults.
-    showValues(&state, .{});
-    try save(&state);
+    // Restore Defaults fills in the defaults as unapplied edits; applying them gives a
+    // config that loads as the defaults.
+    onRestoreDefaults(state.apply_button);
+    try std.testing.expect(state.dirty);
+    try apply(&state);
     var defaults = try config.loadConfig(a, path);
     defer defaults.deinit(a);
     inline for (fields) |field| {
