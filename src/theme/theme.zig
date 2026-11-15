@@ -97,8 +97,8 @@ pub fn resolveNative(allocator: std.mem.Allocator) ThemeResult {
         if (color_scheme == 0) {
             var palette = qt.QApplication.palette2("QWidget");
             defer palette.delete();
-            var window_color = palette.color(0, 10);
-            defer window_color.delete();
+            // QPalette::color returns a reference into the palette, so it isn't deleted.
+            const window_color = palette.color(0, 10);
             dark = window_color.lightness() < 128;
         }
         if (comptime builtin.os.tag == .macos) accent = "palette(Highlight)";
