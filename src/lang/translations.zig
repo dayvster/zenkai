@@ -64,6 +64,7 @@ pub const Translations = struct {
     settings_card_motion: []const u8 = "Motion",
     settings_card_commands: []const u8 = "Commands",
     settings_card_plugins: []const u8 = "Installed plugins",
+    settings_card_preview: []const u8 = "Preview",
     settings_theme: []const u8 = "Theme",
     settings_theme_hint: []const u8 = "Colors for the launcher and this window.",
     settings_icon_size: []const u8 = "Icon size",

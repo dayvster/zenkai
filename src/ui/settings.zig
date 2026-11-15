@@ -116,6 +116,7 @@ const State = struct {
     installed: []const plugins.PluginInfo,
     // Disabled names with no installed plugin, kept so saving doesn't silently drop them.
     disabled: []const []const u8,
+    preview: Preview = undefined,
     // Set while the window fills in values, so those changes aren't saved back.
     loading: bool = false,
 };
@@ -164,6 +165,7 @@ pub fn run(allocator: std.mem.Allocator, app: qt.QApplication) !void {
 }
 
 fn destroy(state: *State) void {
+    state.preview.deinit();
     state.window.delete();
     state.allocator.free(state.plugin_switches);
 }
@@ -433,6 +435,7 @@ fn build(state: *State, active_qss: []const u8) !void {
                 if (cards[card_index] == null) cards[card_index] = addCard(content, text("card_" ++ @tagName(field.card)));
             }
         }
+        if (page == .appearance) state.preview = Preview.init(addCard(content, t.settings_card_preview));
         content.addStretch();
     }
     inline for (fields, 0..) |field, i| {
@@ -679,6 +682,156 @@ fn makeControl(comptime field: Field) Control {
     }
 }
 
+// Preview ----------------------------------------------------------------------
+
+/// A picture of the launcher with the Appearance values as they are set in the window.
+/// `launcher` is a stand-in built from the same object names the real launcher uses
+/// (mainWindow, searchbarInput, appList, bottomBar, ...), so the selected theme's style
+/// sheet applies to it as it would to the launcher. It is laid out off screen at its real
+/// size, grabbed, and shown scaled down in the card with its size underneath.
+const Preview = struct {
+    launcher: qt.QWidget,
+    layout: qt.QVBoxLayout,
+    list: qt.QListWidget,
+    image: qt.QLabel,
+    caption: qt.QLabel,
+
+    // The largest the picture is drawn in the card; bigger launchers are scaled down.
+    const max_width = 560;
+    const max_height = 300;
+
+    const sample_apps = [_][2][]const u8{
+        .{ "Firefox", "firefox" },
+        .{ "Files", "system-file-manager" },
+        .{ "Terminal", "utilities-terminal" },
+        .{ "Text Editor", "accessories-text-editor" },
+        .{ "Calculator", "accessories-calculator" },
+        .{ "System Settings", "preferences-system" },
+        .{ "Image Viewer", "image-viewer" },
+        .{ "Music", "multimedia-player" },
+    };
+
+    fn init(card: qt.QVBoxLayout) Preview {
+        const t = lang.get();
+        const launcher = qt.QWidget.new2();
+        launcher.setObjectName("mainWindow");
+        launcher.setAttribute(qt.qnamespace_enums.WidgetAttribute.WA_DontShowOnScreen);
+        const layout = qt.QVBoxLayout.new(launcher);
+
+        const search = qt.QLineEdit.new2();
+        search.setObjectName("searchbarInput");
+        search.setPlaceholderText(t.search_placeholder);
+        layout.addWidget(search);
+
+        const list = qt.QListWidget.new2();
+        list.setObjectName("appList");
+        list.setHorizontalScrollBarPolicy(qt.qnamespace_enums.ScrollBarPolicy.ScrollBarAlwaysOff);
+        for (sample_apps) |app| {
+            const icon = icons.load(app[1]);
+            defer icon.delete();
+            list.addItem2(qt.QListWidgetItem.new3(icon, app[0]));
+        }
+        list.setCurrentRow(0);
+        layout.addWidget2(list, 1);
+
+        const bottom = qt.QWidget.new2();
+        bottom.setObjectName("bottomBar");
+        bottom.setFixedHeight(44);
+        const bottom_row = qt.QHBoxLayout.new(bottom);
+        bottom_row.setContentsMargins(8, 6, 8, 6);
+        addBottomAction(bottom_row, t.bottom_bar_open, t.bottom_bar_return);
+        bottom_row.addStretch();
+        addBottomAction(bottom_row, t.bottom_bar_actions, "Ctrl+K");
+        layout.addWidget(bottom);
+
+        const image = qt.QLabel.new3("");
+        image.setAlignment(qt.qnamespace_enums.AlignmentFlag.AlignCenter);
+        image.setFixedHeight(max_height + 32);
+        card.addWidget(image);
+        const caption = qt.QLabel.new3("");
+        caption.setObjectName("settingsRowHint");
+        caption.setAlignment(qt.qnamespace_enums.AlignmentFlag.AlignCenter);
+        caption.setContentsMargins(0, 0, 0, 14);
+        card.addWidget(caption);
+
+        return .{ .launcher = launcher, .layout = layout, .list = list, .image = image, .caption = caption };
+    }
+
+    fn addBottomAction(row: qt.QHBoxLayout, name: []const u8, shortcut: []const u8) void {
+        const item = qt.QWidget.new2();
+        item.setObjectName("actionItem");
+        const item_row = qt.QHBoxLayout.new(item);
+        item_row.setContentsMargins(0, 0, 0, 0);
+        item_row.setSpacing(6);
+        const button = qt.QToolButton.new2();
+        button.setObjectName("actionButton");
+        button.setText(name);
+        item_row.addWidget(button);
+        const label = qt.QLabel.new3(shortcut);
+        label.setObjectName("actionShortcut");
+        item_row.addWidget(label);
+        row.addWidget(item);
+    }
+
+    fn deinit(self: Preview) void {
+        // The launcher stand-in has no parent, so it isn't deleted with the window.
+        self.launcher.delete();
+    }
+
+    /// Redraws the picture from the window's current Appearance values.
+    fn refresh(self: Preview, state: *State) void {
+        const allocator = state.allocator;
+        const value = struct {
+            fn of(s: *State, comptime key: []const u8) i32 {
+                return s.controls[fieldIndex(key)].spin.value();
+            }
+        };
+        const width = value.of(state, "window_width");
+        const height = value.of(state, "window_height");
+        const margin = value.of(state, "layout_margin");
+        const icon_extent = value.of(state, "icon_size");
+
+        // The launcher applies the base style sheet followed by the theme's.
+        const combo = state.controls[fieldIndex("theme")].combo;
+        const name = if (combo.currentIndex() == 0) null else combo.currentText(allocator);
+        defer if (name) |n| allocator.free(n);
+        const resolved = if (name != null and std.mem.eql(u8, name.?, "native"))
+            theme.resolveNative(allocator)
+        else
+            theme.resolve(allocator, name);
+        defer if (resolved.allocation) |memory| allocator.free(memory);
+        const qss = std.mem.concat(allocator, u8, &.{ theme.main_qss, resolved.qss }) catch return;
+        defer allocator.free(qss);
+        self.launcher.setStyleSheet(qss);
+
+        self.layout.setContentsMargins(margin, margin, margin, margin);
+        self.layout.setSpacing(value.of(state, "layout_spacing"));
+        const icon_size = qt.QSize.new4(icon_extent, icon_extent);
+        defer icon_size.delete();
+        self.list.setIconSize(icon_size);
+        self.launcher.setFixedSize2(width, height);
+        self.launcher.show();
+        _ = self.layout.activate();
+
+        // Scale in physical pixels and keep the ratio, so the picture stays sharp on HiDPI.
+        const shot = self.launcher.grab();
+        defer shot.delete();
+        const ratio = shot.devicePixelRatio();
+        const physical = struct {
+            fn px(logical: i32, r: f64) i32 {
+                return @intFromFloat(@round(@as(f64, @floatFromInt(logical)) * r));
+            }
+        };
+        const scaled = shot.scaled4(physical.px(@min(width, max_width), ratio), physical.px(@min(height, max_height), ratio), qt.qnamespace_enums.AspectRatioMode.KeepAspectRatio, qt.qnamespace_enums.TransformationMode.SmoothTransformation);
+        defer scaled.delete();
+        scaled.setDevicePixelRatio(ratio);
+        self.image.setPixmap(scaled);
+
+        var buf: [64]u8 = undefined;
+        self.caption.setText(std.fmt.bufPrint(&buf, "{d} \u{00d7} {d} px", .{ width, height }) catch "");
+    }
+};
+
 // Switches ---------------------------------------------------------------------
 
 /// A checkbox painted as a pill switch in the theme's accent color.
@@ -763,6 +916,7 @@ fn showValues(state: *State, cfg: config.VisualConfig) void {
     for (state.installed, state.plugin_switches) |info, toggle| {
         toggle.setChecked(!containsName(cfg.disabled_plugins, info.name));
     }
+    state.preview.refresh(state);
 }
 
 /// Index 0 is "Default". A value the list doesn't know (say, a custom theme) is added so
@@ -857,7 +1011,9 @@ fn saveAndReport(state: *State) void {
 
 fn changed() void {
     const state = g_state orelse return;
+    // showValues refreshes the preview once when it's done filling in values.
     if (state.loading) return;
+    state.preview.refresh(state);
     saveAndReport(state);
 }
 
@@ -965,6 +1121,20 @@ test "settings window shows the saved config and saves every change" {
         try std.testing.expect(std.mem.indexOf(u8, before, "icon_size = 40") != null);
     }
 
+    // The preview follows the window's values.
+    {
+        const caption = state.preview.caption.text(a);
+        defer a.free(caption);
+        try std.testing.expectEqualStrings("600 \u{00d7} 500 px", caption);
+    }
+    state.controls[fieldIndex("window_width")].spin.setValue(800);
+    {
+        const caption = state.preview.caption.text(a);
+        defer a.free(caption);
+        try std.testing.expectEqualStrings("800 \u{00d7} 500 px", caption);
+    }
+    state.controls[fieldIndex("window_width")].spin.setValue(600);
+
     // Every edit saves on its own, keeping values, the comment and the uninstalled "gone".
     state.controls[fieldIndex("icon_size")].spin.setValue(64);
     {
@@ -1010,6 +1180,12 @@ test "settings window shows the saved config and saves every change" {
             defer a.free(out);
             try std.testing.expect(shot.save(out));
         }
+        // The preview card sits below the fold on the Appearance page.
+        const preview_shot = state.preview.image.grab();
+        defer preview_shot.delete();
+        const preview_out = try std.fmt.allocPrintSentinel(a, "{s}-preview.png", .{std.mem.span(prefix)}, 0);
+        defer a.free(preview_out);
+        try std.testing.expect(preview_shot.save(preview_out));
     }
 
     // Restoring the defaults and saving gives a config that loads as the defaults.
