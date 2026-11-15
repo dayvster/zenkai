@@ -15,6 +15,7 @@ const theme = @import("../theme/theme.zig");
 const icons = @import("icon_loader.zig");
 const action_icons = @import("action_icons.zig");
 const bottombar = @import("bottombar.zig");
+const window_background = @import("window_background.zig");
 const EasingType = @import("animation.zig").EasingType;
 const theme_colors = @import("../theme/colors.zig");
 const Rgb = theme_colors.Rgb;
@@ -30,6 +31,8 @@ const Card = enum {
     theme,
     size,
     spacing,
+    style,
+    text,
     window,
     results,
     motion,
@@ -37,7 +40,7 @@ const Card = enum {
 
     fn page(card: Card) Page {
         return switch (card) {
-            .theme, .size, .spacing => .appearance,
+            .theme, .size, .spacing, .style, .text => .appearance,
             .window, .results => .behaviour,
             .motion => .animations,
             .commands => .integrations,
@@ -57,6 +60,9 @@ const Field = struct {
     suffix: []const u8 = "",
     choices: []const []const u8 = &.{},
     placeholder: []const u8 = "",
+    // For ?i32 fields: the translation key (after `settings_`) shown for the lowest value,
+    // which saves as "not set".
+    unset: []const u8 = "",
 };
 
 const theme_names = blk: {
@@ -73,10 +79,14 @@ const fields = [_]Field{
     .{ .key = "window_height", .card = .size, .min = 200, .max = 3000, .suffix = " px" },
     .{ .key = "layout_margin", .card = .spacing, .max = 64, .suffix = " px" },
     .{ .key = "layout_spacing", .card = .spacing, .max = 64, .suffix = " px" },
+    .{ .key = "window_opacity", .card = .style, .min = 30, .max = 100, .suffix = " %" },
+    .{ .key = "corner_radius", .card = .style, .max = 24, .suffix = " px" },
+    .{ .key = "search_font_size", .card = .text, .min = 9, .max = 40, .suffix = " px", .unset = "theme_default" },
+    .{ .key = "font_size", .card = .text, .min = 7, .max = 32, .suffix = " px", .unset = "theme_default" },
     .{ .key = "close_on_focus_out", .card = .window },
     .{ .key = "show_backdrop", .card = .window },
     .{ .key = "fullscreen", .card = .window },
-    .{ .key = "monitor", .card = .window, .min = -1, .max = 15 },
+    .{ .key = "monitor", .card = .window, .min = -1, .max = 15, .unset = "monitor_cursor" },
     .{ .key = "file_previews", .card = .results },
     .{ .key = "no_animations", .card = .motion },
     .{ .key = "animation_interval", .card = .motion, .max = 2000, .suffix = " ms" },
@@ -603,7 +613,7 @@ fn makeControl(comptime field: Field) Control {
             // squeezes the text field to 1px once a style sheet applies. QSS padding doesn't
             // reach the inner field, so its text is inset here.
             spin.lineEdit().setTextMargins(10, 0, 10, 0);
-            if (T == ?i32) spin.setSpecialValueText(lang.get().settings_monitor_cursor);
+            if (T == ?i32) spin.setSpecialValueText(text(field.unset));
             spin.onValueChanged(onSpinChanged);
             return .{ .spin = spin };
         },
@@ -664,6 +674,8 @@ const Preview = struct {
         const launcher = qt.QWidget.new2();
         launcher.setObjectName("mainWindow");
         launcher.setAttribute(qt.qnamespace_enums.WidgetAttribute.WA_DontShowOnScreen);
+        // Painted like a translucent launcher, so opacity and round corners show in the picture.
+        window_background.install(launcher);
         const layout = qt.QVBoxLayout.new(launcher);
 
         const search = qt.QLineEdit.new2();
@@ -756,6 +768,7 @@ const Preview = struct {
         const qss = selectedStyleSheet(state) catch return;
         defer allocator.free(qss);
         self.launcher.setStyleSheet(qss);
+        window_background.configure(theme_colors.windowBackground(qss, appearanceFromControls(state)));
         self.buildBottomBar();
 
         self.layout.setContentsMargins(margin, margin, margin, margin);
@@ -787,6 +800,11 @@ const Preview = struct {
             }
         };
         self.image.setFixedSize2(logical.px(scaled.width(), ratio) + 2, logical.px(scaled.height(), ratio) + 2);
+        // The frame's corners follow the launcher's, scaled like the picture.
+        var frame_style: [64]u8 = undefined;
+        const scale = @as(f64, @floatFromInt(logical.px(scaled.width(), ratio))) / @as(f64, @floatFromInt(width));
+        const radius: i32 = @intFromFloat(@round(@as(f64, @floatFromInt(appearanceFromControls(state).corner_radius)) * scale));
+        self.image.setStyleSheet(std.fmt.bufPrint(&frame_style, "border-radius: {d}px;", .{radius}) catch "");
 
         var buf: [64]u8 = undefined;
         self.caption.setText(std.fmt.bufPrint(&buf, "{d} \u{00d7} {d} px", .{ width, height }) catch "");
@@ -805,7 +823,31 @@ fn selectedStyleSheet(state: *State) ![]u8 {
     else
         theme.resolve(allocator, name);
     defer if (resolved.allocation) |memory| allocator.free(memory);
-    return std.mem.concat(allocator, u8, &.{ theme.main_qss, resolved.qss });
+    const appearance_qss = try theme_colors.appearanceStyleSheet(allocator, resolved.qss, appearanceFromControls(state));
+    defer allocator.free(appearance_qss);
+    return std.mem.concat(allocator, u8, &.{ theme.main_qss, resolved.qss, appearance_qss });
+}
+
+/// Opacity, corners and text sizes as the window shows them, applied the way the launcher
+/// applies the config (bootstrap.appearanceOf), so fullscreen is treated the same.
+fn appearanceFromControls(state: *State) theme_colors.Appearance {
+    const value = struct {
+        fn of(s: *State, comptime key: []const u8) i32 {
+            return s.controls[fieldIndex(key)].spin.value();
+        }
+        // ?i32 fields: the lowest value means "not set".
+        fn optional(s: *State, comptime key: []const u8) ?i32 {
+            const v = of(s, key);
+            return if (v == fields[fieldIndex(key)].min) null else v;
+        }
+    };
+    return @import("../core/bootstrap.zig").appearanceOf(.{
+        .fullscreen = state.controls[fieldIndex("fullscreen")].toggle.isChecked(),
+        .window_opacity = value.of(state, "window_opacity"),
+        .corner_radius = value.of(state, "corner_radius"),
+        .font_size = value.optional(state, "font_size"),
+        .search_font_size = value.optional(state, "search_font_size"),
+    });
 }
 
 // Switches ---------------------------------------------------------------------
@@ -1206,8 +1248,12 @@ test "settings window shows the saved config and applies changes" {
             defer a.free(out);
             try std.testing.expect(shot.save(out));
         }
-        // The preview sits below the fold, so the whole Appearance page is captured too.
-        state.window.resize(900, 1500);
+        // The preview sits below the fold, so the whole Appearance page is captured too, with a
+        // translucent, rounded launcher and larger result text to show those settings.
+        state.controls[fieldIndex("window_opacity")].spin.setValue(85);
+        state.controls[fieldIndex("corner_radius")].spin.setValue(14);
+        state.controls[fieldIndex("font_size")].spin.setValue(15);
+        state.window.resize(900, 1900);
         state.pages.setCurrentIndex(0);
         qt.QApplication.processEvents();
         const page_shot = state.window.grab();

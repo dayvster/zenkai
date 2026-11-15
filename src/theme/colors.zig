@@ -166,3 +166,91 @@ fn hasSelector(list: []const u8, selector: []const u8) bool {
     }
     return false;
 }
+
+/// Settings that change the launcher's look on top of its theme.
+pub const Appearance = struct {
+    /// Background opacity in percent; text and icons stay opaque.
+    opacity: i32 = 100,
+    corner_radius: i32 = 0,
+    /// Result and search text sizes in px; null keeps the theme's.
+    font_size: ?i32 = null,
+    search_font_size: ?i32 = null,
+
+    /// See-through or rounded windows need a transparent backing (WA_TranslucentBackground)
+    /// so the theme's background can be drawn translucent and with round corners.
+    pub fn translucent(self: Appearance) bool {
+        return self.opacity < 100 or self.corner_radius > 0;
+    }
+};
+
+/// How a translucent window paints its own background: the theme's background color at the
+/// chosen opacity, with rounded corners. See ui/window_background.zig.
+pub const WindowBackground = struct {
+    color: Rgb,
+    alpha: u8,
+    radius: i32,
+};
+
+pub fn windowBackground(theme_qss: []const u8, appearance: Appearance) WindowBackground {
+    return .{
+        .color = parseColors(theme_qss).background,
+        .alpha = alphaOf(appearance),
+        .radius = std.math.clamp(appearance.corner_radius, 0, 64),
+    };
+}
+
+fn alphaOf(appearance: Appearance) u8 {
+    return @intCast(@divTrunc(std.math.clamp(appearance.opacity, 10, 100) * 255, 100));
+}
+
+/// Rules appended after the theme for `appearance`; empty when nothing differs from it.
+/// A translucent window paints its own background (Qt never draws a top-level widget's style
+/// sheet background on a transparent backing), so every widget inside is made transparent,
+/// except the search bar and the side panels, which keep their colors at the same opacity.
+/// The list's scroll bar is hidden: Qt leaves the strip under it unpainted on a transparent
+/// backing, which shows as black. Scrolling still works by wheel and keyboard.
+pub fn appearanceStyleSheet(allocator: std.mem.Allocator, theme_qss: []const u8, appearance: Appearance) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    if (appearance.translucent()) {
+        const c = parseColors(theme_qss);
+        const alpha = alphaOf(appearance);
+        const radius = std.math.clamp(appearance.corner_radius, 0, 64);
+        try out.print(allocator,
+            \\#mainWindow QWidget {{ background: transparent; }}
+            \\#mainWindow #searchbarInput {{ background: rgba({d}, {d}, {d}, {d}); border-top-left-radius: {d}px; border-top-right-radius: {d}px; }}
+            \\#mainWindow #actionPanel, #mainWindow #filePreview {{ background: rgba({d}, {d}, {d}, {d}); }}
+            \\#mainWindow #appList QScrollBar:vertical {{ width: 0px; }}
+            \\
+        , .{
+            c.field.r,      c.field.g,      c.field.b,      alpha, radius, radius,
+            c.background.r, c.background.g, c.background.b, alpha,
+        });
+    }
+    if (appearance.font_size) |size| try out.print(allocator, "#appList {{ font-size: {d}px; }}\n", .{std.math.clamp(size, 6, 72)});
+    if (appearance.search_font_size) |size| try out.print(allocator, "#searchbarInput {{ font-size: {d}px; }}\n", .{std.math.clamp(size, 6, 72)});
+    return out.toOwnedSlice(allocator);
+}
+
+test "appearance rules are empty by default and follow the theme's colors" {
+    const a = std.testing.allocator;
+    const theme_qss = "QWidget { background-color: #141312; } #searchbarInput { background-color: #2e2c2a; }";
+
+    const none = try appearanceStyleSheet(a, theme_qss, .{});
+    defer a.free(none);
+    try std.testing.expectEqualStrings("", none);
+
+    const glass = try appearanceStyleSheet(a, theme_qss, .{ .opacity = 80, .corner_radius = 12, .font_size = 15 });
+    defer a.free(glass);
+    try std.testing.expectEqual(WindowBackground{ .color = .{ .r = 20, .g = 19, .b = 18 }, .alpha = 204, .radius = 12 }, windowBackground(theme_qss, .{ .opacity = 80, .corner_radius = 12 }));
+    try std.testing.expect(std.mem.indexOf(u8, glass, "#mainWindow #appList QScrollBar:vertical { width: 0px; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, glass, "#mainWindow #searchbarInput { background: rgba(46, 44, 42, 204);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, glass, "#appList { font-size: 15px; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, glass, "#searchbarInput { font-size") == null);
+
+    // Out-of-range values are clamped rather than written as given.
+    const clamped = try appearanceStyleSheet(a, theme_qss, .{ .opacity = 0, .corner_radius = 500, .search_font_size = 1 });
+    defer a.free(clamped);
+    try std.testing.expectEqual(WindowBackground{ .color = .{ .r = 20, .g = 19, .b = 18 }, .alpha = 25, .radius = 64 }, windowBackground(theme_qss, .{ .opacity = 0, .corner_radius = 500 }));
+    try std.testing.expect(std.mem.indexOf(u8, clamped, "#searchbarInput { font-size: 6px; }") != null);
+}
