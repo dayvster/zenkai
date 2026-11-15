@@ -22,12 +22,16 @@ pub const VisualConfig = struct {
     no_animations: bool = false,
     animation_interval: i32 = 200,
     animation_easing: ?[]const u8 = null,
+    // Plugin names (manifest "name") that are not loaded unless selected with --plugin.
+    disabled_plugins: []const []const u8 = &.{},
 
     pub fn deinit(self: *VisualConfig, allocator: std.mem.Allocator) void {
         if (self.theme) |v| allocator.free(v);
         if (self.clipboard) |v| allocator.free(v);
         if (self.url_handler) |v| allocator.free(v);
         if (self.animation_easing) |v| allocator.free(v);
+        for (self.disabled_plugins) |name| allocator.free(name);
+        allocator.free(self.disabled_plugins);
     }
 
     pub fn applyOverrides(self: *VisualConfig, allocator: std.mem.Allocator, cfg: anytype) void {
@@ -228,9 +232,103 @@ pub fn loadConfig(allocator: std.mem.Allocator, config_path: []const u8) !Visual
         if (std.mem.eql(u8, key, "animation_interval")) cfg.animation_interval = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "animation_easing")) cfg.animation_easing = parseTomlString(allocator, val);
         if (std.mem.eql(u8, key, "url_handler")) cfg.url_handler = parseTomlString(allocator, val);
+        if (std.mem.eql(u8, key, "disabled_plugins")) {
+            const names = parseNameList(allocator, val) catch continue;
+            for (cfg.disabled_plugins) |name| allocator.free(name);
+            allocator.free(cfg.disabled_plugins);
+            cfg.disabled_plugins = names;
+        }
     }
 
     return cfg;
+}
+
+/// Parses `"calculator, emoji"` into owned, trimmed, non-empty names.
+fn parseNameList(allocator: std.mem.Allocator, val: []const u8) ![]const []const u8 {
+    const text = parseTomlString(allocator, val) orelse return &.{};
+    defer allocator.free(text);
+    var names: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+    var parts = std.mem.splitScalar(u8, text, ',');
+    while (parts.next()) |part| {
+        const name = std.mem.trim(u8, part, " \t");
+        if (name.len > 0) try names.append(allocator, try allocator.dupe(u8, name));
+    }
+    return try names.toOwnedSlice(allocator);
+}
+
+/// One `key = value` line for `updateConfig`; `value` is written as given, so quote strings.
+/// A null value removes the key, for settings whose default is "not set" (monitor, theme).
+pub const Assignment = struct {
+    key: []const u8,
+    value: ?[]const u8,
+};
+
+/// Returns `content` with each assignment's existing lines rewritten in place, keeping
+/// comments, blank lines and unknown keys as they were. Keys not present yet are appended.
+pub fn updateConfig(allocator: std.mem.Allocator, content: []const u8, assignments: []const Assignment) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    const written = try allocator.alloc(bool, assignments.len);
+    defer allocator.free(written);
+    @memset(written, false);
+
+    // Drop one final newline so splitting doesn't yield an extra empty line; every line written
+    // below gets its own newline back.
+    const body = if (std.mem.endsWith(u8, content, "\n")) content[0 .. content.len - 1] else content;
+    if (body.len > 0) {
+        var lines = std.mem.splitScalar(u8, body, '\n');
+        while (lines.next()) |line| {
+            if (assignmentFor(line, assignments)) |index| {
+                written[index] = true;
+                const value = assignments[index].value orelse continue;
+                try out.print(allocator, "{s} = {s}\n", .{ assignments[index].key, value });
+            } else {
+                try out.print(allocator, "{s}\n", .{line});
+            }
+        }
+    }
+    for (assignments, written) |assignment, done| {
+        const value = assignment.value orelse continue;
+        if (!done) try out.print(allocator, "{s} = {s}\n", .{ assignment.key, value });
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+fn assignmentFor(line: []const u8, assignments: []const Assignment) ?usize {
+    const trimmed = std.mem.trim(u8, line, " \t\r");
+    if (trimmed.len == 0 or trimmed[0] == '#') return null;
+    const eq = std.mem.indexOfScalar(u8, trimmed, '=') orelse return null;
+    const key = std.mem.trim(u8, trimmed[0..eq], " \t");
+    for (assignments, 0..) |assignment, i| {
+        if (std.mem.eql(u8, assignment.key, key)) return i;
+    }
+    return null;
+}
+
+/// Applies `assignments` to the config file at `path`. The new file is written beside it and
+/// renamed over the original, so a failed write never leaves a half-written config.
+pub fn saveConfig(io: std.Io, allocator: std.mem.Allocator, path: []const u8, assignments: []const Assignment) !void {
+    const content = fsutils.readFile(allocator, path, 128 * 1024) catch |err| switch (err) {
+        error.FileNotFound => try allocator.dupe(u8, ""),
+        else => return err,
+    };
+    defer allocator.free(content);
+    const updated = try updateConfig(allocator, content, assignments);
+    defer allocator.free(updated);
+
+    const tmp_path = try std.fmt.allocPrint(allocator, "{s}.tmp", .{path});
+    defer allocator.free(tmp_path);
+    const cwd = std.Io.Dir.cwd();
+    {
+        var file = try std.Io.Dir.createFile(cwd, io, tmp_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, updated);
+    }
+    try std.Io.Dir.rename(cwd, tmp_path, cwd, path, io);
 }
 
 pub fn detectIconTheme(allocator: std.mem.Allocator) ?[]const u8 {

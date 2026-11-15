@@ -25,6 +25,7 @@ pub const help =
     \\  --no-bottom-bar           Hide bottom bar
     \\  --show-actions            Show item actions
     \\  --actions-bottombar       Show actions in bottom bar
+    \\  --settings                Open the settings window instead of the launcher
     \\  --list-themes             List all available themes with descriptions
     \\  --list-monitors           List all available monitors with indices
     \\  --close-on-focus-out     Close the launcher when it loses focus
@@ -71,6 +72,7 @@ pub const Config = struct {
     no_plugins: bool,
     window_switcher: bool = false,
     no_window_switcher: bool = false,
+    settings: bool = false,
     run_mode: bool,
     language: ?[]const u8,
     no_animations: bool,
@@ -272,6 +274,8 @@ pub fn parse(args: [][:0]u8) Config {
         } else if (std.mem.startsWith(u8, arg, "--animation-easing=")) {
             const val = arg["--animation-easing=".len..];
             cfg.animation_easing = if (val.len > 0) val else null;
+        } else if (std.mem.eql(u8, arg, "--settings")) {
+            cfg.settings = true;
         } else if (std.mem.eql(u8, arg, "--list-themes")) {
             cfg.list_themes = true;
         } else if (std.mem.eql(u8, arg, "--list-monitors")) {

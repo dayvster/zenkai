@@ -241,6 +241,22 @@ Starts as a dedicated window switcher. Open windows are listed immediately, and 
 ./zig-out/bin/zenkai --window-switcher
 ```
 
+### `--settings`
+
+Opens the settings window instead of the launcher. You can also type `settings`
+(or `pref`) in the launcher and pick **Zenkai Settings**.
+
+```sh
+./zig-out/bin/zenkai --settings
+```
+
+Pages for Appearance, Behaviour, Animations, Integrations and Plugins edit the
+config file (`zenkai.conf`, or a legacy `config.toml` if you have one). Saving
+rewrites only the keys shown and keeps your comments and other lines. Changes
+apply the next time Zenkai opens; flags still override the file. Unchecked
+plugins are written to `disabled_plugins = "name, other"` and are not loaded
+unless selected with `--plugin=NAME`.
+
 ### `--run`
 
 Opens Zenkai in Windows Run mode. Type a command or URL and press Enter to open it with the Windows shell, without a `run:` prefix.
@@ -447,6 +463,7 @@ plugins. `--no-plugins` disables them; `--plugin=NAME` can select them individua
 | `win: editor` | Find an open window by title or application name; Enter switches to it. |
 | `:fire` or `emoji: fire` | Find an emoji by name or keyword; Enter copies it. |
 | `dev: hash hello` | Developer tools: Base64, URL encoding, UUIDs, timestamps, colors, text case, JSON and hashes. |
+| `settings` | Open the settings window. |
 | `tab: github` | Find an open browser tab by title or URL; Enter focuses it, Ctrl+K offers close, reload, pin, mute and more. Requires `zenkai-web-bridge` and the Zenkai Web extension. |
 | `hist: zig` | Search browser history; Enter opens the page. |
 | `bm: docs` | Search browser bookmarks; Enter opens the page. |
@@ -793,4 +810,5 @@ api.open_browser("https://example.com") -- system browser; HTTP(S) only
 local icon = api.browser_icon("https") -- default handler's icon; also accepts "http"
 api.close() -- request closing after on_open, including for NoReturn results
 local ms = api.now() -- Unix time in milliseconds (the sandbox has no `os`)
+api.open_settings() -- open the settings window in a new process; returns true when started
 ```

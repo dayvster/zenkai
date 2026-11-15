@@ -80,6 +80,23 @@ fn render(svg: []const u8, color: ?[]const u8, extent: i32, bounds: qt.QRectF) ?
     return pixmap;
 }
 
+/// Physical pixel size of a 24px icon on `widget`'s screen.
+fn extentFor(widget: anytype) i32 {
+    const ratio = @max(widget.screen().devicePixelRatio(), 1.0);
+    return @intFromFloat(@round(24.0 * ratio));
+}
+
+/// Renders an SVG that isn't one of the embedded action icons with `currentColor` set to
+/// `color` (a `#rrggbb` string) in every state, at the same HiDPI-aware size as `load`.
+pub fn tinted(widget: anytype, svg: []const u8, color: []const u8) ?qt.QIcon {
+    const extent = extentFor(widget);
+    const bounds = qt.QRectF.new6(0, 0, @floatFromInt(extent), @floatFromInt(extent));
+    defer bounds.delete();
+    const pixmap = render(svg, color, extent, bounds) orelse return null;
+    defer pixmap.delete();
+    return qt.QIcon.new2(pixmap);
+}
+
 /// Render an embedded SVG at the menu's physical scale. Returning a pixmap at
 /// physical size keeps the glyph sharp on HiDPI screens without clipping it.
 /// `currentColor`/`inherit` resolves to the menu's text color; selected items
@@ -88,9 +105,7 @@ pub fn load(menu: anytype, name: []const u8) ?qt.QIcon {
     const svg = find(name) orelse return null;
     if (svg.len == 0) return null;
 
-    const screen = menu.screen();
-    const ratio = @max(screen.devicePixelRatio(), 1.0);
-    const extent: i32 = @intFromFloat(@round(24.0 * ratio));
+    const extent = extentFor(menu);
     const bounds = qt.QRectF.new6(0, 0, @floatFromInt(extent), @floatFromInt(extent));
     defer bounds.delete();
 

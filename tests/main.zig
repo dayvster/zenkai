@@ -252,6 +252,77 @@ test "expandExecString with icon field code" {
     try std.testing.expectEqualStrings("app --icon \"test-icon\"", expanded);
 }
 
+test "config: updateConfig rewrites keys in place and keeps comments" {
+    const allocator = std.testing.allocator;
+    const content =
+        \\# Window dimensions
+        \\window_width = 600
+        \\# theme = "dracula"
+        \\custom_key = kept
+        \\icon_size=32
+        \\
+    ;
+    const updated = try config.updateConfig(allocator, content, &.{
+        .{ .key = "icon_size", .value = "48" },
+        .{ .key = "theme", .value = "\"nord\"" },
+        .{ .key = "window_width", .value = "800" },
+    });
+    defer allocator.free(updated);
+    try std.testing.expectEqualStrings(
+        \\# Window dimensions
+        \\window_width = 800
+        \\# theme = "dracula"
+        \\custom_key = kept
+        \\icon_size = 48
+        \\theme = "nord"
+        \\
+    , updated);
+
+    const from_empty = try config.updateConfig(allocator, "", &.{.{ .key = "icon_size", .value = "24" }});
+    defer allocator.free(from_empty);
+    try std.testing.expectEqualStrings("icon_size = 24\n", from_empty);
+
+    const no_newline = try config.updateConfig(allocator, "a = 1", &.{});
+    defer allocator.free(no_newline);
+    try std.testing.expectEqualStrings("a = 1\n", no_newline);
+
+    // A null value unsets the key: existing lines go, and nothing is appended.
+    const unset = try config.updateConfig(allocator, "monitor = 1\n# monitor = 2\nicon_size = 32\n", &.{
+        .{ .key = "monitor", .value = null },
+        .{ .key = "theme", .value = null },
+    });
+    defer allocator.free(unset);
+    try std.testing.expectEqualStrings("# monitor = 2\nicon_size = 32\n", unset);
+}
+
+test "config: saveConfig writes values loadConfig reads back" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "zenkai.conf", .data = "# mine\nicon_size = 32\n" });
+    const path = try tmp.dir.realPathFileAlloc(io, "zenkai.conf", allocator);
+    defer allocator.free(path);
+
+    try config.saveConfig(io, allocator, path, &.{
+        .{ .key = "icon_size", .value = "40" },
+        .{ .key = "close_on_focus_out", .value = "true" },
+        .{ .key = "disabled_plugins", .value = "\"emoji, devtoolbox ,\"" },
+    });
+    var cfg = try config.loadConfig(allocator, path);
+    defer cfg.deinit(allocator);
+    try std.testing.expectEqual(@as(i32, 40), cfg.icon_size);
+    try std.testing.expect(cfg.close_on_focus_out);
+    try std.testing.expectEqual(@as(usize, 2), cfg.disabled_plugins.len);
+    try std.testing.expectEqualStrings("emoji", cfg.disabled_plugins[0]);
+    try std.testing.expectEqualStrings("devtoolbox", cfg.disabled_plugins[1]);
+
+    const saved = try tmp.dir.readFileAlloc(io, "zenkai.conf", allocator, .unlimited);
+    defer allocator.free(saved);
+    try std.testing.expect(std.mem.startsWith(u8, saved, "# mine\n"));
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access(io, "zenkai.conf.tmp", .{}));
+}
+
 test "config: parseTomlString strips quotes" {
     const allocator = std.testing.allocator;
 
