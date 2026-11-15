@@ -191,6 +191,25 @@ fn apiClose(_: *lua.lua_State) callconv(.c) c_int {
     return 0;
 }
 
+// Opens the settings window in a new process of this same binary, so it works whether or
+// not `zenkai` is on PATH. Returns true when the process was started.
+fn apiOpenSettings(L: *lua.lua_State) callconv(.c) c_int {
+    const allocator = g_active_manager.allocator;
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const started = blk: {
+        const exe = std.process.executablePathAlloc(io, allocator) catch |err| break :blk err;
+        defer allocator.free(exe);
+        utils.spawnTool(exe, &.{"--settings"}, allocator) catch |err| break :blk err;
+    };
+    if (started) |_| {
+        lua.lua_pushboolean(L, 1);
+    } else |err| {
+        utils.log.info("open settings failed: {}", .{err});
+        lua.lua_pushboolean(L, 0);
+    }
+    return 1;
+}
+
 // The sandbox removes `os`, so this is the only wall clock plugins get: Unix time in milliseconds.
 fn apiNow(L: *lua.lua_State) callconv(.c) c_int {
     const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
@@ -569,6 +588,8 @@ fn setupAPI(L: *lua.lua_State) void {
     lua.lua_setfield(L, -2, "close");
     lua.lua_pushcfunction(L, apiNow);
     lua.lua_setfield(L, -2, "now");
+    lua.lua_pushcfunction(L, apiOpenSettings);
+    lua.lua_setfield(L, -2, "open_settings");
     lua.lua_pushcfunction(L, apiExec);
     lua.lua_setfield(L, -2, "exec");
     lua.lua_pushcfunction(L, apiRun);
@@ -1547,6 +1568,22 @@ test "bundled productivity plugins filter, encode URLs and copy exact text" {
             \\local uuid = titles("dev: uuid")[1]
             \\assert(uuid:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-4%x%x%x%-[89ab]%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$"), uuid)
             \\assert(titles("dev: zz")[1] == "No tool named \"zz\"")
+        },
+        .{
+            "settings",
+            \\api.open_settings = function() opened_settings = true end
+            \\for _, query in ipairs({ "set", "  Settings ", "pref", "zenkai s" }) do
+            \\  results = {}
+            \\  on_query(query)
+            \\  assert(#results == 1 and results[1].title == "Zenkai Settings", query)
+            \\end
+            \\for _, query in ipairs({ "se", "setx", "firefox", "" }) do
+            \\  results = {}
+            \\  on_query(query)
+            \\  assert(#results == 0, query)
+            \\end
+            \\on_open(1)
+            \\assert(opened_settings)
         },
         .{
             "emoji",

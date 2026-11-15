@@ -1,0 +1,8 @@
+{
+    "name": "settings",
+    "version": "1.0.0",
+    "main": "main.lua",
+    "description": "Open Zenkai's settings window from the launcher",
+    "author": "built-in",
+    "disabled": false
+}
