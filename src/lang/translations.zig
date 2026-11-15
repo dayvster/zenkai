@@ -100,9 +100,10 @@ pub const Translations = struct {
     settings_plugin_no_description: []const u8 = "No description",
     settings_default: []const u8 = "Default",
     settings_monitor_cursor: []const u8 = "Under the cursor",
-    settings_autosave: []const u8 = "Changes save automatically and apply the next time Zenkai opens.",
-    settings_saved: []const u8 = "Saved. Changes apply the next time Zenkai opens.",
+    settings_apply: []const u8 = "Apply",
+    settings_unapplied: []const u8 = "Unapplied changes. Press Apply to save them.",
+    settings_saved: []const u8 = "Applied. The launcher uses these settings the next time it opens.",
+    settings_close_unapplied: []const u8 = "Apply your changes before closing?",
     settings_save_failed: []const u8 = "Could not save the config file",
     settings_restore_defaults: []const u8 = "Restore Defaults",
-    settings_restore_confirm: []const u8 = "Reset every setting to its default and turn all plugins on?",
 };
