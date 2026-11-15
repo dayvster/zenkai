@@ -124,7 +124,7 @@ pub fn main(init: std.process.Init) !void {
         _ = freopen("/dev/null", "w", __stderrp);
     }
     if (ctx.cfg.run_mode) ctx.visual.window_height = 140;
-    if (ctx.cfg.settings) return @import("ui/settings.zig").run(init.gpa);
+    if (ctx.cfg.settings) return @import("ui/settings.zig").run(init.gpa, ctx.app);
 
     {
         var args_iter = try init.minimal.args.iterateAllocator(init.gpa);

@@ -13,6 +13,7 @@ const lang = @import("lang");
 const log = @import("utils").log;
 const theme = @import("../theme/theme.zig");
 const icons = @import("icon_loader.zig");
+const action_icons = @import("action_icons.zig");
 const EasingType = @import("animation.zig").EasingType;
 
 const Page = enum { appearance, behaviour, animations, integrations };
@@ -77,13 +78,20 @@ const fields = [_]Field{
     .{ .key = "url_handler", .card = .commands, .placeholder = "xdg-open" },
 };
 
+// Sidebar line icons on a 24px grid, drawn in the theme's text color (`currentColor`).
+const icon_attributes = "xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"";
 const page_icons = [_][]const u8{
-    "preferences-desktop-theme",
-    "preferences-system-windows",
-    "preferences-desktop-effects",
-    "utilities-terminal",
+    // Appearance: a palette.
+    "<svg " ++ icon_attributes ++ "><path d=\"M12 3.5a8.5 8.5 0 1 0 0 17c1 0 1.6-.7 1.6-1.5 0-.4-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.5 1.6-1.5h1.8a4.5 4.5 0 0 0 4.5-4.5c0-4-3.8-7.3-8.5-7.3Z\"/><circle cx=\"7.5\" cy=\"11.5\" r=\"1\" fill=\"currentColor\"/><circle cx=\"10\" cy=\"7.5\" r=\"1\" fill=\"currentColor\"/><circle cx=\"14.5\" cy=\"7.5\" r=\"1\" fill=\"currentColor\"/></svg>",
+    // Behaviour: a window.
+    "<svg " ++ icon_attributes ++ "><rect x=\"3\" y=\"4.5\" width=\"18\" height=\"15\" rx=\"2.5\"/><path d=\"M3 9h18\"/><path d=\"M6.5 6.8h.01M9 6.8h.01\"/></svg>",
+    // Animations: a ball with speed lines.
+    "<svg " ++ icon_attributes ++ "><circle cx=\"15.5\" cy=\"12\" r=\"4.5\"/><path d=\"M3 8.5h6M2 12h6.5M3 15.5h6\"/></svg>",
+    // Integrations: a terminal prompt.
+    "<svg " ++ icon_attributes ++ "><rect x=\"3\" y=\"4.5\" width=\"18\" height=\"15\" rx=\"2.5\"/><path d=\"m7 10 3 2.5L7 15M12.5 15H17\"/></svg>",
 };
-const plugins_icon = "preferences-plugin";
+// Plugins: three blocks and a plus.
+const plugins_icon = "<svg " ++ icon_attributes ++ "><rect x=\"4\" y=\"4\" width=\"6.5\" height=\"6.5\" rx=\"1.5\"/><rect x=\"13.5\" y=\"4\" width=\"6.5\" height=\"6.5\" rx=\"1.5\"/><rect x=\"4\" y=\"13.5\" width=\"6.5\" height=\"6.5\" rx=\"1.5\"/><path d=\"M16.75 13.5v6.5M13.5 16.75H20\"/></svg>";
 
 // Every input has the same width so their edges line up down a card.
 const input_width = 220;
@@ -120,8 +128,11 @@ fn text(comptime key: []const u8) []const u8 {
     return @field(lang.get(), "settings_" ++ key);
 }
 
-pub fn run(allocator: std.mem.Allocator) !void {
+/// Opens the window and runs until it closes. `app` already has the theme applied.
+pub fn run(allocator: std.mem.Allocator, app: qt.QApplication) !void {
     const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const active_qss = app.styleSheet(allocator);
+    defer allocator.free(active_qss);
     const path = try config.deploy(io, allocator);
     defer allocator.free(path);
     // Read the file itself: the window edits what is saved, not what flags override.
@@ -142,7 +153,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
         .installed = installed,
         .disabled = cfg.disabled_plugins,
     };
-    try build(&state);
+    try build(&state, active_qss);
     defer destroy(&state);
     showValues(&state, cfg);
 
@@ -164,10 +175,41 @@ const Rgb = struct {
     g: u8 = 0,
     b: u8 = 0,
 
-    // `color` is a reference into a palette (QPalette::color returns const QColor&), so it is
-    // read, never deleted.
-    fn of(color: qt.QColor) Rgb {
-        return .{ .r = @intCast(color.red()), .g = @intCast(color.green()), .b = @intCast(color.blue()) };
+    /// Parses `#rgb` or `#rrggbb`; other color syntax (rgba(), palette(), names) gives null.
+    fn parse(value: []const u8) ?Rgb {
+        if (value.len < 1 or value[0] != '#') return null;
+        const hex = value[1..];
+        const digit = struct {
+            fn at(s: []const u8, i: usize, width: usize) ?u8 {
+                const n = std.fmt.parseInt(u8, s[i * width ..][0..width], 16) catch return null;
+                return if (width == 1) n * 17 else n;
+            }
+        };
+        const width: usize = switch (hex.len) {
+            3 => 1,
+            6 => 2,
+            else => return null,
+        };
+        return .{
+            .r = digit.at(hex, 0, width) orelse return null,
+            .g = digit.at(hex, 1, width) orelse return null,
+            .b = digit.at(hex, 2, width) orelse return null,
+        };
+    }
+
+    /// HSL saturation and lightness, each 0 to 1.
+    fn saturation(self: Rgb) f32 {
+        const max = @as(f32, @floatFromInt(@max(self.r, self.g, self.b))) / 255;
+        const min = @as(f32, @floatFromInt(@min(self.r, self.g, self.b))) / 255;
+        if (max == min) return 0;
+        const l = (max + min) / 2;
+        return (max - min) / (1 - @abs(2 * l - 1));
+    }
+
+    fn lightness(self: Rgb) f32 {
+        const max: f32 = @floatFromInt(@max(self.r, self.g, self.b));
+        const min: f32 = @floatFromInt(@min(self.r, self.g, self.b));
+        return (max + min) / 510;
     }
 
     /// `self` moved `amount` (0 to 1) of the way towards `other`.
@@ -201,28 +243,69 @@ const Colors = struct {
     accent: Rgb = .{ .r = 0x3d, .g = 0x8b, .b = 0xfd },
 };
 
-/// Every theme styles the launcher's search bar (`#searchbarInput`) with its background,
-/// text and selection color, so a polished stand-in reveals the theme's palette. The
-/// palettes are references owned by the widgets, so only the widgets are deleted.
-fn themeColors() Colors {
-    const window = qt.QWidget.new2();
-    defer window.delete();
-    window.ensurePolished();
-    const window_palette = window.palette();
-
-    const search = qt.QLineEdit.new2();
-    defer search.delete();
-    search.setObjectName("searchbarInput");
-    search.ensurePolished();
-    const search_palette = search.palette();
-
-    const role = qt.qpalette_enums.ColorRole;
-    return .{
-        .background = Rgb.of(window_palette.color2(role.Window)),
-        .foreground = Rgb.of(window_palette.color2(role.WindowText)),
-        .field = Rgb.of(search_palette.color2(role.Base)),
-        .accent = Rgb.of(search_palette.color2(role.Highlight)),
+/// A theme's colors, read from its style sheet. Every theme styles `QWidget` and the
+/// launcher's search bar and list, so those rules give the background, text and field
+/// colors. The accent lives in different rules per theme (Dracula's is the selected row,
+/// the default dark theme's is the focused search bar border), so the most saturated of
+/// those candidates is taken as the accent.
+fn parseColors(qss: []const u8) Colors {
+    var colors: Colors = .{};
+    if (ruleColor(qss, "QWidget", "background-color")) |rgb| colors.background = rgb;
+    if (ruleColor(qss, "QWidget", "color")) |rgb| colors.foreground = rgb;
+    if (ruleColor(qss, "#searchbarInput", "background-color")) |rgb| colors.field = rgb;
+    const candidates = [_]?Rgb{
+        ruleColor(qss, "#searchbarInput:focus", "border-color"),
+        ruleColor(qss, "#appList::item:selected", "background"),
+        ruleColor(qss, "#appList::item:selected", "background-color"),
+        ruleColor(qss, "#searchbarInput", "selection-background-color"),
     };
+    var best: ?Rgb = null;
+    for (candidates) |candidate| {
+        const rgb = candidate orelse continue;
+        if (best == null or rgb.saturation() > best.?.saturation()) best = rgb;
+    }
+    if (best) |rgb| colors.accent = rgb;
+    return colors;
+}
+
+/// The color `property` gets from the last rule whose selector list contains exactly
+/// `selector`, like the cascade: later rules win. Comments before a rule are skipped.
+fn ruleColor(qss: []const u8, selector: []const u8, property: []const u8) ?Rgb {
+    var found: ?Rgb = null;
+    var rules = std.mem.splitScalar(u8, qss, '}');
+    while (rules.next()) |rule| {
+        const open = std.mem.indexOfScalar(u8, rule, '{') orelse continue;
+        var selectors = rule[0..open];
+        while (std.mem.indexOf(u8, selectors, "*/")) |end| selectors = selectors[end + 2 ..];
+        if (!hasSelector(selectors, selector)) continue;
+        var declarations = std.mem.splitScalar(u8, rule[open + 1 ..], ';');
+        while (declarations.next()) |declaration| {
+            const colon = std.mem.indexOfScalar(u8, declaration, ':') orelse continue;
+            if (!std.mem.eql(u8, std.mem.trim(u8, declaration[0..colon], " \t\r\n"), property)) continue;
+            const value = std.mem.trim(u8, declaration[colon + 1 ..], " \t\r\n");
+            const first = value[0 .. std.mem.indexOfAny(u8, value, " \t") orelse value.len];
+            if (Rgb.parse(first)) |rgb| found = rgb;
+        }
+    }
+    return found;
+}
+
+fn hasSelector(list: []const u8, selector: []const u8) bool {
+    var parts = std.mem.splitScalar(u8, list, ',');
+    while (parts.next()) |part| {
+        if (std.mem.eql(u8, std.mem.trim(u8, part, " \t\r\n"), selector)) return true;
+    }
+    return false;
+}
+
+/// The colors of a theme by name (null for the default), resolved as the launcher would.
+fn themeColorsFor(allocator: std.mem.Allocator, name: ?[]const u8) Colors {
+    const resolved = if (name != null and std.mem.eql(u8, name.?, "native"))
+        theme.resolveNative(allocator)
+    else
+        theme.resolve(allocator, name);
+    defer if (resolved.allocation) |memory| allocator.free(memory);
+    return parseColors(resolved.qss);
 }
 
 /// QSS draws a dropdown arrow only from an image file, so a chevron in the theme's text color
@@ -307,9 +390,10 @@ fn styleSheet(allocator: std.mem.Allocator, c: Colors, arrow: []const u8) ![]u8 
 
 // Building the window ---------------------------------------------------------
 
-fn build(state: *State) !void {
+/// `active_qss` is the style sheet the app is running with; the window takes its colors.
+fn build(state: *State, active_qss: []const u8) !void {
     const t = lang.get();
-    g_colors = themeColors();
+    g_colors = parseColors(active_qss);
     const arrow = writeArrow(state.allocator, state.io, g_colors.foreground);
     defer if (arrow) |path| state.allocator.free(path);
     const qss = try styleSheet(state.allocator, g_colors, arrow orelse "");
@@ -359,6 +443,7 @@ fn build(state: *State) !void {
             inline else => |widget| addRow(card, text(field.key), text(field.key ++ "_hint"), widget),
         }
     }
+    addThemeSwatches(state.allocator, state.controls[fieldIndex("theme")].combo);
 
     addNavItem(nav, plugins_icon, t.settings_page_plugins);
     const plugin_page = addPage(state.pages, t.settings_page_plugins, t.settings_page_plugins_hint);
@@ -419,10 +504,66 @@ fn buildSidebar(root: qt.QHBoxLayout) qt.QListWidget {
     return nav;
 }
 
-fn addNavItem(nav: qt.QListWidget, icon_name: []const u8, name: []const u8) void {
-    const icon = icons.load(icon_name);
+fn addNavItem(nav: qt.QListWidget, svg: []const u8, name: []const u8) void {
+    var hex: [7]u8 = undefined;
+    const color = std.fmt.bufPrint(&hex, "{f}", .{g_colors.background.mix(g_colors.foreground, 0.85)}) catch unreachable;
+    const icon = action_icons.tinted(nav, svg, color) orelse qt.QIcon.new();
     defer icon.delete();
     nav.addItem2(qt.QListWidgetItem.new3(icon, name));
+}
+
+/// Gives every theme in the dropdown a swatch of its background, field and accent colors.
+fn addThemeSwatches(allocator: std.mem.Allocator, combo: qt.QComboBox) void {
+    const ratio = @max(combo.screen().devicePixelRatio(), 1.0);
+    const icon_size = qt.QSize.new4(swatch_width, swatch_height);
+    defer icon_size.delete();
+    combo.setIconSize(icon_size);
+    var index: i32 = 0;
+    while (index < combo.count()) : (index += 1) {
+        // Index 0 is "Default", which resolves like no theme at all.
+        const name = combo.itemText(allocator, index);
+        defer allocator.free(name);
+        const colors = themeColorsFor(allocator, if (index == 0) null else name);
+        const icon = swatch(colors, ratio);
+        defer icon.delete();
+        combo.setItemIcon(index, icon);
+    }
+}
+
+const swatch_width = 38;
+const swatch_height = 14;
+
+/// Three overlapping dots (background, field, accent), each ringed in this window's field
+/// color so dark dots stay visible on a dark dropdown.
+fn swatch(colors: Colors, ratio: f64) qt.QIcon {
+    const scale = struct {
+        fn px(value: f64, r: f64) i32 {
+            return @intFromFloat(@round(value * r));
+        }
+    };
+    const pixmap = qt.QPixmap.new2(scale.px(swatch_width, ratio), scale.px(swatch_height, ratio));
+    defer pixmap.delete();
+    pixmap.setDevicePixelRatio(ratio);
+    const transparent = qt.QColor.new15(0, 0, 0, 0);
+    defer transparent.delete();
+    pixmap.fill1(transparent);
+
+    const painter = qt.QPainter.new();
+    defer painter.delete();
+    if (painter.begin(pixmap)) {
+        painter.setRenderHint(qt.qpainter_enums.RenderHint.Antialiasing);
+        painter.setPen3(qt.qnamespace_enums.PenStyle.NoPen);
+        const dots = [_]Rgb{ colors.background, colors.field, colors.accent };
+        for (dots, 0..) |rgb, i| {
+            const x = @as(i32, @intCast(i)) * 12;
+            fill(painter, g_colors.field.mix(g_colors.foreground, 0.35));
+            painter.drawEllipse3(x, 0, swatch_height, swatch_height);
+            fill(painter, rgb);
+            painter.drawEllipse3(x + 2, 2, swatch_height - 4, swatch_height - 4);
+        }
+        _ = painter.end();
+    }
+    return qt.QIcon.new2(pixmap);
 }
 
 /// Adds a scrollable page with a title and description; returns the layout for its cards.
@@ -561,17 +702,28 @@ fn paintSwitch(toggle: qt.QCheckBox, _: qt.QPaintEvent) callconv(.c) void {
     painter.setRenderHint(qt.qpainter_enums.RenderHint.Antialiasing);
     painter.setPen3(qt.qnamespace_enums.PenStyle.NoPen);
 
+    // On is a filled accent track; off is an empty outlined track with a dimmer knob, so the
+    // two read differently even when a theme's accent is a muted grey.
     const width = toggle.width();
     const height = toggle.height();
     const on = toggle.isChecked();
-    const track_rgb = if (on) g_colors.accent else g_colors.background.mix(g_colors.foreground, 0.25);
-    fill(painter, track_rgb);
     const radius: f64 = @floatFromInt(@divTrunc(height, 2));
-    painter.drawRoundedRect2(0, 0, width, height, radius, radius);
+    if (on) {
+        fill(painter, g_colors.accent);
+        painter.drawRoundedRect2(0, 0, width, height, radius, radius);
+    } else {
+        const border = 2;
+        fill(painter, g_colors.background.mix(g_colors.foreground, 0.35));
+        painter.drawRoundedRect2(0, 0, width, height, radius, radius);
+        fill(painter, g_colors.background.mix(g_colors.foreground, 0.04));
+        painter.drawRoundedRect2(border, border, width - 2 * border, height - 2 * border, radius - border, radius - border);
+    }
 
-    const inset = 3;
+    const inset = 4;
     const knob = height - 2 * inset;
-    fill(painter, .{ .r = 255, .g = 255, .b = 255 });
+    // White on a dark or saturated accent; the window background on a very light one.
+    const knob_on: Rgb = if (g_colors.accent.lightness() > 0.75) g_colors.background else .{ .r = 255, .g = 255, .b = 255 };
+    fill(painter, if (on) knob_on else g_colors.background.mix(g_colors.foreground, 0.55));
     painter.drawEllipse3(if (on) width - knob - inset else inset, inset, knob, knob);
     _ = painter.end();
 }
@@ -793,11 +945,14 @@ test "settings window shows the saved config and saves every change" {
         },
         .disabled = cfg.disabled_plugins,
     };
-    try build(&state);
+    try build(&state, dracula.qss);
     defer destroy(&state);
     showValues(&state, cfg);
     g_state = &state;
     defer g_state = null;
+    // Every theme in the dropdown has a swatch.
+    const theme_combo = state.controls[fieldIndex("theme")].combo;
+    try std.testing.expect(!theme_combo.itemIcon(theme_combo.count() - 1).isNull());
 
     // The theme's own colors drive the window: Dracula's background and search bar accent.
     try std.testing.expectEqual(Rgb{ .r = 0x28, .g = 0x2a, .b = 0x36 }, g_colors.background);
@@ -871,6 +1026,28 @@ test "settings window shows the saved config and saves every change" {
         }
     }
     try std.testing.expectEqual(@as(usize, 1), defaults.disabled_plugins.len); // "gone" isn't installed
+}
+
+test "theme colors come from the style sheet, with the most saturated accent" {
+    // The default dark theme's accent is its focused search bar border, not the grey selection.
+    const dark = theme.resolve(std.testing.allocator, "dark");
+    defer if (dark.allocation) |m| std.testing.allocator.free(m);
+    const colors = parseColors(dark.qss);
+    try std.testing.expectEqual(Rgb{ .r = 0x1a, .g = 0x1b, .b = 0x1e }, colors.background);
+    try std.testing.expectEqual(Rgb{ .r = 0x31, .g = 0x32, .b = 0x44 }, colors.field);
+    try std.testing.expectEqual(Rgb{ .r = 0x89, .g = 0xb4, .b = 0xfa }, colors.accent);
+
+    // Selector lists match, later rules win, comments are skipped, and "color" doesn't match
+    // "border-color" or "selection-color".
+    const qss =
+        \\/* base */ QWidget { color: #111; }
+        \\QLabel, QWidget { border-color: #f00; selection-color: #0f0; color: #abc; }
+        \\QWidget#other { color: #fff; }
+        \\QWidget { color: palette(text); }
+    ;
+    try std.testing.expectEqual(Rgb{ .r = 0xaa, .g = 0xbb, .b = 0xcc }, ruleColor(qss, "QWidget", "color").?);
+    try std.testing.expect(ruleColor(qss, "QWidget", "background-color") == null);
+    try std.testing.expect(Rgb.parse("#12345") == null and Rgb.parse("red") == null);
 }
 
 test "easing choices are exactly the names the animation parser accepts" {
