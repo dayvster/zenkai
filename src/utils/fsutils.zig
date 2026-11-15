@@ -50,8 +50,9 @@ pub fn readFile(allocator: std.mem.Allocator, path: []const u8, max_size: usize)
     return try reader.interface.readAlloc(allocator, size);
 }
 
+// Creates missing parents too: a fresh account may not have ~/.config yet.
 pub fn makeDir(io: std.Io, path: []const u8) !void {
-    try std.Io.Dir.createDirAbsolute(io, path, .default_dir);
+    try std.Io.Dir.cwd().createDirPath(io, path);
 }
 
 fn readDirInternal(
