@@ -6,6 +6,7 @@ const applist = @import("list.zig");
 const ListItemAction = @import("list.zig").ListItemAction;
 const info = @import("info.zig");
 const lang = @import("lang");
+const action_icons = @import("action_icons.zig");
 
 const HBoxLayout = qt.QHBoxLayout;
 const QAction = qt.QAction;
@@ -19,6 +20,76 @@ const QResizeEvent = qt.QResizeEvent;
 
 var g_app_list: *applist.List = undefined;
 var g_bar: *BottomBar = undefined;
+
+// Line icons on a 24px grid, drawn in the theme's text color (`currentColor`).
+const icon_attributes = "xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"";
+/// Open: an arrow leaving a box.
+pub const open_icon = "<svg " ++ icon_attributes ++ "><path d=\"M14 4h6v6M20 4l-8.5 8.5\"/><path d=\"M18 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4.5\"/></svg>";
+/// Actions: a lightning bolt.
+pub const actions_icon = "<svg " ++ icon_attributes ++ "><path d=\"M13 3 5 13.5h6L10 21l8-10.5h-6L13 3Z\"/></svg>";
+/// The Return key: an arrow turning left.
+const return_icon = "<svg " ++ icon_attributes ++ "><path d=\"M20 5v6.5a3 3 0 0 1-3 3H5\"/><path d=\"m9 10.5-4 4 4 4\"/></svg>";
+
+/// How an item's shortcut is shown: the Return key as an arrow icon and its name, anything
+/// else ("Ctrl+K") as one key per part.
+pub const Keys = union(enum) {
+    enter,
+    combo: []const u8,
+};
+
+/// The `#rrggbb` of a palette role on `widget`, after its style sheet has been applied. The
+/// palette and its colors are references owned by the widget, so nothing is deleted.
+fn roleColor(widget: anytype, role: i32, out: *[7]u8) []const u8 {
+    widget.ensurePolished();
+    const color = widget.palette().color2(role);
+    return std.fmt.bufPrint(out, "#{x:0>2}{x:0>2}{x:0>2}", .{
+        @as(u8, @intCast(color.red())),
+        @as(u8, @intCast(color.green())),
+        @as(u8, @intCast(color.blue())),
+    }) catch unreachable;
+}
+
+/// Gives `button` a line icon in its own text color. The button must already be inside the
+/// widget the theme styles (#bottomBar), so the color is the theme's.
+pub fn tintButton(button: QToolButton, action: QAction, svg: []const u8) void {
+    var hex: [7]u8 = undefined;
+    const color = roleColor(button, qt.qpalette_enums.ColorRole.ButtonText, &hex);
+    const icon = action_icons.tinted(button, svg, color) orelse return;
+    defer icon.delete();
+    action.setIcon(icon);
+}
+
+/// Adds an item's shortcut to `row`. The row's widget must already sit in #bottomBar so the
+/// labels get the theme's muted color. No borders: Return is its name and an arrow, other
+/// keys are small filled keycaps (#actionKey).
+pub fn addShortcut(row: HBoxLayout, keys: Keys) void {
+    switch (keys) {
+        .enter => {
+            const name = QLabel.new3(lang.get().bottom_bar_return);
+            name.setObjectName("actionShortcut");
+            row.addWidget(name);
+            const arrow = QLabel.new3("");
+            arrow.setObjectName("actionShortcut");
+            row.addWidget(arrow);
+            var hex: [7]u8 = undefined;
+            const color = roleColor(arrow, qt.qpalette_enums.ColorRole.WindowText, &hex);
+            const icon = action_icons.tinted(arrow, return_icon, color) orelse return;
+            defer icon.delete();
+            const pixmap = icon.pixmap2(14, 14);
+            defer pixmap.delete();
+            arrow.setPixmap(pixmap);
+        },
+        .combo => |shortcut| {
+            var parts = std.mem.splitScalar(u8, shortcut, '+');
+            while (parts.next()) |part| {
+                const key = QLabel.new3(part);
+                key.setObjectName("actionKey");
+                // Centred at their own height instead of stretching to the item's.
+                row.addWidget3(key, 0, qt.qnamespace_enums.AlignmentFlag.AlignVCenter);
+            }
+        },
+    }
+}
 
 pub const Action = struct {
     icon: QIcon,
@@ -123,9 +194,12 @@ pub const BottomBar = struct {
         return action;
     }
 
-    fn buildItem(self: *BottomBar, action: QAction, shortcut_text: []const u8) QWidget {
+    /// `svg` replaces the action's icon with a line icon in the theme's text color.
+    fn buildItem(self: *BottomBar, action: QAction, keys: Keys, svg: ?[]const u8) QWidget {
         const el = QWidget.new2();
         el.setObjectName("actionItem");
+        // Parent first so the theme's #bottomBar rules reach the labels and icons below.
+        el.setParent(self.container);
         var row = HBoxLayout.new(el);
         row.setContentsMargins(0, 0, 0, 0);
         row.setSpacing(6);
@@ -137,14 +211,12 @@ pub const BottomBar = struct {
         button.setFocusPolicy(qt.qnamespace_enums.FocusPolicy.NoFocus);
         button.setToolButtonStyle(qt.qnamespace_enums.ToolButtonStyle.ToolButtonTextBesideIcon);
         row.addWidget(button);
+        if (svg) |icon| tintButton(button, action, icon);
 
-        if (shortcut_text.len > 0) {
-            const label = QLabel.new3(shortcut_text);
-            label.setObjectName("actionShortcut");
-            row.addWidget(label);
+        switch (keys) {
+            .combo => |shortcut| if (shortcut.len > 0) addShortcut(row, keys),
+            .enter => addShortcut(row, keys),
         }
-
-        el.setParent(self.container);
         return el;
     }
 
@@ -177,21 +249,15 @@ pub const BottomBar = struct {
         if (actions.len > 0) {
             for (actions, 0..) |a, i| {
                 self.actions[i] = self.buildAction(a.icon, a.text, a.shortcut, a.callback);
-                self.items[i] = self.buildItem(self.actions[i], a.shortcut);
+                self.items[i] = self.buildItem(self.actions[i], .{ .combo = a.shortcut }, null);
             }
         } else {
-            {
-                const icon = QIcon.fromTheme("document-open");
-                defer icon.delete();
-                self.actions[0] = self.buildAction(icon, lang.get().bottom_bar_open, "", onOpen);
-                self.items[0] = self.buildItem(self.actions[0], lang.get().bottom_bar_return);
-            }
-            {
-                const icon = QIcon.fromTheme("dialog-information");
-                defer icon.delete();
-                self.actions[1] = self.buildAction(icon, lang.get().bottom_bar_actions, "", onActions);
-                self.items[1] = self.buildItem(self.actions[1], "Ctrl+K");
-            }
+            const no_icon = QIcon.new();
+            defer no_icon.delete();
+            self.actions[0] = self.buildAction(no_icon, lang.get().bottom_bar_open, "", onOpen);
+            self.items[0] = self.buildItem(self.actions[0], .enter, open_icon);
+            self.actions[1] = self.buildAction(no_icon, lang.get().bottom_bar_actions, "", onActions);
+            self.items[1] = self.buildItem(self.actions[1], .{ .combo = "Ctrl+K" }, actions_icon);
         }
 
         self.layoutItems();

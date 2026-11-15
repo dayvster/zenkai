@@ -48,9 +48,17 @@ QWidget {
 }
 
 #actionShortcut {
-    border: 1px solid palette(mid);
+    border: none;
+    font-size: 11px;
+}
+
+/* One key of a shortcut such as Ctrl+K: a filled key without a border. The translucent fill
+   works on light and dark themes; the extra ids outrank themes' #bottomBar QLabel rules. */
+#bottomBar QLabel#actionKey {
+    background: rgba(128, 128, 128, 0.22);
+    border: none;
     border-radius: 4px;
-    padding: 2px 5px;
+    padding: 1px 6px;
     font-size: 11px;
 }
 
