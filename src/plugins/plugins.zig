@@ -594,6 +594,118 @@ const PendingPlugin = struct {
     }
 };
 
+/// Plugin directories in search order. When two directories contain a plugin with the same
+/// name, the earlier one wins, so user directories override bundled plugins.
+pub fn pluginDirs(allocator: std.mem.Allocator, io: std.Io) ![][]u8 {
+    var dirs: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (dirs.items) |dir| allocator.free(dir);
+        dirs.deinit(allocator);
+    }
+    const user_dirs = if (comptime builtin.os.tag == .windows)
+        [_]?[]u8{config.userPluginConfigDir(allocator) catch null}
+    else
+        [_]?[]u8{ config.userPluginDataDir(allocator) catch null, config.userPluginConfigDir(allocator) catch null };
+    for (user_dirs) |maybe_dir| {
+        const dir = maybe_dir orelse continue;
+        dirs.append(allocator, dir) catch |err| {
+            allocator.free(dir);
+            return err;
+        };
+    }
+    for (loader.standard_plugin_dirs) |dir_path| {
+        if (std.fs.path.isAbsolute(dir_path)) {
+            try dirs.append(allocator, try allocator.dupe(u8, dir_path));
+            continue;
+        }
+        const exe_dir = std.process.executableDirPathAlloc(io, allocator) catch continue;
+        defer allocator.free(exe_dir);
+        const resolved = try std.fs.path.join(allocator, &.{ exe_dir, dir_path });
+        dirs.append(allocator, resolved) catch |err| {
+            allocator.free(resolved);
+            return err;
+        };
+    }
+    return try dirs.toOwnedSlice(allocator);
+}
+
+pub fn freePluginDirs(allocator: std.mem.Allocator, dirs: []const []u8) void {
+    for (dirs) |dir| allocator.free(dir);
+    allocator.free(dirs);
+}
+
+fn containsName(names: []const []const u8, name: []const u8) bool {
+    for (names) |candidate| {
+        if (std.mem.eql(u8, candidate, name)) return true;
+    }
+    return false;
+}
+
+pub const PluginInfo = struct {
+    name: []u8,
+    description: []u8,
+};
+
+/// Plugins available on this platform, read from their manifests without loading any Lua.
+pub fn listPlugins(allocator: std.mem.Allocator, io: std.Io) ![]PluginInfo {
+    const dirs = try pluginDirs(allocator, io);
+    defer freePluginDirs(allocator, dirs);
+    return listPluginsIn(allocator, io, dirs);
+}
+
+/// Sorted by name; a name found in several directories is listed once, like loading does.
+fn listPluginsIn(allocator: std.mem.Allocator, io: std.Io, dirs: []const []const u8) ![]PluginInfo {
+    var list: std.ArrayList(PluginInfo) = .empty;
+    errdefer {
+        for (list.items) |info| {
+            allocator.free(info.name);
+            allocator.free(info.description);
+        }
+        list.deinit(allocator);
+    }
+
+    for (dirs) |dir_path| {
+        var dir = std.Io.Dir.openDir(std.Io.Dir.cwd(), io, dir_path, .{ .iterate = true }) catch continue;
+        defer dir.close(io);
+        var iter = dir.iterate();
+        while (iter.next(io) catch null) |entry| {
+            if (entry.kind != .directory) continue;
+            const manifest_path = try std.fs.path.join(allocator, &.{ dir_path, entry.name, "manifest.json" });
+            defer allocator.free(manifest_path);
+            const source = loader.readFile(allocator, manifest_path) catch continue;
+            defer allocator.free(source);
+            const parsed = std.json.parseFromSlice(Manifest, allocator, source, .{}) catch continue;
+            defer parsed.deinit();
+            const manifest = parsed.value;
+            if (manifest.name.len == 0 or (manifest.disabled orelse false) or !supportsCurrentPlatform(manifest.platforms)) continue;
+
+            var seen = false;
+            for (list.items) |info| seen = seen or std.mem.eql(u8, info.name, manifest.name);
+            if (seen) continue;
+
+            const name = try allocator.dupe(u8, manifest.name);
+            errdefer allocator.free(name);
+            const description = try allocator.dupe(u8, manifest.description orelse "");
+            errdefer allocator.free(description);
+            try list.append(allocator, .{ .name = name, .description = description });
+        }
+    }
+    std.mem.sort(PluginInfo, list.items, {}, struct {
+        fn lessThan(_: void, a: PluginInfo, b: PluginInfo) bool {
+            return std.mem.lessThan(u8, a.name, b.name);
+        }
+    }.lessThan);
+    return try list.toOwnedSlice(allocator);
+}
+
+pub fn freePluginList(allocator: std.mem.Allocator, list: []const PluginInfo) void {
+    for (list) |info| {
+        allocator.free(info.name);
+        allocator.free(info.description);
+    }
+    allocator.free(list);
+}
+
 pub fn matchesActivation(prefixes: []const []const u8, query: []const u8) bool {
     for (prefixes) |prefix| {
         if (prefix.len > 0 and query.len >= prefix.len and
@@ -641,6 +753,8 @@ pub const PluginManager = struct {
     pending_query: ?[]u8 = null,
     pending: std.ArrayList(PendingPlugin) = .empty,
     plugin_filter: []const []const u8 = &.{},
+    // From the config's disabled_plugins; ignored when --plugin names plugins explicitly.
+    disabled_plugins: []const []const u8 = &.{},
     initialized: bool = false,
 
     pub fn ensureInitialized(self: *PluginManager) void {
@@ -724,34 +838,9 @@ pub const PluginManager = struct {
     pub fn discoverAndLoad(self: *PluginManager, plugin_filter: []const []const u8) void {
         g_active_manager = self;
         const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
-
-        if (comptime builtin.os.tag == .windows) {
-            if (config.userPluginConfigDir(self.allocator) catch null) |dir_path| {
-                defer self.allocator.free(dir_path);
-                scanPluginDir(self, io, dir_path, plugin_filter);
-            }
-        } else {
-            if (config.userPluginDataDir(self.allocator) catch null) |dir_path| {
-                defer self.allocator.free(dir_path);
-                scanPluginDir(self, io, dir_path, plugin_filter);
-            }
-            if (config.userPluginConfigDir(self.allocator) catch null) |dir_path| {
-                defer self.allocator.free(dir_path);
-                scanPluginDir(self, io, dir_path, plugin_filter);
-            }
-        }
-
-        for (loader.standard_plugin_dirs) |dir_path| {
-            if (std.fs.path.isAbsolute(dir_path)) {
-                scanPluginDir(self, io, dir_path, plugin_filter);
-                continue;
-            }
-            const exe_dir = std.process.executableDirPathAlloc(io, self.allocator) catch continue;
-            defer self.allocator.free(exe_dir);
-            const resolved = std.fs.path.join(self.allocator, &.{ exe_dir, dir_path }) catch continue;
-            defer self.allocator.free(resolved);
-            scanPluginDir(self, io, resolved, plugin_filter);
-        }
+        const dirs = pluginDirs(self.allocator, io) catch return;
+        defer freePluginDirs(self.allocator, dirs);
+        for (dirs) |dir_path| scanPluginDir(self, io, dir_path, plugin_filter);
     }
 
     fn loadPlugin(self: *PluginManager, plugins_base_dir: []const u8, dir_name: []const u8, allow_lazy: bool) void {
@@ -796,6 +885,11 @@ pub const PluginManager = struct {
         }
         if ((parsed_manifest.disabled orelse false) or parsed_manifest.name.len == 0 or parsed_manifest.main.len == 0) {
             utils.log.info("plugin '{s}': disabled or missing name/main", .{dir_name});
+            parsed.deinit();
+            return;
+        }
+        if (self.plugin_filter.len == 0 and containsName(self.disabled_plugins, parsed_manifest.name)) {
+            utils.log.info("plugin '{s}': disabled in config", .{parsed_manifest.name});
             parsed.deinit();
             return;
         }
@@ -1135,6 +1229,61 @@ fn reapChild(data: *ThreadData) void {
     var status: c_int = 0;
     _ = std.c.waitpid(data.pid, &status, 0);
     data.allocator.destroy(data);
+}
+
+test "plugins in disabled_plugins are skipped unless selected with --plugin" {
+    const a = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "quiet");
+    try tmp.dir.writeFile(io, .{ .sub_path = "quiet/manifest.json", .data =
+        \\{"name":"quiet","main":"main.lua","activation_prefixes":["q:"]}
+    });
+    const base = try tmp.dir.realPathFileAlloc(io, ".", a);
+    defer a.free(base);
+
+    var pm = PluginManager.init(a);
+    defer pm.deinit();
+    pm.initialized = true;
+    pm.disabled_plugins = &.{"quiet"};
+    pm.loadPlugin(base, "quiet", true);
+    try std.testing.expectEqual(@as(usize, 0), pm.pending.items.len);
+
+    pm.plugin_filter = &.{"quiet"};
+    pm.loadPlugin(base, "quiet", true);
+    try std.testing.expectEqual(@as(usize, 1), pm.pending.items.len);
+}
+
+test "listPlugins reads manifests, keeps the first of duplicate names and sorts" {
+    const a = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const manifests = .{
+        .{ "user/calc/manifest.json", "{\"name\":\"calculator\",\"main\":\"main.lua\",\"description\":\"mine\"}" },
+        .{ "bundled/calc/manifest.json", "{\"name\":\"calculator\",\"main\":\"main.lua\",\"description\":\"bundled\"}" },
+        .{ "bundled/b/manifest.json", "{\"name\":\"browser\",\"main\":\"main.lua\"}" },
+        .{ "bundled/off/manifest.json", "{\"name\":\"off\",\"main\":\"main.lua\",\"disabled\":true}" },
+        .{ "bundled/elsewhere/manifest.json", "{\"name\":\"elsewhere\",\"main\":\"main.lua\",\"platforms\":[\"plan9\"]}" },
+        .{ "bundled/broken/manifest.json", "not json" },
+    };
+    inline for (manifests) |m| {
+        try tmp.dir.createDirPath(io, std.fs.path.dirname(m[0]).?);
+        try tmp.dir.writeFile(io, .{ .sub_path = m[0], .data = m[1] });
+    }
+    const user = try tmp.dir.realPathFileAlloc(io, "user", a);
+    defer a.free(user);
+    const bundled = try tmp.dir.realPathFileAlloc(io, "bundled", a);
+    defer a.free(bundled);
+
+    const list = try listPluginsIn(a, io, &.{ user, bundled, "/nonexistent/zenkai/plugins" });
+    defer freePluginList(a, list);
+    try std.testing.expectEqual(@as(usize, 2), list.len);
+    try std.testing.expectEqualStrings("browser", list[0].name);
+    try std.testing.expectEqualStrings("", list[0].description);
+    try std.testing.expectEqualStrings("calculator", list[1].name);
+    try std.testing.expectEqualStrings("mine", list[1].description);
 }
 
 test "lazy plugin loads on first matching query and starts once" {

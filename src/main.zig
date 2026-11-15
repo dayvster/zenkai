@@ -165,6 +165,7 @@ pub fn main(init: std.process.Init) !void {
         p.copy_text = ui.copyText;
         p.http_get = ui.http.get;
         p.file_action = @import("ui/file_actions.zig").perform;
+        p.disabled_plugins = ctx.visual.disabled_plugins;
         if (ctx.visual.clipboard) |clip| {
             if (clip.len > 0) p.clipboard_cmd = init.gpa.dupe(u8, clip) catch null;
         }
