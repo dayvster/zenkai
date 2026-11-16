@@ -20,12 +20,13 @@ Still to do:
 
 ## Up next
 
-- [ ] **Background service with a toggle command.** zenkai starts a new process on every
-      launch. A resident service that a hotkey shows and hides would open instantly and keep the
-      app cache, the window list and plugin state warm. Clipboard history and per-command
-      hotkeys build on it.
-- [ ] **Clipboard history.** Search, pin and paste past copies. Needs the background service to
-      watch the clipboard (`wl-paste --watch` on Wayland).
+- [ ] **Optional background service with a toggle command.** zenkai starts a new process on
+      every launch, and that stays the default. Anyone who wants it can opt into a resident
+      service that a hotkey shows and hides: it opens instantly and keeps the app cache, the
+      window list and plugin state warm. Clipboard history and per-command hotkeys build on it,
+      so they only work with the service turned on.
+- [ ] **Clipboard history.** Search, pin and paste past copies. Needs the optional background
+      service to watch the clipboard (`wl-paste --watch` on Wayland).
 - [ ] **System commands.** Lock, sleep, log out, restart, shut down and empty trash in the main
       search, for every desktop. Today only the Hyprland plugin has lock and sleep.
 - [ ] **dmenu mode.** Read entries from stdin and print the chosen one, so scripts can use
@@ -37,7 +38,7 @@ Still to do:
 - [ ] **Aliases**: a short keyword that runs a specific command.
 - [ ] **Favourites** pinned to the top of an empty search.
 - [ ] **Ranking by use for plugin results**, not only for apps.
-- [ ] **Global hotkeys per command** (needs the background service).
+- [ ] **Global hotkeys per command** (needs the optional background service).
 
 ## Plugin API
 
