@@ -3,9 +3,7 @@
 Where zenkai is heading, roughly in order. Nothing here has a date, and the order can change.
 Ideas and pull requests for anything on this list are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Next release (v1.6)
-
-Already on `main`:
+## v1.6 (released)
 
 - [x] Settings window: appearance with a live preview, themes, plugins, opacity, corner radius
       and text sizes.
@@ -13,10 +11,7 @@ Already on `main`:
 - [x] Bottom bar with borderless shortcuts and line icons.
 - [x] Developer toolbox plugin (`dev:`) and `api.now` for plugins.
 - [x] Square app icon, used by the AUR packages.
-
-Still to do:
-
-- [ ] Publish the source-built `zenkai` package on the AUR (`zenkai-bin` is already there).
+- [x] Source-built `zenkai` package on the AUR, next to `zenkai-bin`.
 
 ## Up next
 
