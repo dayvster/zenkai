@@ -14,9 +14,12 @@ makedepends=('zig>=0.17' 'git')
 optdepends=('qt6-wayland: Wayland support'
             'xdg-utils: open URLs and files'
             'wmctrl: window layout actions on X11'
-            'xorg-xrandr: monitor layout actions on X11')
+            'xorg-xrandr: monitor layout actions on X11'
+            'kwinctl: control KDE Plasma windows from the command line')
 provides=('zenkai')
 conflicts=('zenkai-bin')
+# The build strips the binary, so a debug package would be empty.
+options=('!debug')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/dayvster/zenkai/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP') # replaced by updpkgsums once v1.6 is tagged; see ../README.md
 

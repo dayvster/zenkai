@@ -7,7 +7,8 @@
 
 Both install the same files (binary, desktop entry, icon, plugins and translations under
 `/usr/share/zenkai`) and conflict with each other. KDE Plasma window switching (kwinctl) is
-compiled into both.
+compiled into both. The `kwinctl` command-line tool is packaged separately from
+[its own repository](https://github.com/dayvster/kwinctl) and is an optional dependency here.
 
 ## Publishing a package for the first time
 
