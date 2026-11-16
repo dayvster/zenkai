@@ -21,7 +21,7 @@ conflicts=('zenkai-bin')
 # The build strips the binary, so a debug package would be empty.
 options=('!debug')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/dayvster/zenkai/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP') # replaced by updpkgsums once v1.6 is tagged; see ../README.md
+sha256sums=('a8894fdde353eb3498d7c18594915d9eb494c3e3a5344bcf8c573915cfa75647')
 
 prepare() {
     cd "$pkgname-$pkgver"
