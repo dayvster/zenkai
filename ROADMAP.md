@@ -1,0 +1,61 @@
+# Roadmap
+
+Where zenkai is heading, roughly in order. Nothing here has a date, and the order can change.
+Ideas and pull requests for anything on this list are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Next release (v1.6)
+
+Already on `main`:
+
+- [x] Settings window: appearance with a live preview, themes, plugins, opacity, corner radius
+      and text sizes.
+- [x] Ember theme.
+- [x] Bottom bar with borderless shortcuts and line icons.
+- [x] Developer toolbox plugin (`dev:`) and `api.now` for plugins.
+- [x] Square app icon, used by the AUR packages.
+
+Still to do:
+
+- [ ] Publish the source-built `zenkai` package on the AUR (`zenkai-bin` is already there).
+
+## Up next
+
+- [ ] **Optional background service with a toggle command.** zenkai starts a new process on
+      every launch, and that stays the default. Anyone who wants it can opt into a resident
+      service that a hotkey shows and hides: it opens instantly and keeps the app cache, the
+      window list and plugin state warm. Clipboard history and per-command hotkeys build on it,
+      so they only work with the service turned on.
+- [ ] **Clipboard history.** Search, pin and paste past copies. Needs the optional background
+      service to watch the clipboard (`wl-paste --watch` on Wayland).
+- [ ] **System commands.** Lock, sleep, log out, restart, shut down and empty trash in the main
+      search, for every desktop. Today only the Hyprland plugin has lock and sleep.
+- [ ] **dmenu mode.** Read entries from stdin and print the chosen one, so scripts can use
+      zenkai as a picker.
+
+## Root search
+
+- [ ] **Fallback commands**, such as "Search the web for ...", when nothing matches.
+- [ ] **Aliases**: a short keyword that runs a specific command.
+- [ ] **Favourites** pinned to the top of an empty search.
+- [ ] **Ranking by use for plugin results**, not only for apps.
+- [ ] **Global hotkeys per command** (needs the optional background service).
+
+## Plugin API
+
+- [ ] **Sub-views**: open a second list from a result, such as a repository's issues.
+- [ ] **Detail views** with formatted text, for things like full JSON or a diff.
+- [ ] **Forms and argument fields**: text inputs and dropdowns before a command runs.
+- [ ] **Grid layout** for emoji, colours and images.
+- [ ] **Toasts** for short confirmations and errors.
+- [ ] **A plugin index** and an install command, so plugins can be found and updated without
+      copying folders by hand.
+
+## Later
+
+- [ ] **Snippets that type themselves** into other apps when you type their keyword. On Wayland
+      this needs a virtual keyboard tool such as `wtype` or `ydotool`.
+- [ ] **Indexed file search**, instead of walking folders at query time.
+- [ ] **Calculator history.**
+- [ ] **Emoji skin tones.**
+- [ ] **Window placement through layer-shell on Wayland**, so compositors like KWin stop placing
+      the launcher in the top-left corner.
