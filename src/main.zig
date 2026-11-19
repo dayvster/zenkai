@@ -18,6 +18,7 @@ const core_freq = @import("core_freq");
 const lang = @import("lang");
 const service = @import("core/service.zig");
 const resident = @import("ui/resident.zig");
+const clipboard_history = @import("core/clipboard_history.zig");
 
 var g_app_refresh_window: ?*ui.Window = null;
 var g_app_refresh_timer: ?qt.QTimer = null;
@@ -90,30 +91,79 @@ extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
 extern fn setenv([*:0]const u8, [*:0]const u8, i32) i32;
 extern var __stderrp: *anyopaque;
 
-/// Handles --toggle and --quit-service before Qt starts, so showing the background service's
-/// launcher costs a socket write. True when there's nothing left to do. Without a service,
-/// --toggle carries on and starts zenkai normally.
+/// Handles --toggle, --quit-service and --clipboard-store before Qt starts, so talking to the
+/// background service costs a socket write. True when there's nothing left to do. Without a
+/// service, --toggle carries on and starts zenkai normally.
 fn sendServiceCommand(init: std.process.Init) !bool {
     var toggle = false;
     var quit_service = false;
     var window_switcher = false;
+    var clipboard = false;
     var it = try init.minimal.args.iterateAllocator(init.gpa);
     defer it.deinit();
     while (it.next()) |arg| {
         if (std.mem.eql(u8, arg, "--toggle")) toggle = true;
         if (std.mem.eql(u8, arg, "--quit-service")) quit_service = true;
         if (std.mem.eql(u8, arg, "--window-switcher")) window_switcher = true;
+        if (std.mem.eql(u8, arg, "--clipboard-history")) clipboard = true;
+        if (std.mem.eql(u8, arg, "--clipboard-store")) {
+            storeClipboard(init.gpa);
+            return true;
+        }
     }
     if (quit_service) {
         if (!service.send(.quit)) std.debug.print("No background service is running.\n", .{});
         return true;
     }
-    return toggle and service.send(if (window_switcher) .toggle_window_switcher else .toggle_launcher);
+    const command: service.Command = if (window_switcher) .toggle_window_switcher else if (clipboard) .toggle_clipboard else .toggle_launcher;
+    return toggle and service.send(command);
+}
+
+/// `zenkai --clipboard-store`, which wl-paste runs for every copy on Wayland with the copied
+/// text on stdin. Hands it to the background service, unless wl-paste flagged it as a
+/// password.
+fn storeClipboard(allocator: std.mem.Allocator) void {
+    // Whatever happens, read the copy to the end, so the app writing it never hits a
+    // closed pipe.
+    defer drainStdin();
+    const state = if (std.c.getenv("CLIPBOARD_STATE")) |value| std.mem.span(value) else null;
+    if (!@import("ui/clipboard_watch.zig").shouldStore(state)) return;
+    const text = allocator.alloc(u8, clipboard_history.max_text_bytes + 1) catch return;
+    defer allocator.free(text);
+    var len: usize = 0;
+    while (len < text.len) {
+        const n = std.c.read(0, text[len..].ptr, text.len - len);
+        if (n <= 0) break;
+        len += @intCast(n);
+    }
+    // Too big to keep; the history would leave it out anyway.
+    if (len > clipboard_history.max_text_bytes) return;
+    _ = service.sendClip(text[0..len]);
+}
+
+fn drainStdin() void {
+    var buf: [16 * 1024]u8 = undefined;
+    while (std.c.read(0, &buf, buf.len) > 0) {}
+}
+
+/// Clipboard history comes with the `clip:` plugin, so it's off whenever that plugin is: in
+/// disabled_plugins, or left out by --plugin=NAME, or with --no-plugins.
+fn clipboardHistoryEnabled(plugin_manager: ?*const plugins.PluginManager, plugin_names: []const []const u8, disabled: []const []const u8) bool {
+    if (plugin_manager == null) return false;
+    const name = "clipboard";
+    if (plugin_names.len > 0) {
+        for (plugin_names) |selected| if (std.mem.eql(u8, selected, name)) return true;
+        return false;
+    }
+    for (disabled) |off| if (std.mem.eql(u8, off, name)) return false;
+    return true;
 }
 
 test {
     std.testing.refAllDecls(@import("core/service.zig"));
     std.testing.refAllDecls(@import("ui/resident.zig"));
+    std.testing.refAllDecls(@import("ui/clipboard_watch.zig"));
+    std.testing.refAllDecls(@import("core/clipboard_history.zig"));
     std.testing.refAllDecls(@import("ui/list.zig"));
     std.testing.refAllDecls(@import("ui/window.zig"));
     std.testing.refAllDecls(@import("ui/action_menu.zig"));
@@ -351,7 +401,11 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (ctx.cfg.service) {
-        resident.start(&window, init.gpa, .{ .config_dir = cfg_dir_opt, .on_hide = refreshStaleAppsWhileHidden }) catch |err| {
+        resident.start(&window, init.gpa, .{
+            .config_dir = cfg_dir_opt,
+            .on_hide = refreshStaleAppsWhileHidden,
+            .clipboard_history = clipboardHistoryEnabled(if (pm) |*p| p else null, plugin_names, ctx.visual.disabled_plugins),
+        }) catch |err| {
             switch (err) {
                 error.AlreadyRunning => std.debug.print("A background service is already running. Show it with zenkai --toggle.\n", .{}),
                 else => std.debug.print("Can't start the background service: {}\n", .{err}),
