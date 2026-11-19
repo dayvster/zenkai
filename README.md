@@ -300,6 +300,24 @@ Ctrl+K pins it to the top, deletes it, or clears everything that isn't pinned.
 - To turn it off, disable the `clipboard` plugin in the settings window or add it to
   `disabled_plugins` in `zenkai.conf`.
 
+### `--dmenu`, `--prompt=<text>`
+
+Turns Zenkai into a picker for scripts, like dmenu or `rofi -dmenu`: it lists the lines it
+reads on stdin, and prints the one you pick. With nothing matching, Enter prints what you
+typed. Escape prints nothing and exits with status 1, so scripts can tell you cancelled.
+`--prompt` sets the search field's placeholder.
+
+```sh
+# Switch git branches
+git branch --format='%(refname:short)' | zenkai --dmenu --prompt="Branch" | xargs -r git switch
+
+# Open a project folder
+ls ~/Workspace | zenkai --dmenu --prompt="Project" | xargs -r -I{} code ~/Workspace/{}
+```
+
+Entries keep their order, blank lines are skipped, and apps, plugins and window search stay
+out of the list. Picks don't affect app ranking.
+
 ### `--run`
 
 Opens Zenkai in Windows Run mode. Type a command or URL and press Enter to open it with the Windows shell, without a `run:` prefix.

@@ -43,6 +43,8 @@ pub const help =
     \\  --no-window-switcher      Disable the built-in win: window search
     \\  --plugin=NAME             Only load the specified plugin (may be repeated)
     \\  --run                     Windows: open Run mode and execute the typed command
+    \\  --dmenu                   Pick from lines on stdin and print the choice (exit 1 if cancelled)
+    \\  --prompt=TEXT             Placeholder text for the search field, e.g. with --dmenu
     \\  --language=CODE           Translation language code (e.g. fr, de)
     \\  --no-animations           Disable window animations
     \\  --animation-interval=MS   Animation duration in milliseconds (default: 200)
@@ -80,6 +82,8 @@ pub const Config = struct {
     service: bool = false,
     toggle: bool = false,
     quit_service: bool = false,
+    dmenu: bool = false,
+    prompt: ?[]const u8 = null,
     run_mode: bool,
     language: ?[]const u8,
     no_animations: bool,
@@ -289,6 +293,11 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.toggle = true;
         } else if (std.mem.eql(u8, arg, "--quit-service")) {
             cfg.quit_service = true;
+        } else if (std.mem.eql(u8, arg, "--dmenu")) {
+            cfg.dmenu = true;
+        } else if (std.mem.startsWith(u8, arg, "--prompt=")) {
+            const val = arg["--prompt=".len..];
+            cfg.prompt = if (val.len > 0) val else null;
         } else if (std.mem.eql(u8, arg, "--list-themes")) {
             cfg.list_themes = true;
         } else if (std.mem.eql(u8, arg, "--list-monitors")) {

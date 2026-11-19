@@ -112,6 +112,50 @@ test "layout leaves icons unloaded; painting, scrolling and filtering populate t
 
 var g_icon_size: i32 = 32;
 
+test "a pick hook receives entries instead of launching them, and null for typed text" {
+    const a = std.testing.allocator;
+    var argc: i32 = 1;
+    var arg = "zenkai".*;
+    var argv = [_][:0]u8{&arg};
+    const app = QApp.new(std.heap.page_allocator, &argc, &argv);
+    defer app.delete();
+    const filler: [300]u8 = @splat('a');
+    const long = "/home/someone/" ++ filler ++ "/target-file.txt";
+    var items = [_]ListItem{
+        .{ .name = "alpha", .cmd = "", .icon = "" },
+        .{ .name = "beta", .cmd = "", .icon = "" },
+        .{ .name = long, .cmd = "", .icon = "" },
+    };
+    var list = List.fromItems(a, &items, 32);
+    defer list.view.delete();
+    defer list.deinit();
+    list.adoptGList();
+    const Picks = struct {
+        var last: ?[]const u8 = null;
+        var calls: usize = 0;
+        fn pick(entry: ?[]const u8) void {
+            last = entry;
+            calls += 1;
+        }
+    };
+    list.on_pick = Picks.pick;
+
+    list.setFilter("BET");
+    list.launchSelected();
+    try std.testing.expectEqualStrings("beta", Picks.last.?);
+
+    // Lines longer than the typo-tolerant matcher handles still match as substrings.
+    list.setFilter("TARGET-FILE");
+    try std.testing.expectEqual(@as(usize, 1), list.indices.items.len);
+    list.launchSelected();
+    try std.testing.expectEqualStrings(long, Picks.last.?);
+
+    list.setFilter("nothing like it");
+    list.launchSelected();
+    try std.testing.expectEqual(@as(usize, 3), Picks.calls);
+    try std.testing.expect(Picks.last == null);
+}
+
 test "window rows work without Lua, retain errors, and obey the disable flag" {
     const a = std.testing.allocator;
     var argc: i32 = 1;
@@ -450,6 +494,9 @@ pub const List = struct {
     placeholder_icon: QIcon,
     after_first_paint: ?*const fn () void = null,
     on_query_requested: ?*const fn ([]const u8) void = null,
+    /// Set by --dmenu: picking an entry hands over its text instead of launching it, and
+    /// picking with nothing to pick hands over null, meaning the typed text.
+    on_pick: ?*const fn (?[]const u8) void = null,
     revision: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator, apps: []const de.DesktopApp, icon_size: i32, plugin_manager: ?*plugins.PluginManager) List {
@@ -577,17 +624,15 @@ pub const List = struct {
             for (0..count) |i| {
                 const name = self.sourceName(i);
                 var lower_name_buf: [256]u8 = undefined;
-                var matches = false;
+                // Plain substring matches work for names of any length, such as long lines
+                // piped into --dmenu; the typo-tolerant match below needs short ones.
+                var matches = containsIgnoreCase(name, text);
 
-                if (name.len <= lower_name_buf.len) {
+                if (!matches and name.len <= lower_name_buf.len and text.len <= lower_text_buf.len) {
                     for (name, 0..) |c, j| lower_name_buf[j] = std.ascii.toLower(c);
                     const lower_name = lower_name_buf[0..name.len];
 
-                    if (std.mem.indexOf(u8, lower_name, lower_text) != null) {
-                        matches = true;
-                    }
-
-                    if (!matches and max_distance > 0) {
+                    if (max_distance > 0) {
                         const dist = utils.demerauLevenshteinDistance(self.allocator, lower_text, lower_name, max_distance) catch max_distance;
                         if (dist < max_distance) {
                             matches = true;
@@ -641,6 +686,14 @@ pub const List = struct {
         return QModelIndex.new3();
     }
 
+    fn containsIgnoreCase(haystack: []const u8, needle: []const u8) bool {
+        if (needle.len > haystack.len) return false;
+        for (0..haystack.len - needle.len + 1) |i| {
+            if (std.ascii.eqlIgnoreCase(haystack[i .. i + needle.len], needle)) return true;
+        }
+        return false;
+    }
+
     pub fn selectFirst(self: *List) void {
         if (self.indices.items.len > 0) {
             self.selectRow(0);
@@ -668,13 +721,19 @@ pub const List = struct {
 
         var idx = self.view.currentIndex();
         defer idx.delete();
-        if (!idx.isValid()) return;
+        if (!idx.isValid() or idx.row() < 0 or @as(usize, @intCast(idx.row())) >= self.indices.items.len) {
+            if (self.on_pick) |pick| pick(null);
+            return;
+        }
 
         const row = @as(usize, @intCast(idx.row()));
-        if (row >= self.indices.items.len) return;
 
         switch (self.indices.items[row]) {
             .item => |item_idx| {
+                if (self.on_pick) |pick| {
+                    pick(self.sourceName(item_idx));
+                    return;
+                }
                 if (self.frequency_store) |store| {
                     store.increment(self.sourceName(item_idx));
                 }
