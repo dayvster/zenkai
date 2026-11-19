@@ -1,0 +1,9 @@
+{
+    "name": "clipboard",
+    "version": "1.0.0",
+    "main": "main.lua",
+    "description": "Search, pin and copy past copies (needs zenkai --service)",
+    "author": "built-in",
+    "disabled": false,
+    "activation_prefixes": ["clip:"]
+}

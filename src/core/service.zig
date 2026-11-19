@@ -3,7 +3,8 @@
 //!
 //! The service listens with a QLocalServer, which on Unix is a plain Unix domain socket. The
 //! commands connect with raw sockets before Qt starts, so toggling the launcher costs a
-//! connect and a write instead of a Qt startup. Each connection carries one command line.
+//! connect and a write instead of a Qt startup. Each connection carries one command line, or
+//! for `clip`, that line followed by the copied text.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -17,14 +18,16 @@ pub const supported = builtin.os.tag == .linux;
 pub const Command = enum {
     toggle_launcher,
     toggle_window_switcher,
+    toggle_clipboard,
     quit,
 
-    const all = [_]Command{ .toggle_launcher, .toggle_window_switcher, .quit };
+    const all = [_]Command{ .toggle_launcher, .toggle_window_switcher, .toggle_clipboard, .quit };
 
     fn line(self: Command) []const u8 {
         return switch (self) {
             .toggle_launcher => "toggle launcher\n",
             .toggle_window_switcher => "toggle window-switcher\n",
+            .toggle_clipboard => "toggle clipboard\n",
             .quit => "quit\n",
         };
     }
@@ -52,6 +55,17 @@ fn socketPath(buf: *[max_path]u8) ?[:0]const u8 {
 
 /// Sends a command to the running service. False when no service is listening.
 pub fn send(command: Command) bool {
+    return sendParts(&.{command.line()});
+}
+
+const clip_line = "clip\n";
+
+/// Hands a copy to the service's clipboard history.
+pub fn sendClip(text: []const u8) bool {
+    return sendParts(&.{ clip_line, text });
+}
+
+fn sendParts(parts: []const []const u8) bool {
     if (comptime !supported) return false;
     var path_buf: [max_path]u8 = undefined;
     const path = socketPath(&path_buf) orelse return false;
@@ -64,18 +78,30 @@ pub fn send(command: Command) bool {
     @memcpy(addr.path[0..path.len], path);
     if (std.c.connect(fd, @ptrCast(&addr), @sizeOf(std.c.sockaddr.un)) != 0) return false;
 
-    const line = command.line();
-    return std.c.write(fd, line.ptr, line.len) == @as(isize, @intCast(line.len));
+    for (parts) |part| {
+        var written: usize = 0;
+        while (written < part.len) {
+            const n = std.c.write(fd, part[written..].ptr, part.len - written);
+            if (n <= 0) return false;
+            written += @intCast(n);
+        }
+    }
+    return true;
 }
 
+pub const Handlers = struct {
+    on_command: *const fn (Command) void,
+    on_clip: *const fn ([]const u8) void,
+};
+
 var g_server: ?qt.QLocalServer = null;
-var g_on_command: *const fn (Command) void = undefined;
+var g_handlers: Handlers = undefined;
 
 pub const ListenError = error{ AlreadyRunning, SocketPath, ListenFailed };
 
 /// Starts listening for commands. Fails with AlreadyRunning when another service answers on
 /// the socket; a socket file left behind by a service that crashed is replaced.
-pub fn listen(on_command: *const fn (Command) void) ListenError!void {
+pub fn listen(handlers: Handlers) ListenError!void {
     var path_buf: [max_path]u8 = undefined;
     const path = socketPath(&path_buf) orelse return error.SocketPath;
     if (connectable(path)) return error.AlreadyRunning;
@@ -90,7 +116,7 @@ pub fn listen(on_command: *const fn (Command) void) ListenError!void {
         server.delete();
         return error.ListenFailed;
     }
-    g_on_command = on_command;
+    g_handlers = handlers;
     server.onNewConnection(onNewConnection);
     g_server = server;
 }
@@ -112,18 +138,29 @@ fn connectable(path: [:0]const u8) bool {
     return std.c.connect(fd, @ptrCast(&addr), @sizeOf(std.c.sockaddr.un)) == 0;
 }
 
+/// Room for the largest copy the clipboard history keeps, and its `clip` line.
+const max_message = 256 * 1024;
+
 fn onNewConnection(server: qt.QLocalServer) callconv(.c) void {
     while (server.hasPendingConnections()) {
         const socket = server.nextPendingConnection();
         defer socket.deleteLater();
-        // The command is one short line, written right after connecting.
-        if (!socket.waitForReadyRead(200)) continue;
-        const data = socket.readAll(std.heap.c_allocator);
-        defer std.heap.c_allocator.free(data);
-        if (Command.parse(data)) |command| {
-            g_on_command(command);
+        // Clients write their message right after connecting and then close, which ends
+        // the reads.
+        var data: std.ArrayList(u8) = .empty;
+        defer data.deinit(std.heap.c_allocator);
+        while (data.items.len <= max_message and socket.waitForReadyRead(200)) {
+            const chunk = socket.readAll(std.heap.c_allocator);
+            defer std.heap.c_allocator.free(chunk);
+            data.appendSlice(std.heap.c_allocator, chunk) catch break;
+        }
+        if (data.items.len > max_message) continue;
+        if (std.mem.startsWith(u8, data.items, clip_line)) {
+            g_handlers.on_clip(data.items[clip_line.len..]);
+        } else if (Command.parse(data.items)) |command| {
+            g_handlers.on_command(command);
         } else {
-            log.info("background service: unknown command '{s}'", .{std.mem.trim(u8, data, " \t\r\n")});
+            log.info("background service: unknown command '{s}'", .{std.mem.trim(u8, data.items, " \t\r\n")});
         }
     }
 }

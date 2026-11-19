@@ -21,12 +21,13 @@ Ideas and pull requests for anything on this list are welcome; see [CONTRIBUTING
       without a startup and keeps the app list and plugins loaded. Linux first; macOS and
       Windows later. Clipboard history and per-command hotkeys build on it, so they only work
       with the service turned on.
-- [ ] **Clipboard history.** Search, pin and paste past copies. Needs the optional background
-      service to watch the clipboard (`wl-paste --watch` on Wayland).
+- [x] **Clipboard history.** Search, pin and copy back past copies (`clip:`). Needs the
+      optional background service to watch the clipboard (`wl-paste --watch` on Wayland).
+      Pasting straight into the previous window comes later.
 - [ ] **System commands.** Lock, sleep, log out, restart, shut down and empty trash in the main
       search, for every desktop. Today only the Hyprland plugin has lock and sleep.
-- [ ] **dmenu mode.** Read entries from stdin and print the chosen one, so scripts can use
-      zenkai as a picker.
+- [x] **dmenu mode.** Read entries from stdin and print the chosen one, so scripts can use
+      zenkai as a picker (`--dmenu`, `--prompt=TEXT`).
 
 ## Root search
 
