@@ -148,8 +148,6 @@ fn drainStdin() void {
     while (std.c.read(0, &buf, buf.len) > 0) {}
 }
 
-/// `zenkai --dmenu`: the lines on stdin become the list. Blank lines are skipped and a
-/// trailing carriage return is dropped, so files with Windows line endings work too.
 fn readDmenuEntries(allocator: std.mem.Allocator) ![]args.MenuEntry {
     if (std.c.isatty(0) != 0) {
         std.debug.print("zenkai --dmenu reads its entries from stdin, e.g. ls | zenkai --dmenu\n", .{});
@@ -175,20 +173,39 @@ fn readDmenuEntries(allocator: std.mem.Allocator) ![]args.MenuEntry {
     }
     var lines = std.mem.splitScalar(u8, input.items, '\n');
     while (lines.next()) |raw| {
-        const line = std.mem.trimEnd(u8, raw, "\r");
-        if (line.len == 0) continue;
-        const name = try allocator.dupe(u8, line);
+        const line = parseDmenuLine(std.mem.trimEnd(u8, raw, "\r"));
+        if (line.text.len == 0) continue;
+        const name = try allocator.dupe(u8, line.text);
         errdefer allocator.free(name);
         const cmd = try allocator.dupe(u8, "");
         errdefer allocator.free(cmd);
-        const icon = try allocator.dupe(u8, "");
+        const icon = try allocator.dupe(u8, line.icon);
         errdefer allocator.free(icon);
         try entries.append(allocator, .{ .name = name, .cmd = cmd, .icon = icon });
     }
     return entries.toOwnedSlice(allocator);
 }
 
-/// Prints the picked entry, or the typed text when nothing matched, the way dmenu does.
+const DmenuLine = struct { text: []const u8, icon: []const u8 = "" };
+
+fn parseDmenuLine(line: []const u8) DmenuLine {
+    const nul = std.mem.indexOfScalar(u8, line, 0) orelse return .{ .text = line };
+    var fields = std.mem.splitScalar(u8, line[nul + 1 ..], 0x1f);
+    while (fields.next()) |key| {
+        const value = fields.next() orelse break;
+        if (std.mem.eql(u8, key, "icon")) return .{ .text = line[0..nul], .icon = value };
+    }
+    return .{ .text = line[0..nul] };
+}
+
+test "dmenu lines take the icon option and keep plain text as is" {
+    try std.testing.expectEqualDeep(DmenuLine{ .text = "plain line" }, parseDmenuLine("plain line"));
+    try std.testing.expectEqualDeep(DmenuLine{ .text = "Firefox", .icon = "firefox" }, parseDmenuLine("Firefox\x00icon\x1ffirefox"));
+    try std.testing.expectEqualDeep(DmenuLine{ .text = "Docs", .icon = "/tmp/a.png" }, parseDmenuLine("Docs\x00meta\x1fpdf\x1ficon\x1f/tmp/a.png"));
+    try std.testing.expectEqualDeep(DmenuLine{ .text = "No icon" }, parseDmenuLine("No icon\x00nonselectable\x1ftrue"));
+    try std.testing.expectEqualDeep(DmenuLine{ .text = "Broken" }, parseDmenuLine("Broken\x00icon"));
+}
+
 fn onDmenuPick(entry: ?[]const u8) void {
     const window = g_dmenu_window orelse return;
     const text = entry orelse window.search_bar.getText();
@@ -335,7 +352,6 @@ pub fn main(init: std.process.Init) !void {
     benchmark.pluginsDone(if (pm) |p| p.plugins.items.len else 0);
     dapp_parser.setLocale(ctx.cfg.language);
 
-    // With --dmenu the menu is whatever came in on stdin, even if that was nothing.
     const use_menus = menu_entries.len > 0 or ctx.cfg.dmenu;
     // The background service serves both the launcher and the window switcher, so it always
     // loads apps; --toggle --window-switcher picks the mode each time.
@@ -388,7 +404,10 @@ pub fn main(init: std.process.Init) !void {
     benchmark.workEnd(.cli_setup, cli_work);
     if (ctx.cfg.benchmark_all) debug.mark("window setup");
     var window: ui.Window = undefined;
-    ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons or ctx.cfg.dmenu, ctx.app);
+    const dmenu_icons = for (menu_entries) |entry| {
+        if (entry.icon.len > 0) break true;
+    } else false;
+    ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons or (ctx.cfg.dmenu and !dmenu_icons), ctx.app);
     window.list.plugin_manager = if (pm) |*p| p else null;
     window.list.window_search.enabled = !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode and !ctx.cfg.dmenu;
     if (ctx.cfg.dmenu) {
@@ -442,8 +461,6 @@ pub fn main(init: std.process.Init) !void {
     var cfg_dir_opt: ?[]u8 = null;
     if (config.configDir(init.gpa)) |cfg_dir| {
         freq_store.load(cfg_dir);
-        // Picks from --dmenu aren't apps, so they don't count toward ranking, and the list
-        // keeps the order it came in.
         if (!ctx.cfg.dmenu) window.list.frequency_store = &freq_store;
         cfg_dir_opt = cfg_dir;
     } else |_| {}
@@ -518,6 +535,5 @@ pub fn main(init: std.process.Init) !void {
     if (!ctx.cfg.benchmark_startup) {
         if (cfg_dir_opt) |cfg_dir| freq_store.save(cfg_dir);
     }
-    // dmenu's convention: a cancelled pick exits with 1, so scripts can tell.
     if (ctx.cfg.dmenu and !g_dmenu_picked) std.process.exit(1);
 }
