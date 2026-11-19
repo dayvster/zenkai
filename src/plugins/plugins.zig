@@ -1,6 +1,24 @@
 const std = @import("std");
 pub const HttpResult = struct { body: ?[]const u8 = null, status: []const u8 };
 
+/// One copy in the background service's clipboard history.
+pub const ClipboardEntry = struct {
+    id: u64,
+    text: []const u8,
+    pinned: bool = false,
+    /// Unix time in seconds.
+    copied_at: i64 = 0,
+};
+
+pub const ClipboardEdit = enum { pin, unpin, delete, clear };
+
+/// Clipboard history, provided by the background service. Plain launches have none.
+pub const ClipboardHost = struct {
+    entries: *const fn () []const ClipboardEntry,
+    /// The id is ignored for `clear`. False when no entry has that id.
+    edit: *const fn (ClipboardEdit, u64) bool,
+};
+
 fn apiHttpGet(L: *lua.lua_State) callconv(.c) c_int {
     const raw = lua.lua_tostring(L, 1) orelse return 0;
     const get = g_active_manager.http_get orelse {
@@ -150,6 +168,42 @@ fn apiCopyText(L: *lua.lua_State) callconv(.c) c_int {
     } else {
         lua.lua_pushboolean(L, 0);
     }
+    return 1;
+}
+
+/// api.clipboard_history() returns the copies, newest first, each as
+/// { id, text, pinned, time }; or nil and a message when the background service isn't
+/// running, which is the only place clipboard history exists.
+fn apiClipboardHistory(L: *lua.lua_State) callconv(.c) c_int {
+    const host = g_active_manager.clipboard_history orelse {
+        lua.lua_pushnil(L);
+        const message = "Clipboard history needs the background service: zenkai --service";
+        _ = lua.lua_pushlstring(L, message.ptr, message.len);
+        return 2;
+    };
+    lua.lua_newtable(L);
+    for (host.entries(), 0..) |entry, i| {
+        lua.lua_newtable(L);
+        lua.lua_pushinteger(L, @intCast(entry.id));
+        lua.lua_setfield(L, -2, "id");
+        pushLuaStrField(L, "text", entry.text);
+        lua.lua_pushboolean(L, if (entry.pinned) 1 else 0);
+        lua.lua_setfield(L, -2, "pinned");
+        lua.lua_pushinteger(L, entry.copied_at);
+        lua.lua_setfield(L, -2, "time");
+        lua.lua_rawseti(L, -2, @intCast(i + 1));
+    }
+    return 1;
+}
+
+/// api.clipboard_edit(action, id): action is "pin", "unpin", "delete" or "clear" (which
+/// keeps pinned entries and ignores the id). Returns true when something changed.
+fn apiClipboardEdit(L: *lua.lua_State) callconv(.c) c_int {
+    const host = g_active_manager.clipboard_history orelse return 0;
+    const raw = lua.lua_tostring(L, 1) orelse return 0;
+    const edit = std.meta.stringToEnum(ClipboardEdit, std.mem.sliceTo(raw, 0)) orelse return 0;
+    const id = lua.lua_tointeger(L, 2);
+    lua.lua_pushboolean(L, if (host.edit(edit, if (id > 0) @intCast(id) else 0)) 1 else 0);
     return 1;
 }
 
@@ -594,6 +648,10 @@ fn setupAPI(L: *lua.lua_State) void {
     lua.lua_setfield(L, -2, "exec");
     lua.lua_pushcfunction(L, apiRun);
     lua.lua_setfield(L, -2, "run");
+    lua.lua_pushcfunction(L, apiClipboardHistory);
+    lua.lua_setfield(L, -2, "clipboard_history");
+    lua.lua_pushcfunction(L, apiClipboardEdit);
+    lua.lua_setfield(L, -2, "clipboard_edit");
     lua.lua_setglobal(L, "api");
 }
 
@@ -768,6 +826,7 @@ pub const PluginManager = struct {
     copy_text: ?*const fn ([]const u8) void = null,
     http_get: ?*const fn ([]const u8) HttpResult = null,
     file_action: ?*const fn (std.mem.Allocator, []const u8, []const u8) anyerror!?[]u8 = null,
+    clipboard_history: ?ClipboardHost = null,
     handling_action: bool = false,
 
     close_requested: bool = false,
@@ -1403,6 +1462,40 @@ fn runLuaTest(L: *lua.lua_State, source: [:0]const u8) !void {
 test "bundled productivity plugins filter, encode URLs and copy exact text" {
     const a = std.testing.allocator;
     const cases = .{
+        .{
+            "clipboard",
+            \\api.now = function() return 1000 * 1000 end
+            \\local history = nil
+            \\api.clipboard_history = function()
+            \\  if not history then return nil, "needs the service" end
+            \\  return history
+            \\end
+            \\on_query("clip:")
+            \\assert(results[1].title == "Clipboard history is off" and results[1].subtitle == "needs the service")
+            \\history = {
+            \\  { id = 7, text = "  first line\n second ", pinned = false, time = 1000 - 30 },
+            \\  { id = 9, text = "pinned token", pinned = true, time = 1000 - 7200 },
+            \\}
+            \\results = {}
+            \\on_query("clip:")
+            \\assert(#results == 2)
+            \\assert(results[1].title == "pinned token" and results[1].subtitle == "Pinned · 2 h ago · 12 characters")
+            \\assert(results[2].title == "first line second" and results[2].subtitle == "just now · 2 lines")
+            \\results = {}
+            \\on_query("clip: SECOND")
+            \\assert(#results == 1 and results[1].title == "first line second")
+            \\local edits = {}
+            \\api.clipboard_edit = function(action, id) edits[#edits + 1] = action .. ":" .. tostring(id) end
+            \\api.set_query = function(query) requeried = query end
+            \\on_action(1, 2)
+            \\assert(edits[1] == "pin:7" and requeried == "clip: SECOND")
+            \\api.close = function() closed = true end
+            \\on_open(1)
+            \\assert(copied == "  first line\n second " and closed)
+            \\results = {}
+            \\on_query("clip: nothing like this")
+            \\assert(#results == 1 and results[1].title == "No copies match")
+        },
         .{
             "calculator",
             \\on_query("2 + 3 * 4")

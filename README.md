@@ -286,6 +286,20 @@ exec-once = zenkai --service
 bind = SUPER, Space, exec, zenkai --toggle
 ```
 
+#### Clipboard history
+
+While the service runs, it keeps a history of the text you copy. Type `clip:` to search it,
+or bind `zenkai --toggle --clipboard-history` to open it directly. Enter copies an entry back;
+Ctrl+K pins it to the top, deletes it, or clears everything that isn't pinned.
+
+- On Wayland it needs `wl-paste` from wl-clipboard and a compositor with the data-control
+  protocol (Hyprland, Sway, KDE Plasma; not GNOME). On X11 nothing extra is needed.
+- Copies that password managers mark as secret (KeePassXC, KDE Wallet and others) are never
+  recorded. The rest is saved to `~/.local/state/zenkai/clipboard-history.json`, readable
+  only by you: the last 200 copies plus anything pinned, each up to 100 KB of text.
+- To turn it off, disable the `clipboard` plugin in the settings window or add it to
+  `disabled_plugins` in `zenkai.conf`.
+
 ### `--run`
 
 Opens Zenkai in Windows Run mode. Type a command or URL and press Enter to open it with the Windows shell, without a `run:` prefix.
