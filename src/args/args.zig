@@ -29,6 +29,7 @@ pub const help =
     \\  --service                 Run in the background, hidden until --toggle shows it (Linux)
     \\  --toggle                  Show or hide the background service (starts normally without one)
     \\  --quit-service            Stop the background service
+    \\  --clipboard-history       With --toggle: open the background service's clipboard history
     \\  --list-themes             List all available themes with descriptions
     \\  --list-monitors           List all available monitors with indices
     \\  --close-on-focus-out     Close the launcher when it loses focus

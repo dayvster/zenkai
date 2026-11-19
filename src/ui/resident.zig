@@ -3,19 +3,23 @@
 //! launcher (Escape, opening a result, clicking away) hides it instead of quitting, and the
 //! next show starts from an empty search, like a fresh launch.
 //!
-//! The service keeps the app list, plugins and icons loaded between shows. When zenkai.conf
-//! changes, it restarts itself the next time it's hidden, so new settings apply.
+//! The service keeps the app list, plugins and icons loaded between shows, and keeps the
+//! clipboard history the `clip:` plugin shows. When zenkai.conf changes, it restarts itself
+//! the next time it's hidden, so new settings apply.
 
 const std = @import("std");
 const qt = @import("libqt6zig");
 const config = @import("config");
 const lang = @import("lang");
 const log = @import("utils").log;
+const plugins = @import("plugins");
 const service = @import("../core/service.zig");
+const History = @import("../core/clipboard_history.zig").History;
+const clipboard_watch = @import("clipboard_watch.zig");
 const close = @import("close.zig");
 const Window = @import("window.zig").Window;
 
-const Mode = enum { launcher, window_switcher };
+const Mode = enum { launcher, window_switcher, clipboard };
 
 var g_window: *Window = undefined;
 var g_allocator: std.mem.Allocator = undefined;
@@ -25,12 +29,15 @@ var g_mode: Mode = .launcher;
 var g_config_watcher: ?qt.QFileSystemWatcher = null;
 var g_config_path: ?[]u8 = null;
 var g_restart_pending = false;
+var g_history: ?History = null;
 
 pub const Options = struct {
     /// Where the frequency store is saved after each use, as a normal exit would.
     config_dir: ?[]const u8,
     /// Runs after every hide, for upkeep that would disturb an open launcher.
     on_hide: ?*const fn () void = null,
+    /// Record copies for the `clip:` plugin. Off when that plugin is disabled.
+    clipboard_history: bool = false,
 };
 
 /// Starts listening for commands, with the window hidden.
@@ -39,14 +46,18 @@ pub fn start(window: *Window, allocator: std.mem.Allocator, options: Options) se
     g_allocator = allocator;
     g_config_dir = options.config_dir;
     g_on_hide = options.on_hide;
-    try service.listen(onCommand);
+    try service.listen(.{ .on_command = onCommand, .on_clip = onClip });
     close.hide_instead = hide;
     watchConfig();
+    if (options.clipboard_history) startClipboardHistory();
     log.info("background service started; run zenkai --toggle to show the launcher", .{});
 }
 
 pub fn stop() void {
     service.stop();
+    clipboard_watch.stop();
+    if (g_history) |*history| history.deinit();
+    g_history = null;
     close.hide_instead = null;
     if (g_config_watcher) |watcher| watcher.delete();
     g_config_watcher = null;
@@ -58,6 +69,7 @@ fn onCommand(command: service.Command) void {
     switch (command) {
         .toggle_launcher => toggle(.launcher),
         .toggle_window_switcher => toggle(if (g_window.list.window_search.enabled) .window_switcher else .launcher),
+        .toggle_clipboard => toggle(.clipboard),
         .quit => {
             hide();
             qt.QApplication.quit();
@@ -80,11 +92,11 @@ fn show(mode: Mode) void {
     g_mode = mode;
     window.list.window_search.standalone = mode == .window_switcher;
     window.search_bar.setPlaceholder(switch (mode) {
-        .launcher => lang.get().search_placeholder,
+        .launcher, .clipboard => lang.get().search_placeholder,
         .window_switcher => "Search windows...",
     });
     // Reset while still hidden, so a window search doesn't list zenkai itself.
-    window.setQuery("");
+    window.setQuery(if (mode == .clipboard) "clip: " else "");
     window.place();
     window.setBackdropVisible(true);
     window.show();
@@ -108,6 +120,43 @@ fn hide() void {
     }
     if (g_restart_pending) restart();
     if (g_on_hide) |on_hide| on_hide();
+}
+
+fn startClipboardHistory() void {
+    g_history = History.load(g_allocator);
+    if (g_window.list.plugin_manager) |manager| {
+        manager.clipboard_history = .{ .entries = clipboardEntries, .edit = editClipboard };
+    }
+    var path_buf: [4096:0]u8 = undefined;
+    const exe = executablePath(&path_buf) orelse {
+        log.info("clipboard history: can't find the zenkai binary", .{});
+        return;
+    };
+    clipboard_watch.start(exe, onClip);
+}
+
+fn onClip(text: []const u8) void {
+    const history = if (g_history) |*history| history else return;
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    history.add(text, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).nanoseconds, std.time.ns_per_s)));
+}
+
+fn clipboardEntries() []const plugins.ClipboardEntry {
+    const history = if (g_history) |*history| history else return &.{};
+    return history.entries.items;
+}
+
+fn editClipboard(edit: plugins.ClipboardEdit, id: u64) bool {
+    const history = if (g_history) |*history| history else return false;
+    switch (edit) {
+        .pin => return history.setPinned(id, true),
+        .unpin => return history.setPinned(id, false),
+        .delete => return history.remove(id),
+        .clear => {
+            history.clearUnpinned();
+            return true;
+        },
+    }
 }
 
 /// Restarts on changes to zenkai.conf, such as saving in the settings window, so the service
@@ -144,8 +193,9 @@ fn restart() void {
     if (g_window.list.frequency_store) |store| {
         if (g_config_dir) |dir| store.save(dir);
     }
-    // Free the socket first; the new process listens on it again.
+    // Free the socket and stop wl-paste first; the new process starts both again.
     service.stop();
+    clipboard_watch.stop();
     const environ = @import("utils").environ;
     var path_buf: [4096:0]u8 = undefined;
     if (executablePath(&path_buf)) |path| _ = std.c.execve(path, argv.ptr, environ);
@@ -158,7 +208,7 @@ fn restart() void {
 
 /// Where this binary lives. After a package upgrade replaced it, the kernel adds
 /// " (deleted)", and the path then holds the new version, which is the one to run.
-fn executablePath(buf: *[4096:0]u8) ?[*:0]const u8 {
+fn executablePath(buf: *[4096:0]u8) ?[:0]const u8 {
     const len = std.c.readlink("/proc/self/exe", buf, buf.len);
     if (len <= 0) return null;
     const suffix = " (deleted)";
@@ -211,7 +261,7 @@ test "the background service hides instead of quitting and shows a fresh search"
 
     try start(&window, a, .{ .config_dir = null });
     defer stop();
-    try std.testing.expectError(error.AlreadyRunning, service.listen(onCommand));
+    try std.testing.expectError(error.AlreadyRunning, service.listen(.{ .on_command = onCommand, .on_clip = onClip }));
 
     try std.testing.expect(service.send(.toggle_launcher));
     for (0..20) |_| qt.QApplication.processEvents();
