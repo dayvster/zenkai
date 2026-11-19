@@ -116,6 +116,10 @@ pub fn build(b: *std.Build) !void {
         "qformlayout",
         "qscrollarea",
         "qbrush",
+        // Background service
+        "qlocalserver",
+        "qlocalsocket",
+        "qfilesystemwatcher",
     };
 
     for (libs) |lib| {
@@ -410,6 +414,7 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("tests/main.zig"),
         .target = target,
         .optimize = .ReleaseFast,
+        .link_libc = true,
     });
     fuzz_test_module.addImport("utils", utils_module);
     fuzz_test_module.addImport("desktopapp", desktopapp_module);
@@ -438,6 +443,7 @@ fn minimalQtLibrary(name: []const u8) bool {
         "qlistwidget",  "qmessagebox",           "qtoolbutton",     "qabstractbutton",
         "qcheckbox",    "qspinbox",              "qabstractspinbox", "qcombobox",         "qpushbutton",
         "qstackedwidget", "qformlayout",          "qscrollarea",     "qbrush",
+        "qlocalserver", "qlocalsocket",           "qfilesystemwatcher",
     };
     for (excluded) |lib| if (std.mem.eql(u8, name, lib)) return false;
     return true;

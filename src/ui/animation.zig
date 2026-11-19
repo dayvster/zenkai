@@ -5,7 +5,7 @@ const QWidget = qt.QWidget;
 const QPropertyAnimation = qt.QPropertyAnimation;
 const QEasingCurve = qt.QEasingCurve;
 const QVariant = qt.QVariant;
-const QApp = qt.QApplication;
+const close = @import("close.zig").close;
 
 pub const AnimationConfig = struct {
     enabled: bool = true,
@@ -74,16 +74,16 @@ pub fn animateFadeIn(window: QWidget) void {
 }
 
 fn onLaunchCloseFinished(_: QPropertyAnimation) callconv(.c) void {
-    QApp.quit();
+    close();
 }
 
-pub fn animateFadeOutAndQuit() void {
+pub fn animateFadeOutAndClose() void {
     const widget = g_window_widget orelse {
-        QApp.quit();
+        close();
         return;
     };
     if (!g_cfg.enabled) {
-        QApp.quit();
+        close();
         return;
     }
     const current = widget.windowOpacity();

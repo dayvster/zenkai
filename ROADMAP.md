@@ -15,11 +15,12 @@ Ideas and pull requests for anything on this list are welcome; see [CONTRIBUTING
 
 ## Up next
 
-- [ ] **Optional background service with a toggle command.** zenkai starts a new process on
+- [x] **Optional background service with a toggle command.** zenkai starts a new process on
       every launch, and that stays the default. Anyone who wants it can opt into a resident
-      service that a hotkey shows and hides: it opens instantly and keeps the app cache, the
-      window list and plugin state warm. Clipboard history and per-command hotkeys build on it,
-      so they only work with the service turned on.
+      service (`zenkai --service`) that a hotkey shows and hides (`zenkai --toggle`): it opens
+      without a startup and keeps the app list and plugins loaded. Linux first; macOS and
+      Windows later. Clipboard history and per-command hotkeys build on it, so they only work
+      with the service turned on.
 - [ ] **Clipboard history.** Search, pin and paste past copies. Needs the optional background
       service to watch the clipboard (`wl-paste --watch` on Wayland).
 - [ ] **System commands.** Lock, sleep, log out, restart, shut down and empty trash in the main
