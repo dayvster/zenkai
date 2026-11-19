@@ -27,6 +27,8 @@ var g_app_refresh_benchmark = false;
 var g_app_refresh_actions = false;
 var g_app_refresh_actions_bar = false;
 var g_apps_loaded_at: u64 = 0;
+var g_dmenu_window: ?*ui.Window = null;
+var g_dmenu_picked = false;
 var g_plugin_manager: ?*plugins.PluginManager = null;
 var g_plugin_timer: ?qt.QTimer = null;
 
@@ -146,6 +148,57 @@ fn drainStdin() void {
     while (std.c.read(0, &buf, buf.len) > 0) {}
 }
 
+/// `zenkai --dmenu`: the lines on stdin become the list. Blank lines are skipped and a
+/// trailing carriage return is dropped, so files with Windows line endings work too.
+fn readDmenuEntries(allocator: std.mem.Allocator) ![]args.MenuEntry {
+    if (std.c.isatty(0) != 0) {
+        std.debug.print("zenkai --dmenu reads its entries from stdin, e.g. ls | zenkai --dmenu\n", .{});
+        std.process.exit(2);
+    }
+    var input: std.ArrayList(u8) = .empty;
+    defer input.deinit(allocator);
+    var buf: [64 * 1024]u8 = undefined;
+    while (true) {
+        const n = std.c.read(0, &buf, buf.len);
+        if (n <= 0) break;
+        try input.appendSlice(allocator, buf[0..@intCast(n)]);
+    }
+
+    var entries: std.ArrayList(args.MenuEntry) = .empty;
+    errdefer {
+        for (entries.items) |entry| {
+            allocator.free(entry.name);
+            allocator.free(entry.cmd);
+            allocator.free(entry.icon);
+        }
+        entries.deinit(allocator);
+    }
+    var lines = std.mem.splitScalar(u8, input.items, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trimEnd(u8, raw, "\r");
+        if (line.len == 0) continue;
+        const name = try allocator.dupe(u8, line);
+        errdefer allocator.free(name);
+        const cmd = try allocator.dupe(u8, "");
+        errdefer allocator.free(cmd);
+        const icon = try allocator.dupe(u8, "");
+        errdefer allocator.free(icon);
+        try entries.append(allocator, .{ .name = name, .cmd = cmd, .icon = icon });
+    }
+    return entries.toOwnedSlice(allocator);
+}
+
+/// Prints the picked entry, or the typed text when nothing matched, the way dmenu does.
+fn onDmenuPick(entry: ?[]const u8) void {
+    const window = g_dmenu_window orelse return;
+    const text = entry orelse window.search_bar.getText();
+    if (text.len == 0) return;
+    _ = std.c.write(1, text.ptr, text.len);
+    _ = std.c.write(1, "\n", 1);
+    g_dmenu_picked = true;
+    qt.QApplication.quit();
+}
+
 /// Clipboard history comes with the `clip:` plugin, so it's off whenever that plugin is: in
 /// disabled_plugins, or left out by --plugin=NAME, or with --no-plugins.
 fn clipboardHistoryEnabled(plugin_manager: ?*const plugins.PluginManager, plugin_names: []const []const u8, disabled: []const []const u8) bool {
@@ -221,6 +274,10 @@ pub fn main(init: std.process.Init) !void {
     }
     if (ctx.cfg.run_mode) ctx.visual.window_height = 140;
     if (ctx.cfg.settings) return @import("ui/settings.zig").run(init.gpa, ctx.app);
+    if (ctx.cfg.service and ctx.cfg.dmenu) {
+        std.debug.print("--dmenu reads from the terminal that starts it, so it can't run as the background service.\n", .{});
+        std.process.exit(2);
+    }
     if (ctx.cfg.service and !service.supported) {
         std.debug.print("The background service is only available on Linux for now.\n", .{});
         std.process.exit(1);
@@ -253,13 +310,13 @@ pub fn main(init: std.process.Init) !void {
     }
 
     const cli_work = benchmark.workStart();
-    const menu_entries = try args.parseMenus(init.gpa, ctx.argv);
+    const menu_entries = if (ctx.cfg.dmenu) try readDmenuEntries(init.gpa) else try args.parseMenus(init.gpa, ctx.argv);
     defer args.deinitMenuEntries(init.gpa, menu_entries);
 
     const plugin_names = try args.parsePluginNames(init.gpa, ctx.argv);
     defer args.deinitPluginNames(init.gpa, plugin_names);
 
-    var pm: ?plugins.PluginManager = if (ctx.cfg.no_plugins or ctx.cfg.run_mode) null else plugins.setup(init.gpa, plugin_names);
+    var pm: ?plugins.PluginManager = if (ctx.cfg.no_plugins or ctx.cfg.run_mode or ctx.cfg.dmenu) null else plugins.setup(init.gpa, plugin_names);
     defer if (pm) |*p| p.deinit();
 
     if (pm) |*p| {
@@ -278,10 +335,11 @@ pub fn main(init: std.process.Init) !void {
     benchmark.pluginsDone(if (pm) |p| p.plugins.items.len else 0);
     dapp_parser.setLocale(ctx.cfg.language);
 
-    const use_menus = menu_entries.len > 0;
+    // With --dmenu the menu is whatever came in on stdin, even if that was nothing.
+    const use_menus = menu_entries.len > 0 or ctx.cfg.dmenu;
     // The background service serves both the launcher and the window switcher, so it always
     // loads apps; --toggle --window-switcher picks the mode each time.
-    const window_switcher = ctx.cfg.window_switcher and !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode and !ctx.cfg.service;
+    const window_switcher = ctx.cfg.window_switcher and !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode and !ctx.cfg.service and !ctx.cfg.dmenu;
     const skip_desktop = use_menus or ctx.cfg.no_dapps or ctx.cfg.run_mode or window_switcher;
 
     var items: []ui.ListItem = undefined;
@@ -330,9 +388,13 @@ pub fn main(init: std.process.Init) !void {
     benchmark.workEnd(.cli_setup, cli_work);
     if (ctx.cfg.benchmark_all) debug.mark("window setup");
     var window: ui.Window = undefined;
-    ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons, ctx.app);
+    ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons or ctx.cfg.dmenu, ctx.app);
     window.list.plugin_manager = if (pm) |*p| p else null;
-    window.list.window_search.enabled = !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode;
+    window.list.window_search.enabled = !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode and !ctx.cfg.dmenu;
+    if (ctx.cfg.dmenu) {
+        g_dmenu_window = &window;
+        window.list.on_pick = onDmenuPick;
+    }
     window.list.window_search.standalone = window_switcher;
     if (pm) |*p| {
         g_plugin_manager = p;
@@ -355,6 +417,7 @@ pub fn main(init: std.process.Init) !void {
     } else if (window_switcher) {
         window.search_bar.setPlaceholder("Search windows...");
     }
+    if (ctx.cfg.prompt) |prompt| window.search_bar.setPlaceholder(prompt);
     defer window.deinit();
     benchmark.attach(ctx.app, window.widget, window.list.view.viewport(), window.search_bar.widget);
     defer benchmark.deinit();
@@ -379,7 +442,9 @@ pub fn main(init: std.process.Init) !void {
     var cfg_dir_opt: ?[]u8 = null;
     if (config.configDir(init.gpa)) |cfg_dir| {
         freq_store.load(cfg_dir);
-        window.list.frequency_store = &freq_store;
+        // Picks from --dmenu aren't apps, so they don't count toward ranking, and the list
+        // keeps the order it came in.
+        if (!ctx.cfg.dmenu) window.list.frequency_store = &freq_store;
         cfg_dir_opt = cfg_dir;
     } else |_| {}
     benchmark.workEnd(.frequency, frequency_work);
@@ -453,4 +518,6 @@ pub fn main(init: std.process.Init) !void {
     if (!ctx.cfg.benchmark_startup) {
         if (cfg_dir_opt) |cfg_dir| freq_store.save(cfg_dir);
     }
+    // dmenu's convention: a cancelled pick exits with 1, so scripts can tell.
+    if (ctx.cfg.dmenu and !g_dmenu_picked) std.process.exit(1);
 }
