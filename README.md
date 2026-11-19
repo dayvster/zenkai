@@ -302,21 +302,26 @@ Ctrl+K pins it to the top, deletes it, or clears everything that isn't pinned.
 
 ### `--dmenu`, `--prompt=<text>`
 
-Turns Zenkai into a picker for scripts, like dmenu or `rofi -dmenu`: it lists the lines it
-reads on stdin, and prints the one you pick. With nothing matching, Enter prints what you
-typed. Escape prints nothing and exits with status 1, so scripts can tell you cancelled.
-`--prompt` sets the search field's placeholder.
+Turns Zenkai into a picker for scripts, like dmenu: it lists the lines it reads on stdin, and
+prints the one you pick. With nothing matching, Enter prints what you typed. Escape prints
+nothing and exits with status 1, so scripts can tell you cancelled. `--prompt` sets the
+search field's placeholder.
 
 ```sh
-# Switch git branches
 git branch --format='%(refname:short)' | zenkai --dmenu --prompt="Branch" | xargs -r git switch
 
-# Open a project folder
 ls ~/Workspace | zenkai --dmenu --prompt="Project" | xargs -r -I{} code ~/Workspace/{}
 ```
 
 Entries keep their order, blank lines are skipped, and apps, plugins and window search stay
 out of the list. Picks don't affect app ranking.
+
+Lines can carry an icon: the text, a NUL byte, then `icon`, a `0x1f` byte and an icon name or
+image path. Only the text is printed. Lists without any icons stay text-only.
+
+```sh
+printf 'Lock\0icon\x1fsystem-lock-screen\nShut down\0icon\x1fsystem-shutdown\n' | zenkai --dmenu
+```
 
 ### `--run`
 
