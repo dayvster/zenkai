@@ -458,7 +458,7 @@ test "minimal search keeps case-insensitive matching and typo tolerance" {
 }
 
 fn unsupportedOption(arg: []const u8) bool {
-    for ([_][]const u8{ "--plugin=", "--file-previews", "--clipboard=", "--url-handler=", "--window-switcher", "--settings", "--service", "--toggle", "--quit-service" }) |prefix| {
+    for ([_][]const u8{ "--plugin=", "--file-previews", "--clipboard=", "--url-handler=", "--window-switcher", "--settings", "--service", "--toggle", "--quit-service", "--dmenu", "--prompt=" }) |prefix| {
         if (std.mem.startsWith(u8, arg, prefix)) return true;
     }
     return false;
