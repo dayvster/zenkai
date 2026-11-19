@@ -16,6 +16,8 @@ const styles_watcher = @import("ui/styles_watcher.zig");
 const config = @import("config");
 const core_freq = @import("core_freq");
 const lang = @import("lang");
+const service = @import("core/service.zig");
+const resident = @import("ui/resident.zig");
 
 var g_app_refresh_window: ?*ui.Window = null;
 var g_app_refresh_timer: ?qt.QTimer = null;
@@ -23,6 +25,7 @@ var g_app_refresh_allocator: std.mem.Allocator = undefined;
 var g_app_refresh_benchmark = false;
 var g_app_refresh_actions = false;
 var g_app_refresh_actions_bar = false;
+var g_apps_loaded_at: u64 = 0;
 var g_plugin_manager: ?*plugins.PluginManager = null;
 var g_plugin_timer: ?qt.QTimer = null;
 
@@ -60,17 +63,57 @@ fn onAppsRefresh(timer: qt.QTimer) callconv(.c) void {
             desktop_loader.saveCache(g_app_refresh_allocator, items);
         }
         benchmark.dataReady(items.len);
+        g_apps_loaded_at = debug.monotonicNs();
         log.info("app list refreshed in {d:.2}ms", .{@as(f64, @floatFromInt(debug.monotonicNs() - started)) / std.time.ns_per_ms});
     }
     timer.delete();
     g_app_refresh_timer = null;
 }
 
+fn scheduleAppRefresh() void {
+    if (g_app_refresh_timer != null) return;
+    g_app_refresh_timer = qt.QTimer.new();
+    g_app_refresh_timer.?.onTimeout(onAppsRefresh);
+    g_app_refresh_timer.?.start(50);
+}
+
+// The background service reloads the app list after hiding, the same five minutes after the
+// last load that a normal launch treats its cache as fresh. Doing it while hidden means the
+// list never changes under someone typing.
+fn refreshStaleAppsWhileHidden() void {
+    if (g_app_refresh_window == null) return;
+    if (debug.monotonicNs() - g_apps_loaded_at < 5 * std.time.ns_per_min) return;
+    scheduleAppRefresh();
+}
+
 extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
 extern fn setenv([*:0]const u8, [*:0]const u8, i32) i32;
 extern var __stderrp: *anyopaque;
 
+/// Handles --toggle and --quit-service before Qt starts, so showing the background service's
+/// launcher costs a socket write. True when there's nothing left to do. Without a service,
+/// --toggle carries on and starts zenkai normally.
+fn sendServiceCommand(init: std.process.Init) !bool {
+    var toggle = false;
+    var quit_service = false;
+    var window_switcher = false;
+    var it = try init.minimal.args.iterateAllocator(init.gpa);
+    defer it.deinit();
+    while (it.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--toggle")) toggle = true;
+        if (std.mem.eql(u8, arg, "--quit-service")) quit_service = true;
+        if (std.mem.eql(u8, arg, "--window-switcher")) window_switcher = true;
+    }
+    if (quit_service) {
+        if (!service.send(.quit)) std.debug.print("No background service is running.\n", .{});
+        return true;
+    }
+    return toggle and service.send(if (window_switcher) .toggle_window_switcher else .toggle_launcher);
+}
+
 test {
+    std.testing.refAllDecls(@import("core/service.zig"));
+    std.testing.refAllDecls(@import("ui/resident.zig"));
     std.testing.refAllDecls(@import("ui/list.zig"));
     std.testing.refAllDecls(@import("ui/window.zig"));
     std.testing.refAllDecls(@import("ui/action_menu.zig"));
@@ -86,6 +129,7 @@ test {
 
 pub fn main(init: std.process.Init) !void {
     benchmark.entry_ns = debug.monotonicNs();
+    if (try sendServiceCommand(init)) return;
 
     var debug_freq = false;
     if (comptime builtin.os.tag == .linux) {
@@ -127,6 +171,10 @@ pub fn main(init: std.process.Init) !void {
     }
     if (ctx.cfg.run_mode) ctx.visual.window_height = 140;
     if (ctx.cfg.settings) return @import("ui/settings.zig").run(init.gpa, ctx.app);
+    if (ctx.cfg.service and !service.supported) {
+        std.debug.print("The background service is only available on Linux for now.\n", .{});
+        std.process.exit(1);
+    }
 
     {
         var args_iter = try init.minimal.args.iterateAllocator(init.gpa);
@@ -181,7 +229,9 @@ pub fn main(init: std.process.Init) !void {
     dapp_parser.setLocale(ctx.cfg.language);
 
     const use_menus = menu_entries.len > 0;
-    const window_switcher = ctx.cfg.window_switcher and !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode;
+    // The background service serves both the launcher and the window switcher, so it always
+    // loads apps; --toggle --window-switcher picks the mode each time.
+    const window_switcher = ctx.cfg.window_switcher and !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode and !ctx.cfg.service;
     const skip_desktop = use_menus or ctx.cfg.no_dapps or ctx.cfg.run_mode or window_switcher;
 
     var items: []ui.ListItem = undefined;
@@ -300,21 +350,33 @@ pub fn main(init: std.process.Init) !void {
         window.list.setFilter("");
     }
 
-    if (ctx.cfg.benchmark_all) debug.mark("show window");
-    window.show();
-    if (ctx.cfg.benchmark_startup) window.widget.activateWindow();
-    if (ctx.cfg.run_mode or window_switcher or ctx.cfg.benchmark_startup) window.search_bar.focus();
-    benchmark.showReturned();
+    if (ctx.cfg.service) {
+        resident.start(&window, init.gpa, .{ .config_dir = cfg_dir_opt, .on_hide = refreshStaleAppsWhileHidden }) catch |err| {
+            switch (err) {
+                error.AlreadyRunning => std.debug.print("A background service is already running. Show it with zenkai --toggle.\n", .{}),
+                else => std.debug.print("Can't start the background service: {}\n", .{err}),
+            }
+            std.process.exit(1);
+        };
+        // There's no first paint to wait for, so load plugins now and keep them ready.
+        if (g_plugin_timer) |timer| timer.start(0);
+    } else {
+        if (ctx.cfg.benchmark_all) debug.mark("show window");
+        window.show();
+        if (ctx.cfg.benchmark_startup) window.widget.activateWindow();
+        if (ctx.cfg.run_mode or window_switcher or ctx.cfg.benchmark_startup) window.search_bar.focus();
+        benchmark.showReturned();
+    }
+    defer if (ctx.cfg.service) resident.stop();
 
-    if (refresh_apps) {
+    if (!skip_desktop) {
         g_app_refresh_window = &window;
         g_app_refresh_allocator = init.gpa;
         g_app_refresh_benchmark = ctx.cfg.benchmark_all;
         g_app_refresh_actions = ctx.cfg.show_actions;
         g_app_refresh_actions_bar = ctx.cfg.actions_bottombar;
-        g_app_refresh_timer = qt.QTimer.new();
-        g_app_refresh_timer.?.onTimeout(onAppsRefresh);
-        g_app_refresh_timer.?.start(50);
+        g_apps_loaded_at = debug.monotonicNs();
+        if (refresh_apps) scheduleAppRefresh();
     }
 
     if (ctx.cfg.start_timer) {

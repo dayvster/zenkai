@@ -4,7 +4,6 @@ const List = @import("list.zig").List;
 const QShortcut = qt.QShortcut;
 const QKeySequence = qt.QKeySequence;
 const QWidget = qt.QWidget;
-const QApp = qt.QApplication;
 const QLineEdit = qt.QLineEdit;
 const QKeyEvent = qt.QKeyEvent;
 const search_bar = @import("search_bar.zig");
@@ -119,7 +118,7 @@ fn onEscape(_: QShortcut) callconv(.c) void {
         actions.close();
         return;
     }
-    QApp.quit();
+    @import("close.zig").close();
 }
 
 fn onFocusSearch(_: QShortcut) callconv(.c) void {

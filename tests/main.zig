@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const args = @import("args");
 const dapp_parser = @import("dapp_parser");
 const desktopapp = @import("desktopapp");
@@ -797,4 +798,26 @@ test "args: startup benchmark keeps workload flags independent" {
     try std.testing.expect(cfg.no_icons);
     try std.testing.expect(!cfg.no_dapps);
     try std.testing.expect(!cfg.benchmark_all);
+}
+
+test "utils: detached programs run without staying zenkai's children" {
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    var path_buf: [64]u8 = undefined;
+    const marker = try std.fmt.bufPrint(&path_buf, "/tmp/zenkai-spawn-test-{d}", .{std.c.getpid()});
+    var cmd_buf: [128]u8 = undefined;
+    const cmd = try std.fmt.bufPrint(&cmd_buf, "echo ok > {s}", .{marker});
+    try utils.execute(cmd, std.testing.allocator);
+    // Only the brief first fork was ever our child, and it has been waited for.
+    var status: c_int = 0;
+    try std.testing.expectEqual(@as(c_int, -1), std.c.waitpid(-1, &status, std.c.W.NOHANG));
+
+    var marker_z: [64:0]u8 = undefined;
+    @memcpy(marker_z[0..marker.len], marker);
+    marker_z[marker.len] = 0;
+    defer _ = std.c.unlink(&marker_z);
+    for (0..100) |_| {
+        if (std.c.access(&marker_z, 0) == 0) return;
+        _ = std.c.nanosleep(&.{ .sec = 0, .nsec = 10 * std.time.ns_per_ms }, null);
+    }
+    return error.ProgramDidNotRun;
 }

@@ -26,6 +26,9 @@ pub const help =
     \\  --show-actions            Show item actions
     \\  --actions-bottombar       Show actions in bottom bar
     \\  --settings                Open the settings window instead of the launcher
+    \\  --service                 Run in the background, hidden until --toggle shows it (Linux)
+    \\  --toggle                  Show or hide the background service (starts normally without one)
+    \\  --quit-service            Stop the background service
     \\  --list-themes             List all available themes with descriptions
     \\  --list-monitors           List all available monitors with indices
     \\  --close-on-focus-out     Close the launcher when it loses focus
@@ -73,6 +76,9 @@ pub const Config = struct {
     window_switcher: bool = false,
     no_window_switcher: bool = false,
     settings: bool = false,
+    service: bool = false,
+    toggle: bool = false,
+    quit_service: bool = false,
     run_mode: bool,
     language: ?[]const u8,
     no_animations: bool,
@@ -276,6 +282,12 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.animation_easing = if (val.len > 0) val else null;
         } else if (std.mem.eql(u8, arg, "--settings")) {
             cfg.settings = true;
+        } else if (std.mem.eql(u8, arg, "--service")) {
+            cfg.service = true;
+        } else if (std.mem.eql(u8, arg, "--toggle")) {
+            cfg.toggle = true;
+        } else if (std.mem.eql(u8, arg, "--quit-service")) {
+            cfg.quit_service = true;
         } else if (std.mem.eql(u8, arg, "--list-themes")) {
             cfg.list_themes = true;
         } else if (std.mem.eql(u8, arg, "--list-monitors")) {

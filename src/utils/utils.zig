@@ -118,29 +118,7 @@ pub fn execute(cmd: []const u8, allocator: std.mem.Allocator) !void {
             null,
         };
 
-        const pid = std.c.fork();
-        if (pid < 0) {
-            return error.ForkFailed;
-        }
-
-        if (pid == 0) {
-            _ = std.c.execve("/bin/sh", &argv, environ);
-            std.c._exit(1);
-        }
-
-        const thread_data = try allocator.create(ThreadData);
-        thread_data.* = .{
-            .pid = @as(i32, @intCast(pid)),
-            .allocator = allocator,
-        };
-
-        const thread = std.Thread.spawn(.{}, reapChild, .{thread_data}) catch |err| {
-            allocator.destroy(thread_data);
-            var status: c_int = 0;
-            _ = std.c.waitpid(@as(i32, @intCast(pid)), &status, 0);
-            return err;
-        };
-        thread.detach();
+        try spawnDetached("/bin/sh", &argv);
     }
 }
 
@@ -150,17 +128,6 @@ pub fn openTarget(target: []const u8, allocator: std.mem.Allocator) !void {
     } else {
         return error.UnsupportedPlatform;
     }
-}
-
-const ThreadData = struct {
-    pid: i32,
-    allocator: std.mem.Allocator,
-};
-
-fn reapChild(data: *ThreadData) void {
-    var status: c_int = 0;
-    _ = std.c.waitpid(data.pid, &status, 0);
-    data.allocator.destroy(data);
 }
 
 const X_OK: c_int = 1;
@@ -381,19 +348,24 @@ fn deinitArgvC(allocator: std.mem.Allocator, argv: *ArgvC) void {
     allocator.free(argv.owned);
 }
 
-fn forkExec(argv: *const [tool_arg_limit + 1:null]?[*:0]const u8) c_int {
+/// Starts a program that isn't zenkai's child: a first fork starts it in a second one and
+/// exits at once, and the system adopts the program. zenkai only waits for that first fork,
+/// so it keeps no thread per running program, and the background service, which runs for
+/// days and replaces itself on restart, never leaves exited programs behind as zombies.
+fn spawnDetached(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !void {
     const pid = std.c.fork();
+    if (pid < 0) return error.ForkFailed;
     if (pid == 0) {
-        _ = std.c.execve(@ptrCast(argv[0].?), @as([*:null]const ?[*:0]const u8, @ptrCast(argv)), environ);
-        std.c._exit(127);
+        const grandchild = std.c.fork();
+        if (grandchild == 0) {
+            _ = std.c.execve(path, argv, environ);
+            std.c._exit(127);
+        }
+        std.c._exit(if (grandchild < 0) 1 else 0);
     }
-    return pid;
-}
-
-fn reapChildC(data: *ThreadData) void {
     var status: c_int = 0;
-    _ = std.c.waitpid(data.pid, &status, 0);
-    data.allocator.destroy(data);
+    _ = std.c.waitpid(pid, &status, 0);
+    if (status != 0) return error.ForkFailed;
 }
 
 pub fn spawnTool(name: []const u8, args: []const []const u8, allocator: std.mem.Allocator) !void {
@@ -414,18 +386,7 @@ pub fn spawnTool(name: []const u8, args: []const []const u8, allocator: std.mem.
         var argv = try buildArgvC(allocator, full_args.items);
         defer deinitArgvC(allocator, &argv);
 
-        const pid = forkExec(&argv.array);
-        if (pid < 0) return error.ForkFailed;
-
-        const thread_data = try allocator.create(ThreadData);
-        thread_data.* = .{ .pid = pid, .allocator = allocator };
-        const thread = std.Thread.spawn(.{}, reapChildC, .{thread_data}) catch |err| {
-            allocator.destroy(thread_data);
-            var status: c_int = 0;
-            _ = std.c.waitpid(pid, &status, 0);
-            return err;
-        };
-        thread.detach();
+        try spawnDetached(@ptrCast(argv.array[0].?), @ptrCast(&argv.array));
     }
 }
 

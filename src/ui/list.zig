@@ -738,7 +738,7 @@ pub const List = struct {
             },
             .window_message => return,
         }
-        animation.animateFadeOutAndQuit();
+        animation.animateFadeOutAndClose();
     }
 
     pub fn launchRunCommand(self: *List, command: []const u8) void {
@@ -748,7 +748,7 @@ pub const List = struct {
             log.info("Run command failed: {}", .{err});
             return;
         };
-        animation.animateFadeOutAndQuit();
+        animation.animateFadeOutAndClose();
     }
 
     fn applyPluginQuery(self: *List, manager: *plugins.PluginManager) bool {
@@ -796,7 +796,7 @@ pub const List = struct {
             const manager = self.plugin_manager orelse return;
             manager.handleAction(&self.plugin_results.items[entry.plugin], id);
             if (self.applyPluginQuery(manager)) return;
-            if (manager.close_requested) animation.animateFadeOutAndQuit();
+            if (manager.close_requested) animation.animateFadeOutAndClose();
             return;
         }
         if (action.exec.len == 0) return;
@@ -806,7 +806,7 @@ pub const List = struct {
             log.info("failed to launch action: {}", .{err});
             return;
         };
-        animation.animateFadeOutAndQuit();
+        animation.animateFadeOutAndClose();
     }
 
     pub fn setNoIcons(v: bool) void {

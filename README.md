@@ -257,6 +257,35 @@ apply the next time Zenkai opens; flags still override the file. Unchecked
 plugins are written to `disabled_plugins = "name, other"` and are not loaded
 unless selected with `--plugin=NAME`.
 
+### `--service`, `--toggle`, `--quit-service`
+
+Optional, and Linux only for now. By default every launch starts a new zenkai, and that
+doesn't change unless you opt in. `--service` keeps zenkai running in the background with
+its window hidden, and `--toggle` shows or hides it. The app list, plugins and icons stay
+loaded, so it opens without a startup.
+
+```sh
+zenkai --service                     # start it, e.g. from your session's autostart
+zenkai --toggle                      # bind this to your launcher key
+zenkai --toggle --window-switcher    # the window switcher, from the same service
+zenkai --quit-service                # stop it
+```
+
+When no service is running, `--toggle` starts zenkai the usual way, so the same key binding
+works with or without the service. Toggling the other mode while one is open switches over
+instead of closing.
+
+The service takes its flags from its own command line and `zenkai.conf`. When `zenkai.conf`
+changes, for example after saving in the settings window, it restarts itself the next time
+it's hidden so the new settings apply.
+
+For Hyprland:
+
+```
+exec-once = zenkai --service
+bind = SUPER, Space, exec, zenkai --toggle
+```
+
 ### `--run`
 
 Opens Zenkai in Windows Run mode. Type a command or URL and press Enter to open it with the Windows shell, without a `run:` prefix.

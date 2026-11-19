@@ -247,7 +247,7 @@ fn execute(index: usize) void {
         },
         .browser => |action| if (state.browser) |*browser| {
             browser.launch(action) catch return;
-            @import("animation.zig").animateFadeOutAndQuit();
+            @import("animation.zig").animateFadeOutAndClose();
         },
         .copy_name => qt.QApplication.clipboard().setText(list.selectedName()),
         .copy_command => if (list.selectedCommand()) |command| {

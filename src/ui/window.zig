@@ -11,6 +11,7 @@ const Keyboard = @import("keyboard.zig").Keyboard;
 const BottomBar = @import("bottombar.zig").BottomBar;
 const SearchBar = @import("search_bar.zig").SearchBar;
 const animation = @import("animation.zig");
+const close = @import("close.zig");
 
 const QApp = qt.QApplication;
 const QWidget = qt.QWidget;
@@ -160,11 +161,11 @@ fn onLeaveWidget(_: QWidget, _: qt.QEvent) callconv(.c) void {
 
 fn onBlurTimerTimeout(_: qt.QTimer) callconv(.c) void {
     if (@import("file_actions.zig").isOpen()) return;
-    QApp.quit();
+    close.close();
 }
 
 fn onBackdropClick(_: qt.QWidget, _: qt.QMouseEvent) callconv(.c) void {
-    QApp.quit();
+    close.close();
 }
 
 fn onBackdropMove(_: qt.QWidget, _: qt.QMoveEvent) callconv(.c) void {
@@ -242,8 +243,20 @@ fn onItemFocused(_: usize, actions: []const ListItemAction) void {
     }
 }
 
-fn onWindowClose(_: QWidget, _: QCloseEvent) callconv(.c) void {
-    QApp.quit();
+fn onWindowClose(_: QWidget, event: QCloseEvent) callconv(.c) void {
+    // The background service only hides the window, so it must not close for real.
+    if (close.hide_instead != null) event.ignore();
+    close.close();
+}
+
+/// The configured monitor, or the one with the cursor.
+fn targetScreen(allocator: std.mem.Allocator, monitor: ?i32) qt.QScreen {
+    const cursor_screen = QApp.screenAt(qt.QCursor.pos());
+    const idx = monitor orelse return cursor_screen;
+    const screens = QApp.screens(allocator);
+    defer allocator.free(screens);
+    if (screens.len == 0) return cursor_screen;
+    return screens[clampMonitorIndex(idx, screens.len)];
 }
 
 fn closeBackdrop() void {
@@ -279,17 +292,7 @@ pub const Window = struct {
 
         const wt = qt.qnamespace_enums.WindowType;
 
-        const cursor_pos = qt.QCursor.pos();
-        const cursor_screen = QApp.screenAt(cursor_pos);
-
-        const target_screen = if (vis.monitor) |idx| blk: {
-            const screens = QApp.screens(allocator);
-            defer allocator.free(screens);
-            if (screens.len == 0) break :blk cursor_screen;
-            const i = clampMonitorIndex(idx, screens.len);
-            break :blk screens[i];
-        } else cursor_screen;
-
+        const target_screen = targetScreen(allocator, vis.monitor);
         const screen_rect = target_screen.geometry();
         const screen_w = screen_rect.width();
         const screen_h = screen_rect.height();
@@ -501,6 +504,31 @@ pub const Window = struct {
         }
         self.widget.raise();
         animation.animateFadeIn(self.widget);
+    }
+
+    /// Replaces the search text and shows its results right away, without the debounce.
+    pub fn setQuery(_: *Window, text: []const u8) void {
+        onQueryRequested(text);
+    }
+
+    /// Centers the window and its backdrop on the target screen again. The background service
+    /// calls it before every show, since the cursor may be on another monitor by then.
+    pub fn place(self: *Window) void {
+        const screen = targetScreen(self.allocator, g_monitor).geometry();
+        if (g_backdrop) |bd| {
+            g_backdrop_geo = .{ screen.x(), screen.y(), screen.width(), screen.height() };
+            bd.setFixedSize2(screen.width(), screen.height());
+            bd.setGeometry(screen.x(), screen.y(), screen.width(), screen.height());
+        }
+        if (g_fullscreen) return;
+        const w = self.widget.width();
+        const h = self.widget.height();
+        self.widget.setGeometry(screen.x() + @divTrunc(screen.width() - w, 2), screen.y() + @divTrunc(screen.height() - h, 2), w, h);
+    }
+
+    pub fn setBackdropVisible(_: *Window, visible: bool) void {
+        const bd = g_backdrop orelse return;
+        if (visible) bd.show() else bd.hide();
     }
 
     pub fn exec() void {
