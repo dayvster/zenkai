@@ -3,7 +3,19 @@
 Where zenkai is heading, roughly in order. Nothing here has a date, and the order can change.
 Ideas and pull requests for anything on this list are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## v1.6 (released)
+## v1.7 (released)
+
+- [x] **Optional background service with a toggle command.** zenkai starts a new process on
+      every launch, and that stays the default. Anyone who wants it can opt into a resident
+      service (`zenkai --service`) that a hotkey shows and hides (`zenkai --toggle`): it opens
+      without a startup and keeps the app list and plugins loaded. Linux first; macOS and
+      Windows later.
+- [x] **Clipboard history.** Search, pin and copy back past copies (`clip:`). Needs the
+      background service to watch the clipboard (`wl-paste --watch` on Wayland).
+- [x] **dmenu mode.** Read entries from stdin and print the chosen one, so scripts can use
+      zenkai as a picker (`--dmenu`, `--prompt=TEXT`).
+
+## v1.6
 
 - [x] Settings window: appearance with a live preview, themes, plugins, opacity, corner radius
       and text sizes.
@@ -15,19 +27,10 @@ Ideas and pull requests for anything on this list are welcome; see [CONTRIBUTING
 
 ## Up next
 
-- [x] **Optional background service with a toggle command.** zenkai starts a new process on
-      every launch, and that stays the default. Anyone who wants it can opt into a resident
-      service (`zenkai --service`) that a hotkey shows and hides (`zenkai --toggle`): it opens
-      without a startup and keeps the app list and plugins loaded. Linux first; macOS and
-      Windows later. Clipboard history and per-command hotkeys build on it, so they only work
-      with the service turned on.
-- [x] **Clipboard history.** Search, pin and copy back past copies (`clip:`). Needs the
-      optional background service to watch the clipboard (`wl-paste --watch` on Wayland).
-      Pasting straight into the previous window comes later.
 - [ ] **System commands.** Lock, sleep, log out, restart, shut down and empty trash in the main
       search, for every desktop. Today only the Hyprland plugin has lock and sleep.
-- [x] **dmenu mode.** Read entries from stdin and print the chosen one, so scripts can use
-      zenkai as a picker (`--dmenu`, `--prompt=TEXT`).
+- [ ] **Paste from clipboard history** straight into the window you came from, instead of
+      copying it back first.
 
 ## Root search
 
