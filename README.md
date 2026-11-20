@@ -272,7 +272,12 @@ zenkai --quit-service                # stop it
 ```
 
 When no service is running, `--toggle` starts zenkai the usual way, so the same key binding
-works with or without the service. Toggling the other mode while one is open switches over
+works with or without the service.
+
+The simplest way to use it is the **Keep running in the background** switch in the settings
+window (`background_service = true` in `zenkai.conf`). Then plain `zenkai` hands off to the
+service, and starts it if it isn't running yet, so your existing key binding keeps working and
+nothing needs adding to autostart. Turning the switch off stops that service again. Toggling the other mode while one is open switches over
 instead of closing.
 
 The service takes its flags from its own command line and `zenkai.conf`. When `zenkai.conf`

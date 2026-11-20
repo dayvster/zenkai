@@ -17,6 +17,7 @@ const action_icons = @import("action_icons.zig");
 const bottombar = @import("bottombar.zig");
 const window_background = @import("window_background.zig");
 const EasingType = @import("animation.zig").EasingType;
+const web_search = @import("../core/web_search.zig");
 const theme_colors = @import("../theme/colors.zig");
 const Rgb = theme_colors.Rgb;
 const Colors = theme_colors.Colors;
@@ -83,11 +84,14 @@ const fields = [_]Field{
     .{ .key = "corner_radius", .card = .style, .max = 24, .suffix = " px" },
     .{ .key = "search_font_size", .card = .text, .min = 9, .max = 40, .suffix = " px", .unset = "theme_default" },
     .{ .key = "font_size", .card = .text, .min = 7, .max = 32, .suffix = " px", .unset = "theme_default" },
+    .{ .key = "background_service", .card = .window },
     .{ .key = "close_on_focus_out", .card = .window },
     .{ .key = "show_backdrop", .card = .window },
     .{ .key = "fullscreen", .card = .window },
     .{ .key = "monitor", .card = .window, .min = -1, .max = 15, .unset = "monitor_cursor" },
     .{ .key = "file_previews", .card = .results },
+    .{ .key = "fallback_search", .card = .results },
+    .{ .key = "search_engine", .card = .results, .choices = &web_search.engine_names },
     .{ .key = "no_animations", .card = .motion },
     .{ .key = "animation_interval", .card = .motion, .max = 2000, .suffix = " ms" },
     .{ .key = "animation_easing", .card = .motion, .choices = &EasingType.names },

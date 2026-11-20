@@ -82,6 +82,7 @@ pub const Config = struct {
     service: bool = false,
     toggle: bool = false,
     quit_service: bool = false,
+    background: bool = false,
     dmenu: bool = false,
     prompt: ?[]const u8 = null,
     run_mode: bool,
@@ -293,6 +294,8 @@ pub fn parse(args: [][:0]u8) Config {
             cfg.toggle = true;
         } else if (std.mem.eql(u8, arg, "--quit-service")) {
             cfg.quit_service = true;
+        } else if (std.mem.eql(u8, arg, "--background")) {
+            cfg.background = true;
         } else if (std.mem.eql(u8, arg, "--dmenu")) {
             cfg.dmenu = true;
         } else if (std.mem.startsWith(u8, arg, "--prompt=")) {

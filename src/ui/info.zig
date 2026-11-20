@@ -35,7 +35,7 @@ fn currentApp() ?*const de.DesktopApp {
     const entry = g_list.indices.items[row];
     const item_idx = switch (entry) {
         .item => |i| i,
-        .plugin, .window, .window_message => return null,
+        .plugin, .window, .window_message, .web_search => return null,
     };
     const item = switch (g_list.source) {
         .desktop_apps => |apps| return &apps[item_idx],

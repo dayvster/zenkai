@@ -34,7 +34,9 @@ Ideas and pull requests for anything on this list are welcome; see [CONTRIBUTING
 
 ## Root search
 
-- [ ] **Fallback commands**, such as "Search the web for ...", when nothing matches.
+- [x] **Web search fallback**: "Search DuckDuckGo for ..." when nothing matches, with a choice
+      of search engine.
+- [ ] **More fallback commands**, such as plugins that offer themselves when nothing matches.
 - [ ] **Aliases**: a short keyword that runs a specific command.
 - [ ] **Favourites** pinned to the top of an empty search.
 - [ ] **Ranking by use for plugin results**, not only for apps.

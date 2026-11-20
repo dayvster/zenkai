@@ -19,7 +19,7 @@ const clipboard_watch = @import("clipboard_watch.zig");
 const close = @import("close.zig");
 const Window = @import("window.zig").Window;
 
-const Mode = enum { launcher, window_switcher, clipboard };
+pub const Mode = enum { launcher, window_switcher, clipboard };
 
 var g_window: *Window = undefined;
 var g_allocator: std.mem.Allocator = undefined;
@@ -30,6 +30,7 @@ var g_config_watcher: ?qt.QFileSystemWatcher = null;
 var g_config_path: ?[]u8 = null;
 var g_restart_pending = false;
 var g_history: ?History = null;
+var g_background = false;
 
 pub const Options = struct {
     /// Where the frequency store is saved after each use, as a normal exit would.
@@ -38,6 +39,10 @@ pub const Options = struct {
     on_hide: ?*const fn () void = null,
     /// Record copies for the `clip:` plugin. Off when that plugin is disabled.
     clipboard_history: bool = false,
+    /// Started by the background_service setting, so it stops when the setting goes off.
+    background: bool = false,
+    /// Show the launcher right after starting, for a launch that started the service.
+    show: ?Mode = null,
 };
 
 /// Starts listening for commands, with the window hidden.
@@ -50,6 +55,8 @@ pub fn start(window: *Window, allocator: std.mem.Allocator, options: Options) se
     close.hide_instead = hide;
     watchConfig();
     if (options.clipboard_history) startClipboardHistory();
+    g_background = options.background;
+    if (options.show) |mode| show(mode);
     log.info("background service started; run zenkai --toggle to show the launcher", .{});
 }
 
@@ -176,15 +183,29 @@ fn onConfigChanged(watcher: qt.QFileSystemWatcher, _: [*:0]const u8) callconv(.c
     // Saving by writing a new file and renaming it over the old one ends the watch; watch
     // the new file instead.
     if (g_config_path) |path| _ = watcher.addPath(path);
+    if (g_background and !backgroundSettingOn()) {
+        log.info("background_service is off; stopping the background service", .{});
+        close.close();
+        qt.QApplication.quit();
+        return;
+    }
     g_restart_pending = true;
     if (!g_window.widget.isVisible()) restart();
+}
+
+fn backgroundSettingOn() bool {
+    const path = g_config_path orelse return true;
+    var cfg = config.loadConfig(g_allocator, path) catch return true;
+    defer cfg.deinit(g_allocator);
+    return cfg.background_service;
 }
 
 /// Runs zenkai again with the same arguments, in place, so the process ID stays the same for
 /// anything supervising the service.
 fn restart() void {
     log.info("zenkai.conf changed; restarting the background service", .{});
-    const argv = readCmdline(g_allocator) catch |err| {
+    const flags: []const [:0]const u8 = if (g_background) &.{ "--service", "--background" } else &.{};
+    const argv = readCmdline(g_allocator, flags) catch |err| {
         log.info("can't restart the background service: {}", .{err});
         g_restart_pending = false;
         return;
@@ -221,7 +242,7 @@ fn executablePath(buf: *[4096:0]u8) ?[:0]const u8 {
 /// This process's arguments, from /proc/self/cmdline, as a null-terminated argv. The
 /// arguments point into one buffer that lives as long as the argv; restart() never frees it,
 /// since execve replaces the process.
-fn readCmdline(allocator: std.mem.Allocator) ![:null]?[*:0]const u8 {
+fn readCmdline(allocator: std.mem.Allocator, extra: []const [:0]const u8) ![:null]?[*:0]const u8 {
     // /proc files report a size of 0, so stream to the end instead of reading by size.
     const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
     const file = try std.Io.Dir.openFile(std.Io.Dir.cwd(), io, "/proc/self/cmdline", .{});
@@ -235,6 +256,12 @@ fn readCmdline(allocator: std.mem.Allocator) ![:null]?[*:0]const u8 {
         if (byte != 0) continue;
         try args.append(allocator, @ptrCast(content[arg_start..i :0].ptr));
         arg_start = i + 1;
+    }
+    for (extra) |flag| {
+        const present = for (args.items) |arg| {
+            if (std.mem.eql(u8, std.mem.span(arg.?), flag)) break true;
+        } else false;
+        if (!present) try args.append(allocator, flag.ptr);
     }
     return args.toOwnedSliceSentinel(allocator, null);
 }
@@ -284,6 +311,9 @@ test "the restart reads this process's arguments" {
     // The arguments point into the file's contents, so both go at once.
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const argv = try readCmdline(arena.allocator());
-    try std.testing.expect(argv.len >= 1 and argv[0] != null);
+    const argv = try readCmdline(arena.allocator(), &.{"--background"});
+    try std.testing.expect(argv.len >= 2 and argv[0] != null);
+    try std.testing.expectEqualStrings("--background", std.mem.span(argv[argv.len - 1].?));
+    const again = try readCmdline(arena.allocator(), &.{});
+    try std.testing.expectEqual(argv.len - 1, again.len);
 }
