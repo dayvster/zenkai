@@ -30,12 +30,19 @@ pub const VisualConfig = struct {
     search_font_size: ?i32 = null,
     // Plugin names (manifest "name") that are not loaded unless selected with --plugin.
     disabled_plugins: []const []const u8 = &.{},
+    // Linux: `zenkai` hands off to a resident service, starting one when none is running.
+    background_service: bool = false,
+    // When nothing matches, offer to search the web for the query.
+    fallback_search: bool = true,
+    // A name from web_search.engines, or a URL with %s where the query goes.
+    search_engine: ?[]const u8 = null,
 
     pub fn deinit(self: *VisualConfig, allocator: std.mem.Allocator) void {
         if (self.theme) |v| allocator.free(v);
         if (self.clipboard) |v| allocator.free(v);
         if (self.url_handler) |v| allocator.free(v);
         if (self.animation_easing) |v| allocator.free(v);
+        if (self.search_engine) |v| allocator.free(v);
         for (self.disabled_plugins) |name| allocator.free(name);
         allocator.free(self.disabled_plugins);
     }
@@ -242,6 +249,9 @@ pub fn loadConfig(allocator: std.mem.Allocator, config_path: []const u8) !Visual
         if (std.mem.eql(u8, key, "corner_radius")) cfg.corner_radius = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "font_size")) cfg.font_size = parseInt(val) catch continue;
         if (std.mem.eql(u8, key, "search_font_size")) cfg.search_font_size = parseInt(val) catch continue;
+        if (std.mem.eql(u8, key, "background_service")) cfg.background_service = std.mem.eql(u8, val, "true");
+        if (std.mem.eql(u8, key, "fallback_search")) cfg.fallback_search = std.mem.eql(u8, val, "true");
+        if (std.mem.eql(u8, key, "search_engine")) cfg.search_engine = parseTomlString(allocator, val);
         if (std.mem.eql(u8, key, "disabled_plugins")) {
             const names = parseNameList(allocator, val) catch continue;
             for (cfg.disabled_plugins) |name| allocator.free(name);

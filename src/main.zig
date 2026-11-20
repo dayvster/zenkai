@@ -93,32 +93,62 @@ extern fn freopen([*:0]const u8, [*:0]const u8, *anyopaque) ?*anyopaque;
 extern fn setenv([*:0]const u8, [*:0]const u8, i32) i32;
 extern var __stderrp: *anyopaque;
 
+const Startup = union(enum) {
+    done,
+    normal,
+    background: resident.Mode,
+};
+
 /// Handles --toggle, --quit-service and --clipboard-store before Qt starts, so talking to the
-/// background service costs a socket write. True when there's nothing left to do. Without a
-/// service, --toggle carries on and starts zenkai normally.
-fn sendServiceCommand(init: std.process.Init) !bool {
+/// background service costs a socket write. With the background_service setting on, a plain
+/// launch is handed to the service too, or becomes the service when none is running.
+fn serviceStartup(init: std.process.Init) !Startup {
     var toggle = false;
     var quit_service = false;
     var window_switcher = false;
     var clipboard = false;
+    var other_args = false;
     var it = try init.minimal.args.iterateAllocator(init.gpa);
     defer it.deinit();
+    _ = it.skip();
     while (it.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--toggle")) toggle = true;
-        if (std.mem.eql(u8, arg, "--quit-service")) quit_service = true;
-        if (std.mem.eql(u8, arg, "--window-switcher")) window_switcher = true;
-        if (std.mem.eql(u8, arg, "--clipboard-history")) clipboard = true;
-        if (std.mem.eql(u8, arg, "--clipboard-store")) {
+        if (std.mem.eql(u8, arg, "--toggle")) {
+            toggle = true;
+        } else if (std.mem.eql(u8, arg, "--window-switcher")) {
+            window_switcher = true;
+        } else if (std.mem.eql(u8, arg, "--clipboard-history")) {
+            clipboard = true;
+        } else if (std.mem.eql(u8, arg, "--quit-service")) {
+            quit_service = true;
+        } else if (std.mem.eql(u8, arg, "--clipboard-store")) {
             storeClipboard(init.gpa);
-            return true;
+            return .done;
+        } else if (!std.mem.eql(u8, arg, "-v") and !std.mem.eql(u8, arg, "--verbose")) {
+            other_args = true;
         }
     }
     if (quit_service) {
         if (!service.send(.quit)) std.debug.print("No background service is running.\n", .{});
-        return true;
+        return .done;
     }
-    const command: service.Command = if (window_switcher) .toggle_window_switcher else if (clipboard) .toggle_clipboard else .toggle_launcher;
-    return toggle and service.send(command);
+    const mode: resident.Mode = if (window_switcher) .window_switcher else if (clipboard) .clipboard else .launcher;
+    const command: service.Command = switch (mode) {
+        .launcher => .toggle_launcher,
+        .window_switcher => .toggle_window_switcher,
+        .clipboard => .toggle_clipboard,
+    };
+    const background = service.supported and !other_args and backgroundServiceSetting(init.gpa);
+    if ((toggle or background) and service.send(command)) return .done;
+    return if (background) .{ .background = mode } else .normal;
+}
+
+fn backgroundServiceSetting(allocator: std.mem.Allocator) bool {
+    const io = std.Io.Threaded.io(std.Io.Threaded.global_single_threaded);
+    const path = config.deploy(io, allocator) catch return false;
+    defer allocator.free(path);
+    var cfg = config.loadConfig(allocator, path) catch return false;
+    defer cfg.deinit(allocator);
+    return cfg.background_service;
 }
 
 /// `zenkai --clipboard-store`, which wl-paste runs for every copy on Wayland with the copied
@@ -249,7 +279,8 @@ test {
 
 pub fn main(init: std.process.Init) !void {
     benchmark.entry_ns = debug.monotonicNs();
-    if (try sendServiceCommand(init)) return;
+    const startup = try serviceStartup(init);
+    if (startup == .done) return;
 
     var debug_freq = false;
     if (comptime builtin.os.tag == .linux) {
@@ -291,6 +322,7 @@ pub fn main(init: std.process.Init) !void {
     }
     if (ctx.cfg.run_mode) ctx.visual.window_height = 140;
     if (ctx.cfg.settings) return @import("ui/settings.zig").run(init.gpa, ctx.app);
+    if (startup == .background) ctx.cfg.service = true;
     if (ctx.cfg.service and ctx.cfg.dmenu) {
         std.debug.print("--dmenu reads from the terminal that starts it, so it can't run as the background service.\n", .{});
         std.process.exit(2);
@@ -410,6 +442,12 @@ pub fn main(init: std.process.Init) !void {
     ui.renderList(&window, init.gpa, items, ctx.visual, !ctx.cfg.no_bottom_bar, ctx.cfg.no_icons or (ctx.cfg.dmenu and !dmenu_icons), ctx.app);
     window.list.plugin_manager = if (pm) |*p| p else null;
     window.list.window_search.enabled = !ctx.cfg.no_window_switcher and !ctx.cfg.run_mode and !ctx.cfg.dmenu;
+    if (ctx.visual.fallback_search and !ctx.cfg.dmenu and !ctx.cfg.run_mode) {
+        window.list.web_search = .{
+            .engine = @import("core/web_search.zig").find(ctx.visual.search_engine),
+            .url_handler = ctx.visual.url_handler,
+        };
+    }
     if (ctx.cfg.dmenu) {
         g_dmenu_window = &window;
         window.list.on_pick = onDmenuPick;
@@ -484,6 +522,8 @@ pub fn main(init: std.process.Init) !void {
 
     if (ctx.cfg.service) {
         resident.start(&window, init.gpa, .{
+            .background = ctx.cfg.background or startup == .background,
+            .show = if (startup == .background) startup.background else null,
             .config_dir = cfg_dir_opt,
             .on_hide = refreshStaleAppsWhileHidden,
             .clipboard_history = clipboardHistoryEnabled(if (pm) |*p| p else null, plugin_names, ctx.visual.disabled_plugins),

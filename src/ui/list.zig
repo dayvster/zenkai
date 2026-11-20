@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const qt = @import("libqt6zig");
 const utils = @import("utils");
 const plugins = @import("plugins");
@@ -22,6 +23,7 @@ const animation = @import("animation.zig");
 const icon_loader = @import("icon_loader.zig");
 const benchmark = @import("../debug/startup_benchmark.zig");
 const window_search = @import("../core/window_search.zig");
+const web_search = @import("../core/web_search.zig");
 
 pub const ListItemAction = plugins.ResultAction;
 
@@ -111,6 +113,38 @@ test "layout leaves icons unloaded; painting, scrolling and filtering populate t
 }
 
 var g_icon_size: i32 = 32;
+
+test "the web search row appears only when nothing else matches" {
+    const a = std.testing.allocator;
+    var argc: i32 = 1;
+    var arg = "zenkai".*;
+    var argv = [_][:0]u8{&arg};
+    const app = QApp.new(std.heap.page_allocator, &argc, &argv);
+    defer app.delete();
+    var items = [_]ListItem{.{ .name = "Firefox", .cmd = "", .icon = "" }};
+    var list = List.fromItems(a, &items, 32);
+    defer list.view.delete();
+    defer list.deinit();
+    list.adoptGList();
+    list.web_search = .{ .engine = web_search.find("duckduckgo") };
+
+    list.setFilter("fire");
+    try std.testing.expectEqual(@as(usize, 1), list.indices.items.len);
+    try std.testing.expect(list.indices.items[0] == .item);
+
+    list.setFilter("  how tall is everest ");
+    try std.testing.expectEqual(@as(usize, 1), list.indices.items.len);
+    try std.testing.expect(list.indices.items[0] == .web_search);
+    list.selectFirst();
+    try std.testing.expectEqualStrings("how tall is everest", list.selectedName());
+
+    list.setFilter("");
+    try std.testing.expect(list.indices.items[0] == .item);
+
+    list.web_search = null;
+    list.setFilter("how tall is everest");
+    try std.testing.expectEqual(@as(usize, 0), list.indices.items.len);
+}
 
 test "a pick hook receives entries instead of launching them, and null for typed text" {
     const a = std.testing.allocator;
@@ -294,11 +328,23 @@ const DataSource = union(enum) {
     items: []const ListItem,
 };
 
+pub const WebSearch = struct {
+    engine: web_search.Engine,
+    url_handler: ?[]const u8 = null,
+};
+
+fn openUrl(allocator: std.mem.Allocator, address: []const u8, handler: ?[]const u8) !void {
+    if (comptime builtin.os.tag == .windows) return utils.openTarget(address, allocator);
+    const tool = handler orelse if (builtin.os.tag == .macos) "/usr/bin/open" else "xdg-open";
+    return utils.spawnTool(tool, &.{address}, allocator);
+}
+
 pub const IndexEntry = union(enum) {
     item: usize,
     plugin: usize,
     window: usize,
     window_message,
+    web_search,
 };
 
 fn freePluginResults(allocator: std.mem.Allocator, results: *std.ArrayList(plugins.PluginResult)) void {
@@ -363,7 +409,7 @@ fn onCurrentChanged(_: QListView, current: QModelIndex, _: QModelIndex) callconv
             g_current_item_actions = list.plugin_results.items[i].actions.items;
             if (g_on_item_focused) |cb| cb(0, g_current_item_actions);
         },
-        .window, .window_message => {
+        .window, .window_message, .web_search => {
             g_current_item_actions = &.{};
             if (g_on_item_focused) |cb| cb(0, &.{});
         },
@@ -395,13 +441,14 @@ fn onData(
         const cache = switch (entry) {
             .item => &list.item_icons,
             .plugin => &list.plugin_icons,
-            .window, .window_message => &list.window_icons,
+            .window, .window_message, .web_search => &list.window_icons,
         };
         const key = switch (entry) {
             .item => |i| i,
             .plugin => |i| i,
             .window => |i| i,
             .window_message => std.math.maxInt(usize),
+            .web_search => std.math.maxInt(usize) - 1,
         };
         if (cache.get(key)) |icon| return icon.toQVariant();
         if (g_painting_row == null or g_painting_row.? != row)
@@ -414,6 +461,7 @@ fn onData(
             .plugin => |i| tryLoadPluginIcon(list.plugin_results.items[i].icon),
             .window => |i| tryLoadPluginIcon(list.window_search.snapshot.windows.items[i].icon),
             .window_message => tryLoadPluginIcon("dialog-information"),
+            .web_search => tryLoadPluginIcon("system-search"),
         };
         cache.put(list.allocator, key, icon) catch {
             defer icon.delete();
@@ -442,6 +490,14 @@ fn onData(
         .window_message => {
             if (role == 0) return QVariant.new24(list.window_search.message orelse "Window switcher unavailable");
         },
+        .web_search => {
+            if (role == 0) {
+                const search = list.web_search orelse return QVariant.new();
+                const text = web_search.label(list.allocator, search.engine, list.query.items) catch return QVariant.new();
+                defer list.allocator.free(text);
+                return QVariant.new24(text);
+            }
+        },
     }
 
     return QVariant.new();
@@ -455,11 +511,11 @@ const FreqSortContext = struct {
 fn freqLessThan(ctx: FreqSortContext, a: IndexEntry, b: IndexEntry) bool {
     const item_a = switch (a) {
         .item => |i| i,
-        .plugin, .window, .window_message => return false,
+        .plugin, .window, .window_message, .web_search => return false,
     };
     const item_b = switch (b) {
         .item => |i| i,
-        .plugin, .window, .window_message => return true,
+        .plugin, .window, .window_message, .web_search => return true,
     };
     const key_a = switch (ctx.source.*) {
         .desktop_apps => |apps| apps[item_a].name,
@@ -488,6 +544,8 @@ pub const List = struct {
     frequency_store: ?*freq.FrequencyStore,
     run_mode: bool = false,
     window_search: window_search.Search = .{},
+    web_search: ?WebSearch = null,
+    query: std.ArrayList(u8) = .empty,
     window_icons: std.AutoHashMapUnmanaged(usize, QIcon) = .empty,
     item_icons: std.AutoHashMapUnmanaged(usize, QIcon) = .empty,
     plugin_icons: std.AutoHashMapUnmanaged(usize, QIcon) = .empty,
@@ -594,6 +652,8 @@ pub const List = struct {
         defer benchmark.workEnd(.list_prepare, work);
         freePluginResults(self.allocator, &self.plugin_results);
         self.indices.clearRetainingCapacity();
+        self.query.clearRetainingCapacity();
+        self.query.appendSlice(self.allocator, std.mem.trim(u8, text, " \t\r\n")) catch {};
 
         if (self.run_mode) {
             return;
@@ -654,6 +714,10 @@ pub const List = struct {
             }
             break :blk self.plugin_results.items.len;
         } else 0;
+
+        if (self.indices.items.len == 0 and self.query.items.len > 0 and self.web_search != null and self.on_pick == null) {
+            self.indices.append(self.allocator, .web_search) catch {};
+        }
 
         if (self.frequency_store) |store| {
             const item_count = self.indices.items.len - plugin_count;
@@ -796,6 +860,15 @@ pub const List = struct {
                 }
             },
             .window_message => return,
+            .web_search => {
+                const search = self.web_search orelse return;
+                const address = web_search.url(self.allocator, search.engine, self.query.items) catch return;
+                defer self.allocator.free(address);
+                openUrl(self.allocator, address, search.url_handler) catch |err| {
+                    log.info("web search failed: {}", .{err});
+                    return;
+                };
+            },
         }
         animation.animateFadeOutAndClose();
     }
@@ -832,6 +905,7 @@ pub const List = struct {
             .plugin => |i| self.plugin_results.items[i].title,
             .window => |i| self.window_search.snapshot.windows.items[i].title,
             .window_message => self.window_search.message orelse "",
+            .web_search => self.query.items,
         };
     }
 
@@ -885,5 +959,6 @@ pub const List = struct {
         self.plugin_results.deinit(self.allocator);
         self.model.delete();
         self.indices.deinit(self.allocator);
+        self.query.deinit(self.allocator);
     }
 };
